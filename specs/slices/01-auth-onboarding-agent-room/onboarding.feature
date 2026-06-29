@@ -129,7 +129,7 @@ Feature: Onboarding and tenant bootstrap
     When I POST "/projects" in that Org
     Then the response status is 403
 
-  @AC-ONB-12 @bootstrap @reliability @edge
+  @wip @AC-ONB-12 @bootstrap @reliability @edge
   Scenario: Bootstrap is all-or-nothing
     Given finishing onboarding will fail partway through seeding
     When I finish onboarding

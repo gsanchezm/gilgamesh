@@ -49,6 +49,7 @@ Before(async function (this: GilgameshWorld) {
   this.notes = new Map();
   this.lastOrgId = null;
   this.lastProjectId = null;
+  this.projectsByName = new Map();
   await db.$executeRawUnsafe(
     'TRUNCATE orgs, users, memberships, sessions, projects, slices, agents, tool_bindings, subscriptions, audit_logs CASCADE',
   );

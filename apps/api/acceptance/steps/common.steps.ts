@@ -90,3 +90,19 @@ Then('an AuditLog entry {string} is recorded', async function (this: GilgameshWo
   const count = await this.db.auditLog.count({ where: { action } });
   assert.ok(count >= 1, `expected an AuditLog "${action}" entry`);
 });
+
+// ---- Session / auth context (shared by onboarding + agent-room backgrounds) --------
+
+Given('I am signed in as {string}', async function (this: GilgameshWorld, email: string) {
+  const res = await request(this.app.getHttpServer())
+    .post(this.url('/auth/register'))
+    .send({ firstName: 'Ishtar', lastName: 'Uruk', email, password: 'C0rrect-Horse!' });
+  this.response = res;
+  this.captureCookie(res);
+  this.notes.set('me', email);
+  this.notes.set('meCookie', this.cookie); // primary user's cookie, to restore after multi-user setup
+});
+
+When('an unauthenticated client POSTs {string}', async function (this: GilgameshWorld, path: string) {
+  this.response = await request(this.app.getHttpServer()).post(this.url(path)).send({});
+});

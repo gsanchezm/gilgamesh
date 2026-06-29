@@ -22,17 +22,23 @@ export class GilgameshWorld extends World {
   /** Ids captured from the most recent onboarding, used to resolve {id}/{orgId} in paths. */
   lastOrgId: string | null = null;
   lastProjectId: string | null = null;
+  /** Project name -> id, so spec paths like "/projects/Foreign/agents" resolve to a real id. */
+  projectsByName = new Map<string, string>();
 
   constructor(options: IWorldOptions) {
     super(options);
   }
 
-  /** Resolve a spec path: substitute {id}/{orgId} placeholders and prefix the base path. */
+  /** Resolve a spec path: substitute {id}/{orgId}, map known project-name segments, prefix base. */
   url(path: string): string {
     const resolved = path
       .replace('{id}', this.lastProjectId ?? '{id}')
       .replace('{orgId}', this.lastOrgId ?? '{orgId}');
-    return `${this.basePath}${resolved}`;
+    const mapped = resolved
+      .split('/')
+      .map((seg) => this.projectsByName.get(seg) ?? seg)
+      .join('/');
+    return `${this.basePath}${mapped}`;
   }
 
   /** Capture the __Host- session cookie from a response's Set-Cookie, if present. */
