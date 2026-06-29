@@ -1,0 +1,99 @@
+@import '@gilgamesh/ui/styles.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.gx-login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.gx-login__brand {
+  text-align: center;
+  margin-bottom: 24px;
+}
+.gx-login__mark {
+  width: 88px;
+  height: 88px;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: #0a1730;
+  border: 1px solid rgba(201, 161, 78, 0.5);
+}
+.gx-login__title {
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  color: var(--accent);
+  margin: 16px 0 4px;
+}
+.gx-login__tagline {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.28em;
+  color: var(--muted);
+  margin: 0;
+}
+.gx-login__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 320px;
+}
+.gx-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gx-field__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.gx-field input {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--field);
+  border-radius: 12px;
+  padding: 13px;
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+}
+.gx-field__password {
+  position: relative;
+  display: block;
+}
+.gx-field__reveal {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.gx-login__error {
+  color: #e0738a;
+  font-size: 12px;
+  margin: 0;
+}
+.gx-login__link {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 12.5px;
+  cursor: pointer;
+}

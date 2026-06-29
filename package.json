@@ -1,0 +1,27 @@
+{
+  "name": "gilgamesh",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Gilgamesh — a multi-tenant QA platform where deity-agents plan, author and run tests.",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:bdd": "turbo run test:bdd",
+    "test:e2e": "turbo run test:e2e",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  }
+}

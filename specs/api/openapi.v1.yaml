@@ -1,0 +1,2974 @@
+openapi: 3.1.0
+info:
+  title: Gilgamesh Platform API
+  version: 1.0.0
+  summary: Multi-tenant QA platform API — agents plan, author and run tests.
+  description: |
+    Gilgamesh v1 HTTP contract. Multi-tenant QA platform where 11 deity-agents plan, author and
+    run tests, collaborate on a DAG orchestration canvas, and keep results in-app.
+
+    This document is the **API contract** expansion of the Foundation Keystone
+    (`specs/_keystone/foundation-vocabulary.md`). Entity names, field names, enum values, agent
+    slot ids and resource paths are taken **verbatim** from the keystone (§1, §2, §3, §5, §6).
+
+    ## Conventions (apply to EVERY operation)
+    - **Base path**: all paths below are relative to the server URL `/api/v1`.
+    - **Tenant isolation (primordial)**: every request resolves the tenant from the authenticated
+      session → `orgId`. Every list/detail query is filtered by that `orgId` (row-level isolation).
+      `orgId` is **never** accepted in a request body — a client-supplied `orgId` would be a
+      cross-tenant injection vector. For `/orgs/{orgId}/...` paths the path `orgId` is additionally
+      checked against the caller's memberships. A **non-member** receives `404` (the resource's
+      existence is not leaked); a member with an **insufficient role** receives `403`.
+    - **Auth**: a `__Host-`-prefixed, httpOnly + Secure + SameSite=Lax session cookie
+      (`__Host-gg_session`). The `__Host-` prefix structurally forces `Secure`, `Path=/`, and **no**
+      `Domain` attribute. See `securitySchemes`. All operations require it except
+      `/auth/{register,login,forgot-password,reset-password}`.
+    - **CSRF (cookie auth)**: every **unsafe** method (`POST`/`PATCH`/`PUT`/`DELETE`) MUST carry a
+      double-submit CSRF token — the `X-CSRF-Token` request header (`csrfToken` security scheme) whose
+      value must equal a non-HttpOnly `csrf` cookie. `SameSite=Lax` is **not** relied on as the sole
+      control (ASVS L2 V4.2). A missing/mismatched token → `403` (`code: CSRF_FAILED`). Safe methods
+      (`GET`/`HEAD`) require no token.
+    - **CORS**: browser clients (`apps/web`, `apps/mobile`) are served from an explicit **origin
+      allowlist** pinned in `api/README.md`. The server returns `Access-Control-Allow-Credentials: true`
+      **only** for those exact origins and **never** `Access-Control-Allow-Origin: *` together with
+      credentials. Enforced by the DAST gate (CORS allowlist).
+    - **RBAC**: each write operation documents the minimum `Role` (OWNER | ADMIN | MEMBER | VIEWER).
+      Insufficient role → `403` Problem.
+    - **Errors**: RFC 9457 `application/problem+json` (`Problem` schema) for every non-2xx.
+    - **Pagination**: cursor-based. List endpoints accept `cursor` + `limit` and return
+      `{ data: [...], page: PageMeta }`.
+    - **Rate limiting**: every response carries `X-RateLimit-Limit`, `X-RateLimit-Remaining`,
+      `X-RateLimit-Reset`; `429` additionally carries `Retry-After`.
+    - **Versioning**: breaking changes ship under a new base path (`/api/v2`); v1 is additive-only.
+    - **IDs**: UUID v7 strings. **Timestamps**: RFC 3339 UTC.
+    - **Artifacts**: blobs are never public; `GET /artifacts/{id}` returns a short-lived **signed URL**.
+
+    ## Performance budgets (first-class; enforced in CI)
+    - Read (GET detail) p95 ≤ 200 ms server time; list p95 ≤ 400 ms (page ≤ 50).
+    - Write (POST/PATCH) p95 ≤ 500 ms (excludes enqueued async work).
+    - `POST /projects/{id}/runs` returns `202` in ≤ 300 ms (enqueue only; execution is async).
+    - SSE (canonical set — single source is `run-lifecycle.md` §7, referenced identically by `ci §5.1`):
+      **connect** (request → first byte/snapshot) p95 ≤ 200 ms; **event fan-out** (kernel emit → SSE
+      client byte) p95 ≤ 250 ms; **time-to-first-event** (enqueue → first `NODE_STATE`) p95 ≤ 1.5 s;
+      heartbeat ≤ every 15 s.
+  contact:
+    name: Gilgamesh Platform
+    email: gilberto.aspros@gmail.com
+  license:
+    name: Proprietary
+    url: https://example.invalid/license
+servers:
+  - url: /api/v1
+    description: Versioned base path. All operation paths are relative to this URL.
+tags:
+  - name: auth
+    description: Local email/password auth + session lifecycle (slice 1). Swappable to OIDC later.
+  - name: orgs
+    description: Organizations (root tenant) and their lifecycle.
+  - name: members
+    description: "Org membership (RBAC join: User ↔ Org with Role)."
+  - name: projects
+    description: Projects under an Org. `POST /projects` is the 3-step onboarding action.
+  - name: agents
+    description: Per-Org agent catalog (the 11) + per-Project tool bindings & runtime status.
+  - name: slices
+    description: Vertical slices grouping features/cases. (OUTLINE)
+  - name: features
+    description: BDD `.feature` files (Gherkin) and parsed scenarios. (OUTLINE)
+  - name: test-cases
+    description: Traditional test cases, with import & AI-generate actions. (OUTLINE)
+  - name: runs
+    description: Run enqueue, status, live event stream (SSE), cancel, and DAG nodes.
+  - name: reports
+    description: Layered run reports.
+  - name: artifacts
+    description: Signed, expiring URLs to run artifacts (video/screenshot/HAR/log/report).
+  - name: integrations
+    description: Per-Org integration connections (repos, tracking, CI, comms…). (OUTLINE)
+  - name: knowledge
+    description: Private RAG knowledge documents. (OUTLINE)
+  - name: subscription
+    description: Plan / seats / quota (mock billing behind PaymentProvider port). (OUTLINE)
+  - name: audit
+    description: Sensitive-action audit log (read-only). (OUTLINE)
+security:
+  - sessionCookie: []
+
+paths:
+  # =====================================================================================
+  # AUTH  (FULL DETAIL)
+  # =====================================================================================
+  /auth/register:
+    post:
+      tags: [auth]
+      operationId: authRegister
+      summary: Register a new user (and start a session)
+      description: |
+        Creates a global `User` (Argon2id password hash, server-side) and issues a session cookie.
+        Does **not** create an Org — onboarding (`POST /projects`) creates the first Org+Project.
+        Public endpoint (no session required). Rate-limited; repeated attempts → `429`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+            example:
+              email: gilberto.aspros@gmail.com
+              password: "S3cure-Passw0rd!"
+              firstName: Gilberto
+              lastName: Aspros
+      responses:
+        '201':
+          description: User created; session cookie set.
+          headers:
+            Set-Cookie:
+              description: |
+                `__Host-gg_session=<opaque>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=1209600`.
+                A non-HttpOnly `csrf=<token>; Secure; SameSite=Lax; Path=/` cookie is set alongside it
+                for the double-submit CSRF check.
+              schema: { type: string }
+            X-RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeView' }
+              example:
+                user:
+                  id: 0190f3a1-1c2d-7e4f-8a9b-1122334455aa
+                  email: gilberto.aspros@gmail.com
+                  firstName: Gilberto
+                  lastName: Aspros
+                  status: ACTIVE
+                  createdAt: "2026-06-29T10:00:00Z"
+                  updatedAt: "2026-06-29T10:00:00Z"
+                memberships: []
+                activeOrgId: null
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: authLogin
+      summary: Log in with email + password
+      description: |
+        Verifies credentials and issues a session cookie. Public endpoint. On success the session
+        binds the caller's **active org** (the most recently used membership, if any). Failures are
+        rate-limited and return a generic `401` (no account-existence disclosure).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+            example:
+              email: gilberto.aspros@gmail.com
+              password: "S3cure-Passw0rd!"
+              remember: true
+      responses:
+        '200':
+          description: Authenticated; session cookie set.
+          headers:
+            Set-Cookie:
+              description: "`__Host-gg_session=<opaque>; HttpOnly; Secure; SameSite=Lax; Path=/` (+ a non-HttpOnly `csrf` cookie for double-submit CSRF)."
+              schema: { type: string }
+            X-RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeView' }
+              example:
+                user:
+                  id: 0190f3a1-1c2d-7e4f-8a9b-1122334455aa
+                  email: gilberto.aspros@gmail.com
+                  firstName: Gilberto
+                  lastName: Aspros
+                  status: ACTIVE
+                  createdAt: "2026-06-29T10:00:00Z"
+                  updatedAt: "2026-06-29T10:00:00Z"
+                memberships:
+                  - org: { id: 0190f3a2-aaaa-7bbb-8ccc-001122334455, name: OmniPizza Inc, slug: omnipizza, createdAt: "2026-06-01T09:00:00Z", updatedAt: "2026-06-01T09:00:00Z" }
+                    role: OWNER
+                activeOrgId: 0190f3a2-aaaa-7bbb-8ccc-001122334455
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: authLogout
+      summary: Log out (revoke current session)
+      description: Revokes the current `Session` and clears the cookie. Idempotent. Requires the CSRF token.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        '204':
+          description: Session revoked; cookie cleared.
+          headers:
+            Set-Cookie:
+              description: "`__Host-gg_session=; Path=/; Secure; Max-Age=0` (cleared); the `csrf` cookie is cleared too."
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/CsrfFailed' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /auth/me:
+    get:
+      tags: [auth]
+      operationId: authMe
+      summary: Current user, memberships, and active org
+      description: Returns the authenticated user, all memberships (org + role), and the active org.
+      responses:
+        '200':
+          description: Current session context.
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /auth/forgot-password:
+    post:
+      tags: [auth]
+      operationId: authForgotPassword
+      summary: Request a password-reset token
+      description: |
+        Always returns `202` regardless of whether the email exists (prevents account enumeration).
+        If the account exists, a single-use, time-limited reset token is emailed.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ForgotPasswordRequest' }
+            example: { email: gilberto.aspros@gmail.com }
+      responses:
+        '202':
+          description: Accepted. If the account exists, a reset email is sent. No body.
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /auth/reset-password:
+    post:
+      tags: [auth]
+      operationId: authResetPassword
+      summary: Reset password using a token
+      description: |
+        Consumes a single-use reset token and sets a new Argon2id password hash, then revokes **all** of
+        the user's sessions. Subject to a **dedicated, stricter rate limit** (independent of the general
+        auth throttle) to bound token brute-force; exceeding it → `429`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResetPasswordRequest' }
+            example:
+              token: "rt_3f9c0a1b7e2d4c56a8b90c1d2e3f4a5b6c7d8e9f0a1b2c3d"
+              newPassword: "An0ther-S3cure-Pass!"
+      responses:
+        '204':
+          description: Password reset; all existing sessions revoked.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  # =====================================================================================
+  # ORGS  (FULL DETAIL)
+  # =====================================================================================
+  /orgs:
+    get:
+      tags: [orgs]
+      operationId: listOrgs
+      summary: List orgs the caller belongs to
+      description: Returns only orgs in which the caller holds a membership (tenant-filtered).
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated orgs.
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, page]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/OrgView' }
+                  page: { $ref: '#/components/schemas/PageMeta' }
+              example:
+                data:
+                  - id: 0190f3a2-aaaa-7bbb-8ccc-001122334455
+                    name: OmniPizza Inc
+                    slug: omnipizza
+                    createdAt: "2026-06-01T09:00:00Z"
+                    updatedAt: "2026-06-01T09:00:00Z"
+                page: { nextCursor: null, hasMore: false, limit: 20 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+    post:
+      tags: [orgs]
+      operationId: createOrg
+      summary: Create an org
+      description: |
+        Creates a root-tenant `Org` and an `OWNER` membership for the caller, and — in the same
+        transaction — seeds the per-Org **11-agent catalog** (roster, keystone §3) and a trial
+        `Subscription` (TEAM / TRIALING). `slug` is unique; if omitted, it is derived from `name`.
+        RBAC: any authenticated user may create an org. **Anti-abuse:** self-service org creation is
+        rate-limited **per user** (bounded count per window) to prevent trial/org-farming and
+        shared-quota abuse; exceeding it returns `429`.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrgCreate' }
+            example: { name: OmniPizza Inc, slug: omnipizza }
+      responses:
+        '201':
+          description: Org created; caller is OWNER.
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrgView' }
+        '403': { $ref: '#/components/responses/CsrfFailed' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /orgs/{orgId}:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+    get:
+      tags: [orgs]
+      operationId: getOrg
+      summary: Get an org
+      description: |
+        Caller must be a member of `{orgId}`. A **non-member receives `404`** (the org's existence is
+        not leaked — slice-1 §10.2); `403` is reserved for a member with an insufficient role.
+      responses:
+        '200':
+          description: Org detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrgView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+    patch:
+      tags: [orgs]
+      operationId: updateOrg
+      summary: Update an org
+      description: "RBAC: OWNER or ADMIN. A non-member receives `404`; insufficient role → `403`."
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrgUpdate' }
+            example: { name: OmniPizza International }
+      responses:
+        '200':
+          description: Updated org.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrgView' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  # =====================================================================================
+  # MEMBERS  (FULL DETAIL)
+  # =====================================================================================
+  /orgs/{orgId}/members:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+    get:
+      tags: [members]
+      operationId: listMembers
+      summary: List members of an org
+      description: Tenant-filtered to `{orgId}`. Any member may read.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated memberships.
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, page]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/MembershipView' }
+                  page: { $ref: '#/components/schemas/PageMeta' }
+              example:
+                data:
+                  - id: 0190f3a3-bbbb-7ccc-8ddd-001122334455
+                    orgId: 0190f3a2-aaaa-7bbb-8ccc-001122334455
+                    userId: 0190f3a1-1c2d-7e4f-8a9b-1122334455aa
+                    role: OWNER
+                    createdAt: "2026-06-01T09:00:00Z"
+                    user:
+                      id: 0190f3a1-1c2d-7e4f-8a9b-1122334455aa
+                      email: gilberto.aspros@gmail.com
+                      firstName: Gilberto
+                      lastName: Aspros
+                      status: ACTIVE
+                      createdAt: "2026-06-29T10:00:00Z"
+                      updatedAt: "2026-06-29T10:00:00Z"
+                page: { nextCursor: null, hasMore: false, limit: 20 }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+    post:
+      tags: [members]
+      operationId: addMember
+      summary: Invite / add a member by email
+      description: |
+        Adds a membership to `{orgId}`. If a `User` with the email exists they are added directly;
+        otherwise an invitation is created. RBAC: OWNER or ADMIN. Audited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MembershipCreate' }
+            example: { email: qa.lead@omnipizza.example, role: ADMIN }
+      responses:
+        '201':
+          description: Membership created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MembershipView' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /orgs/{orgId}/members/{id}:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+      - $ref: '#/components/parameters/PathId'
+    patch:
+      tags: [members]
+      operationId: updateMember
+      summary: Change a member's role
+      description: "RBAC: OWNER or ADMIN. Cannot demote the last OWNER. Audited."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MembershipUpdate' }
+            example: { role: MEMBER }
+      responses:
+        '200':
+          description: Updated membership.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MembershipView' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+    delete:
+      tags: [members]
+      operationId: removeMember
+      summary: Remove a member
+      description: "RBAC: OWNER or ADMIN. Cannot remove the last OWNER. Audited."
+      responses:
+        '204':
+          description: Member removed.
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  # =====================================================================================
+  # PROJECTS  (FULL DETAIL — POST = onboarding)
+  # =====================================================================================
+  /projects:
+    get:
+      tags: [projects]
+      operationId: listProjects
+      summary: List projects in the active org
+      description: Tenant-filtered by the session's active `orgId`.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated projects.
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, page]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProjectView' }
+                  page: { $ref: '#/components/schemas/PageMeta' }
+              example:
+                data:
+                  - id: 0190f3b0-1111-7222-8333-444455556666
+                    orgId: 0190f3a2-aaaa-7bbb-8ccc-001122334455
+                    name: OmniPizza
+                    slug: omnipizza-web
+                    format: BDD
+                    repoProvider: github
+                    repoFullName: gsanchezm/omnipizza-web
+                    repoBranch: main
+                    repoCommit: a1b2c3d
+                    repoLastSyncAt: "2026-06-25T19:00:02Z"
+                    createdAt: "2026-06-01T09:05:00Z"
+                    updatedAt: "2026-06-25T19:00:02Z"
+                page: { nextCursor: null, hasMore: false, limit: 20 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+    post:
+      tags: [projects]
+      operationId: onboardProject
+      summary: Onboard a project (3-step wizard)
+      description: |
+        **Onboarding action.** Creates a `Project` under the active org and, if repo fields are
+        supplied, links the source repo (`repoProvider` + `repoFullName` [+ `repoBranch`]). Seeds the
+        project's **11 `ToolBinding` rows** (one per agent; `tool = defaultTool`, `enabled = true`).
+        The per-Org agent catalog + trial `Subscription` are seeded earlier at Org creation (see
+        `createOrg`), not here. `slug` is unique per org; derived from `name` if omitted.
+        RBAC: OWNER or ADMIN.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectCreate' }
+            example:
+              name: OmniPizza
+              format: BDD
+              repoProvider: github
+              repoFullName: gsanchezm/omnipizza-web
+              repoBranch: main
+      responses:
+        '201':
+          description: Project created.
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectView' }
+              example:
+                id: 0190f3b0-1111-7222-8333-444455556666
+                orgId: 0190f3a2-aaaa-7bbb-8ccc-001122334455
+                name: OmniPizza
+                slug: omnipizza-web
+                format: BDD
+                repoProvider: github
+                repoFullName: gsanchezm/omnipizza-web
+                repoBranch: main
+                createdAt: "2026-06-01T09:05:00Z"
+                updatedAt: "2026-06-01T09:05:00Z"
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /projects/{id}:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+    get:
+      tags: [projects]
+      operationId: getProject
+      summary: Get a project
+      description: Tenant-checked — project must belong to the caller's active org.
+      responses:
+        '200':
+          description: Project detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectView' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+    patch:
+      tags: [projects]
+      operationId: updateProject
+      summary: Update a project
+      description: "RBAC: OWNER or ADMIN. Use to rename, change format, or re-point the repo."
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectUpdate' }
+            example: { repoBranch: develop }
+      responses:
+        '200':
+          description: Updated project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectView' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+    delete:
+      tags: [projects]
+      operationId: deleteProject
+      summary: Delete a project
+      description: |
+        **RBAC: OWNER.** **Hard-deletes** the project and **cascades** its slices, features, scenarios,
+        test-cases, tool-bindings, and runs (run-nodes, artifacts) — the data model has no `deletedAt`
+        on any entity, so every delete is a hard delete + cascade (data-model §8, schema.prisma). Because
+        this destroys run- and audit-relevant history, run/audit records MUST be exported before purge;
+        the action is audited.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        '204':
+          description: Project hard-deleted; children cascaded.
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  # =====================================================================================
+  # AGENTS  (FULL DETAIL)
+  # =====================================================================================
+  /orgs/{orgId}/agents:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+    get:
+      tags: [agents]
+      operationId: listOrgAgents
+      summary: Org agent catalog (the 11)
+      description: |
+        Returns the per-Org agent catalog seeded from the canonical roster (keystone §3): 11 agents,
+        unique by `slot`. Each item includes the per-role tool options (`toolOptions`, first = default).
+        This catalog is effectively static (it changes only on Org seeding), so the response carries an
+        `ETag` + `Cache-Control`; clients SHOULD cache it (e.g. React Query/SWR keyed on `orgId`) and
+        re-validate with `If-None-Match` rather than refetching on every Agent-room mount (`304`).
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: The 11 agents.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+            Cache-Control: { $ref: '#/components/headers/CacheControl' }
+            X-RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AgentView' }
+              example:
+                data:
+                  - id: 0190f3c0-0001-7000-8000-000000000001
+                    orgId: 0190f3a2-aaaa-7bbb-8ccc-001122334455
+                    slot: lead
+                    deityName: Zeus
+                    role: QA Lead
+                    family: proceso
+                    glyph: ZE
+                    culture: Grecia
+                    defaultTool: Helix Core
+                    toolOptions: [Helix Core]
+                    createdAt: "2026-06-01T09:05:00Z"
+                  - id: 0190f3c0-0001-7000-8000-000000000004
+                    orgId: 0190f3a2-aaaa-7bbb-8ccc-001122334455
+                    slot: web
+                    deityName: Quetzalcóatl
+                    role: Web
+                    family: ui
+                    glyph: QC
+                    culture: Azteca
+                    defaultTool: Playwright
+                    toolOptions: [Playwright, Cypress]
+                    createdAt: "2026-06-01T09:05:00Z"
+        '304': { $ref: '#/components/responses/NotModified' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /projects/{id}/agents:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+    get:
+      tags: [agents]
+      operationId: listProjectAgents
+      summary: Project agents (catalog + tool binding + runtime status)
+      description: |
+        Returns each of the 11 agents joined with its per-Project `ToolBinding` (selected tool +
+        enabled/awake) and a derived `runtimeStatus` (IDLE if !enabled; BUSY if currently in a running
+        RunNode; else ACTIVE). Resolved in **one** query (join, no N+1). Drives the Agent room.
+        Changes only on wake/sleep/tool-select, so the response carries an `ETag` + `Cache-Control`;
+        clients SHOULD cache it and re-validate with `If-None-Match` (`304`) rather than refetch on
+        every mount.
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: Project agents.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+            Cache-Control: { $ref: '#/components/headers/CacheControl' }
+            X-RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProjectAgentView' }
+              example:
+                data:
+                  - agent:
+                      id: 0190f3c0-0001-7000-8000-000000000004
+                      orgId: 0190f3a2-aaaa-7bbb-8ccc-001122334455
+                      slot: web
+                      deityName: Quetzalcóatl
+                      role: Web
+                      family: ui
+                      glyph: QC
+                      culture: Azteca
+                      defaultTool: Playwright
+                      toolOptions: [Playwright, Cypress]
+                      createdAt: "2026-06-01T09:05:00Z"
+                    toolBinding:
+                      id: 0190f3d0-0001-7000-8000-000000000004
+                      orgId: 0190f3a2-aaaa-7bbb-8ccc-001122334455
+                      projectId: 0190f3b0-1111-7222-8333-444455556666
+                      agentId: 0190f3c0-0001-7000-8000-000000000004
+                      tool: Playwright
+                      enabled: true
+                      updatedAt: "2026-06-25T19:00:02Z"
+                    runtimeStatus: ACTIVE
+        '304': { $ref: '#/components/responses/NotModified' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /projects/{id}/agents/{slot}:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+      - $ref: '#/components/parameters/Slot'
+    patch:
+      tags: [agents]
+      operationId: updateProjectAgent
+      summary: Update an agent's tool binding (Strategy) / wake-sleep
+      description: |
+        Upserts the per-Project `ToolBinding` for the agent in `{slot}`: select the active `tool`
+        (must be one of the agent's role tool options) and/or toggle `enabled` (awake/asleep).
+        RBAC: MEMBER+.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ToolBindingUpdate' }
+            example: { tool: Cypress, enabled: true }
+      responses:
+        '200':
+          description: Updated project agent.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectAgentView' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /projects/{id}/agents/wake-all:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+    post:
+      tags: [agents]
+      operationId: wakeAllProjectAgents
+      summary: "Awaken team — enable all idle agents"
+      description: |
+        Sets `enabled = true` on every agent's `ToolBinding` for this project (the "Awaken team"
+        action). Returns the full updated project-agent list. Idempotent. RBAC: MEMBER+.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        '200':
+          description: All agents awakened.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProjectAgentView' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  # =====================================================================================
+  # SLICES  (OUTLINE — TODO: expand)
+  # =====================================================================================
+  /projects/{id}/slices:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+    get:
+      tags: [slices]
+      operationId: listSlices
+      summary: List vertical slices in a project
+      description: "TODO: expand. Tenant-filtered; cursor pagination; rate-limit headers."
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated slices.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, page]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/SliceView' } }
+                  page: { $ref: '#/components/schemas/PageMeta' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+    post:
+      tags: [slices]
+      operationId: createSlice
+      summary: Create a vertical slice
+      description: "TODO: expand. RBAC: MEMBER+."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SliceCreate' }
+      responses:
+        '201':
+          description: Slice created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SliceView' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  # =====================================================================================
+  # FEATURES  (OUTLINE — TODO: expand)
+  # =====================================================================================
+  /projects/{id}/features:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+    get:
+      tags: [features]
+      operationId: listFeatures
+      summary: List BDD features in a project
+      description: "TODO: expand. Tenant-filtered; cursor pagination; rate-limit headers."
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated features.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, page]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/FeatureView' } }
+                  page: { $ref: '#/components/schemas/PageMeta' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+    post:
+      tags: [features]
+      operationId: createFeature
+      summary: Create a feature (.feature / Gherkin)
+      description: "TODO: expand. RBAC: MEMBER+."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FeatureCreate' }
+      responses:
+        '201':
+          description: Feature created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FeatureView' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /features/{id}:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+    get:
+      tags: [features]
+      operationId: getFeature
+      summary: Get a feature (with parsed scenarios)
+      description: "TODO: expand. Tenant-checked."
+      responses:
+        '200':
+          description: Feature detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FeatureView' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+    patch:
+      tags: [features]
+      operationId: updateFeature
+      summary: Update a feature
+      description: "TODO: expand. RBAC: MEMBER+."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FeatureUpdate' }
+      responses:
+        '200':
+          description: Updated feature.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FeatureView' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+    delete:
+      tags: [features]
+      operationId: deleteFeature
+      summary: Delete a feature
+      description: "TODO: expand. RBAC: MEMBER+."
+      responses:
+        '204': { description: Feature deleted. }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  # =====================================================================================
+  # TEST-CASES  (OUTLINE — TODO: expand)
+  # =====================================================================================
+  /projects/{id}/test-cases:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+    get:
+      tags: [test-cases]
+      operationId: listTestCases
+      summary: List traditional test cases
+      description: |
+        TODO: expand. Tenant-filtered; cursor pagination; filter by `sliceId`/`priority`/`status`. Each
+        filter is index-backed (data-model §6: `(project_id, status)` / `(project_id, priority)` composite
+        indexes; `sliceId` via `IX(sliceId)`) so the `≤ 200 ms` list budget holds on large projects.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - { name: sliceId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: priority, in: query, required: false, schema: { $ref: '#/components/schemas/TestCasePriority' } }
+        - { name: status, in: query, required: false, schema: { $ref: '#/components/schemas/TestCaseStatus' } }
+      responses:
+        '200':
+          description: Paginated test cases.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, page]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/TestCaseView' } }
+                  page: { $ref: '#/components/schemas/PageMeta' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+    post:
+      tags: [test-cases]
+      operationId: createTestCase
+      summary: Create a test case (manual)
+      description: "TODO: expand. RBAC: MEMBER+."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TestCaseCreate' }
+      responses:
+        '201':
+          description: Test case created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestCaseView' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /test-cases/{id}:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+    get:
+      tags: [test-cases]
+      operationId: getTestCase
+      summary: Get a test case
+      description: "TODO: expand. Tenant-checked."
+      responses:
+        '200':
+          description: Test case detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestCaseView' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+    patch:
+      tags: [test-cases]
+      operationId: updateTestCase
+      summary: Update a test case
+      description: "TODO: expand. RBAC: MEMBER+."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TestCaseUpdate' }
+      responses:
+        '200':
+          description: Updated test case.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestCaseView' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+    delete:
+      tags: [test-cases]
+      operationId: deleteTestCase
+      summary: Delete a test case
+      description: "TODO: expand. RBAC: MEMBER+."
+      responses:
+        '204': { description: Test case deleted. }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /projects/{id}/test-cases/import:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+    post:
+      tags: [test-cases]
+      operationId: importTestCases
+      summary: Import test cases from a file
+      description: |
+        TODO: expand. Multipart upload of a cases file (CSV/XLSX/TestRail/Xray export); returns the
+        created `TestCaseView` list. RBAC: MEMBER+.
+        **Upload validation (enforced server-side):** max file size **10 MB** (`413` on excess); MIME +
+        extension **allowlist** — `text/csv` (`.csv`), `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+        (`.xlsx`), `application/xml`/`text/xml` (`.xml` TestRail/Xray export) — reject-on-mismatch
+        (`415`); the declared content type is **verified by magic-byte sniffing**, not trusted from the
+        client. `sliceId`, if supplied, MUST belong to the active org (same-org cross-reference check;
+        data-model §2.2) else `422`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: "≤ 10 MB; CSV/XLSX/XML only (allowlist enforced + magic-byte sniffed)."
+                sliceId: { type: string, format: uuid }
+            encoding:
+              file:
+                contentType: text/csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/xml, text/xml
+      responses:
+        '201':
+          description: Imported cases.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/TestCaseView' } }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /projects/{id}/test-cases/generate:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+    post:
+      tags: [test-cases]
+      operationId: generateTestCases
+      summary: AI-generate test cases (RAG-grounded)
+      description: |
+        TODO: expand. Generates cases from a source (document | repo | jira | boards) via the
+        `AgentBrainPort`, grounded by private RAG. Returns generated `TestCaseView` list (status NOTRUN).
+        RBAC: MEMBER+. **Cross-reference safety:** `docId` (KnowledgeDoc) and `sliceId` MUST belong to
+        the active org — verified before use (same-org cross-reference check, data-model §2.2) — to
+        close a cross-tenant IDOR vector if the global tenant filter is ever bypassed; mismatch → `422`.
+        Ingested RAG content is treated as **untrusted** input to the LLM (prompt-injection surface).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [source]
+              properties:
+                source: { type: string, enum: [document, repo, jira, boards] }
+                sliceId: { type: string, format: uuid }
+                docId: { type: string, format: uuid, description: KnowledgeDoc id when source=document; must belong to the active org. }
+                prompt: { type: string }
+      responses:
+        '201':
+          description: Generated cases.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/TestCaseView' } }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  # =====================================================================================
+  # RUNS  (FULL DETAIL)
+  # =====================================================================================
+  /projects/{id}/runs:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+    get:
+      tags: [runs]
+      operationId: listRuns
+      summary: List runs for a project
+      description: Tenant-filtered; newest first; cursor pagination.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated runs.
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, page]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/RunView' } }
+                  page: { $ref: '#/components/schemas/PageMeta' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+    post:
+      tags: [runs]
+      operationId: enqueueRun
+      summary: Enqueue a run
+      description: |
+        Enqueues a run for the selected stages. The server resolves the DAG (`__dispatch` → stage
+        nodes by deps → `__consolidate`) via the `TestKernel` port and executes asynchronously; watch
+        progress on `GET /runs/{id}/events`. `selectedStages` are the toggled stage keys from the
+        Orchestration canvas. RBAC: MEMBER+. Performance budget: returns `202` in ≤ 300 ms.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunCreate' }
+            example:
+              mode: BDD
+              trigger: MANUAL
+              selectedStages: [checkout.feature, payments.api, home.visual, load-500vu, android.smoke]
+              runLabel: "local · main · 2026-05-25 19:00:02"
+              commitSha: a1b2c3d
+      responses:
+        '202':
+          description: Run accepted and queued.
+          headers:
+            Location:
+              description: URL of the created run.
+              schema: { type: string, format: uri }
+            X-RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunView' }
+              example:
+                id: 0190f400-7777-7888-8999-aaaabbbbcccc
+                orgId: 0190f3a2-aaaa-7bbb-8ccc-001122334455
+                projectId: 0190f3b0-1111-7222-8333-444455556666
+                status: QUEUED
+                mode: BDD
+                trigger: MANUAL
+                selectedStages: [checkout.feature, payments.api, home.visual, load-500vu, android.smoke]
+                progress: 0
+                runLabel: "local · main · 2026-05-25 19:00:02"
+                commitSha: a1b2c3d
+                createdById: 0190f3a1-1c2d-7e4f-8a9b-1122334455aa
+                createdAt: "2026-05-25T19:00:02Z"
+        '402':
+          description: Run-minutes quota exhausted (Subscription).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /runs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+    get:
+      tags: [runs]
+      operationId: getRun
+      summary: Get a run (summary + DAG nodes)
+      description: Tenant-checked. Includes the run's `RunNode` DAG and rollup counters.
+      responses:
+        '200':
+          description: Run detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunView' }
+              example:
+                id: 0190f400-7777-7888-8999-aaaabbbbcccc
+                orgId: 0190f3a2-aaaa-7bbb-8ccc-001122334455
+                projectId: 0190f3b0-1111-7222-8333-444455556666
+                status: DONE
+                mode: BDD
+                trigger: MANUAL
+                selectedStages: [checkout.feature, payments.api, home.visual, load-500vu, android.smoke]
+                progress: 100
+                runLabel: "local · main · 2026-05-25 19:00:02"
+                commitSha: a1b2c3d
+                passed: 125
+                failed: 20
+                skipped: 7
+                total: 152
+                ratePct: 82.2
+                durationMs: 184320
+                createdById: 0190f3a1-1c2d-7e4f-8a9b-1122334455aa
+                startedAt: "2026-05-25T19:00:05Z"
+                finishedAt: "2026-05-25T19:03:09Z"
+                createdAt: "2026-05-25T19:00:02Z"
+                nodes:
+                  - id: 0190f401-0001-7000-8000-000000000000
+                    orgId: 0190f3a2-aaaa-7bbb-8ccc-001122334455
+                    runId: 0190f400-7777-7888-8999-aaaabbbbcccc
+                    key: __dispatch
+                    kind: DISPATCH
+                    level: 0
+                    deps: []
+                    state: DONE_PASS
+                  - id: 0190f401-0002-7000-8000-000000000000
+                    orgId: 0190f3a2-aaaa-7bbb-8ccc-001122334455
+                    runId: 0190f400-7777-7888-8999-aaaabbbbcccc
+                    key: checkout.feature
+                    kind: STAGE
+                    agentId: 0190f3c0-0001-7000-8000-000000000004
+                    tool: Playwright
+                    feature: checkout.feature
+                    level: 1
+                    deps: [__dispatch]
+                    state: DONE_PASS
+                    passed: 40
+                    failed: 2
+                    skipped: 0
+                    durationMs: 60120
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /runs/{id}/events:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+    get:
+      tags: [runs]
+      operationId: streamRunEvents
+      summary: Stream live run events (SSE)
+      description: |
+        Server-Sent Events stream (`text/event-stream`). Each SSE `data:` line is a JSON `RunEvent`
+        (one of `NODE_STATE`, `LOG`, `ARTIFACT`, `SUMMARY`). The SSE `event:` field mirrors the
+        `RunEvent.type`. Supports resumption via the standard `Last-Event-ID` request header.
+        Heartbeat comment line every ≤ 15 s. Tenant-checked. The stream completes when the run
+        reaches a terminal status (`DONE` | `FAILED` | `CANCELED`).
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          required: false
+          description: Resume the stream after the given event id.
+          schema: { type: string }
+      responses:
+        '200':
+          description: An event stream of `RunEvent` objects.
+          headers:
+            Cache-Control:
+              description: Always `no-cache` for SSE.
+              schema: { type: string }
+          content:
+            text/event-stream:
+              schema: { $ref: '#/components/schemas/RunEvent' }
+              examples:
+                nodeState:
+                  summary: A node transitions to RUNNING
+                  value: { type: NODE_STATE, nodeKey: checkout.feature, state: RUNNING, at: "2026-05-25T19:00:08Z" }
+                log:
+                  summary: A pass log line
+                  value: { type: LOG, nodeKey: checkout.feature, level: pass, text: "Scenario: add to cart — PASS", at: "2026-05-25T19:00:42Z" }
+                artifact:
+                  summary: A captured screenshot
+                  value:
+                    type: ARTIFACT
+                    nodeKey: checkout.feature
+                    artifact: { type: SCREENSHOT, artifactId: 0190f420-0002-7000-8000-000000000002, contentType: image/png, sizeBytes: 184320 }
+                summary:
+                  summary: Final run summary
+                  value: { type: SUMMARY, passed: 125, failed: 20, skipped: 7, total: 152, ratePct: 82.2, durationMs: 184320 }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /runs/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+    post:
+      tags: [runs]
+      operationId: cancelRun
+      summary: Cancel a run
+      description: |
+        Requests cancellation via the `TestKernel` port. Only `QUEUED`/`RUNNING` runs may be
+        canceled; terminal runs return `409`. RBAC: MEMBER+. Idempotent for an already-canceling run.
+      responses:
+        '202':
+          description: Cancellation accepted; run transitions toward `CANCELED`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunView' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /runs/{id}/nodes/{nodeId}:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+      - $ref: '#/components/parameters/NodeId'
+    get:
+      tags: [runs]
+      operationId: getRunNode
+      summary: Get a single DAG node of a run
+      description: Tenant-checked. Returns one `RunNode` with its counters and timing.
+      responses:
+        '200':
+          description: Run node detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunNodeView' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  # =====================================================================================
+  # REPORTS  (FULL DETAIL)
+  # =====================================================================================
+  /runs/{id}/report:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+    get:
+      tags: [reports]
+      operationId: getRunReport
+      summary: Get the layered report for a run
+      description: |
+        Returns the layered report: top-level summary (pass/fail/skip donut, rate, runLabel, commit) and
+        per-tool cards (ran count + rate, or `noData`) **inline**. The per-tool **drill-down case list is
+        bounded** — only a first page of `cases[]` is embedded; the full list is fetched lazily via the
+        paginated sub-resource `GET /runs/{id}/report/tools/{tool}/cases` (avoids a multi-MB unpaginated
+        payload on the heaviest read and aligns with the case-list virtualization in design-system §14).
+        **Bounded assembly (≤ 3 queries, no N+1):** load the run + its `RunNode`s by `(run_id, level)` +
+        `Artifact`s by `run_id`, then map in memory. Media is referenced by `artifactId` **only**; signed
+        URLs are minted on demand by the viewer (never pre-signed per case — see `GET /artifacts/{id}`).
+        Tenant-checked.
+      responses:
+        '200':
+          description: Layered report.
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReportView' }
+              example:
+                runId: 0190f400-7777-7888-8999-aaaabbbbcccc
+                runLabel: "local · main · 2026-05-25 19:00:02"
+                commitSha: a1b2c3d
+                summary: { passed: 125, failed: 20, skipped: 7, total: 152, ratePct: 82.2, durationMs: 184320 }
+                tools:
+                  - tool: Playwright
+                    slot: web
+                    kind: CASE
+                    ran: 42
+                    passed: 40
+                    failed: 2
+                    skipped: 0
+                    ratePct: 95.2
+                    noData: false
+                    cases:
+                      - testCaseId: 0190f410-0001-7000-8000-000000000001
+                        key: TC_CHK_001
+                        title: Add item to cart and checkout
+                        status: PASS
+                        durationMs: 4120
+                        media:
+                          - type: VIDEO
+                            artifactId: 0190f420-0001-7000-8000-000000000001
+                            capture: ALWAYS
+                          - type: SCREENSHOT
+                            artifactId: 0190f420-0002-7000-8000-000000000002
+                            capture: ON_FAIL
+                  - tool: k6
+                    slot: perf
+                    kind: PERF
+                    ran: 1
+                    passed: 1
+                    failed: 0
+                    skipped: 0
+                    ratePct: 100
+                    noData: false
+                    perf:
+                      throughputRps: 512.4
+                      avgMs: 38.2
+                      p95Ms: 91.0
+                      errorPct: 0.4
+                      scenarios:
+                        - name: load-500vu
+                          rps: 512.4
+                          p95Ms: 91.0
+                          errorPct: 0.4
+                  - tool: Applitools
+                    slot: visual
+                    kind: VISUAL
+                    ran: 0
+                    noData: true
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /runs/{id}/report/tools/{tool}/cases:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+      - name: tool
+        in: path
+        required: true
+        description: The report-card tool key (matches `ReportView.tools[].tool`).
+        schema: { type: string }
+    get:
+      tags: [reports]
+      operationId: getRunReportToolCases
+      summary: Paginated drill-down case list for one report tool
+      description: |
+        Cursor-paginated `cases[]` for a single tool card — the unbounded drill-down extracted from
+        `ReportView` so the main report stays bounded (perf). Media is referenced by `artifactId` only;
+        signed URLs are minted lazily by the viewer. Tenant-checked.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated report cases for the tool.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, page]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/ReportCase' } }
+                  page: { $ref: '#/components/schemas/PageMeta' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  # =====================================================================================
+  # ARTIFACTS  (FULL DETAIL)
+  # =====================================================================================
+  /artifacts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+    get:
+      tags: [artifacts]
+      operationId: getArtifact
+      summary: Get an artifact (signed, expiring URL)
+      description: |
+        Returns artifact metadata plus a **short-lived signed URL** (`url` + `urlExpiresAt`). Blobs are
+        never public and never streamed through the API. Tenant-checked: the artifact must belong to a
+        run in the caller's active org. Default URL TTL: 300 s (configurable, capped at 3600 s).
+      parameters:
+        - name: ttlSec
+          in: query
+          required: false
+          description: Requested signed-URL lifetime in seconds (clamped to [60, 3600]).
+          schema: { type: integer, minimum: 60, maximum: 3600, default: 300 }
+      responses:
+        '200':
+          description: Artifact metadata + signed URL.
+          headers:
+            X-RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+            X-RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            X-RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ArtifactView' }
+              example:
+                id: 0190f420-0001-7000-8000-000000000001
+                runId: 0190f400-7777-7888-8999-aaaabbbbcccc
+                runNodeId: 0190f401-0002-7000-8000-000000000000
+                type: VIDEO
+                contentType: video/mp4
+                sizeBytes: 5242880
+                capturedAt: "2026-05-25T19:00:50Z"
+                meta: { step: "failure", capturedBy: "Helix runner" }
+                url: "https://blob.example/org/.../shot-001.mp4?sig=...&exp=1781725200"
+                urlExpiresAt: "2026-05-25T19:05:50Z"
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  # =====================================================================================
+  # INTEGRATIONS  (OUTLINE — TODO: expand)
+  # =====================================================================================
+  /orgs/{orgId}/integrations:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+    get:
+      tags: [integrations]
+      operationId: listIntegrations
+      summary: List integration connections for an org
+      description: |
+        TODO: expand. Returns the 17 known integrations (keystone §8) with their `connected` state,
+        grouped by `IntegrationGroup`. Secrets are never returned (only `secretRef` is stored server-side,
+        which is itself omitted from the view). Tenant-filtered. **RBAC: ADMIN or OWNER** (least
+        privilege — `connected` state and non-secret `config` are not exposed to `MEMBER`/`VIEWER`).
+        Deny-by-default: a non-member → `404`, an authenticated member with insufficient role → `403`.
+      responses:
+        '200':
+          description: Integrations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/IntegrationView' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /orgs/{orgId}/integrations/{key}:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+      - $ref: '#/components/parameters/IntegrationKey'
+    patch:
+      tags: [integrations]
+      operationId: updateIntegration
+      summary: Connect / disconnect / configure an integration
+      description: |
+        TODO: expand. Connects or disconnects an integration by stable `key` (keystone §8). A raw
+        `secret` may be supplied write-only; it is stored as a Key Vault reference (`secretRef`) and
+        never echoed back. RBAC: OWNER or ADMIN. Audited. Requires the CSRF token.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IntegrationUpdate' }
+      responses:
+        '200':
+          description: Updated integration.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IntegrationView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  # =====================================================================================
+  # KNOWLEDGE  (OUTLINE — TODO: expand)
+  # =====================================================================================
+  /projects/{id}/knowledge:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+    get:
+      tags: [knowledge]
+      operationId: listKnowledgeDocs
+      summary: List private RAG documents
+      description: |
+        TODO: expand. Tenant-filtered; cursor pagination. RBAC: MEMBER+. Deny-by-default: non-member →
+        `404`, insufficient role → `403`.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated knowledge docs.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, page]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/KnowledgeDocView' } }
+                  page: { $ref: '#/components/schemas/PageMeta' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+    post:
+      tags: [knowledge]
+      operationId: uploadKnowledgeDoc
+      summary: Upload a private RAG document
+      description: |
+        TODO: expand. Multipart upload; the doc is stored (signed blob) and queued for indexing
+        (`status` UPLOADED → INDEXING → INDEXED). RBAC: MEMBER+. Requires the CSRF token.
+        **Upload validation (enforced server-side):** max file size **25 MB** (`413` on excess); MIME +
+        extension **allowlist** — `application/pdf` (`.pdf`), `text/markdown`/`text/plain`
+        (`.md`/`.txt`), `text/html` (`.html`) — reject-on-mismatch (`415`); the content type is
+        **verified by magic-byte sniffing**, not trusted from the client. Knowledge docs feed the
+        tenant-scoped RAG / `AgentBrainPort`, so ingested content is treated as **untrusted** LLM input
+        (prompt-injection / index-poisoning surface — ASVS V12).
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: "≤ 25 MB; PDF/Markdown/TXT/HTML only (allowlist enforced + magic-byte sniffed)."
+                name: { type: string }
+            encoding:
+              file:
+                contentType: application/pdf, text/markdown, text/plain, text/html
+      responses:
+        '201':
+          description: Document accepted for indexing.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeDocView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/CsrfFailed' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /projects/{id}/knowledge/{docId}:
+    parameters:
+      - $ref: '#/components/parameters/PathId'
+      - name: docId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [knowledge]
+      operationId: deleteKnowledgeDoc
+      summary: Delete a knowledge document
+      description: "TODO: expand. Removes the doc + its chunks/embeddings. RBAC: MEMBER+. Audited. Requires the CSRF token."
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        '204': { description: Document deleted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/CsrfFailed' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  # =====================================================================================
+  # SUBSCRIPTION  (OUTLINE — TODO: expand)
+  # =====================================================================================
+  /orgs/{orgId}/subscription:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+    get:
+      tags: [subscription]
+      operationId: getSubscription
+      summary: Get the org subscription (plan, seats, quota)
+      description: |
+        TODO: expand. Mock billing behind the PaymentProvider port. Tenant-checked. **RBAC: ADMIN or
+        OWNER** (least privilege — full billing fields `plan`/`seats`/`providerCustomerId` are not
+        exposed to `MEMBER`/`VIEWER`). Deny-by-default: non-member → `404`, insufficient role → `403`.
+      responses:
+        '200':
+          description: Subscription.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubscriptionView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  /orgs/{orgId}/subscription/checkout:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+    post:
+      tags: [subscription]
+      operationId: startCheckout
+      summary: Start a checkout (mock)
+      description: |
+        TODO: expand. Begins a checkout session via `PaymentProvider.createCheckout` (mock now;
+        Stripe later — no UI/domain change). Returns a `checkoutUrl`. RBAC: OWNER or ADMIN. Requires
+        the CSRF token.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [plan, billingCycle, seats]
+              properties:
+                plan: { $ref: '#/components/schemas/Plan' }
+                billingCycle: { $ref: '#/components/schemas/BillingCycle' }
+                seats: { type: integer, minimum: 1 }
+            example: { plan: PRO, billingCycle: ANNUAL, seats: 5 }
+      responses:
+        '200':
+          description: Checkout session created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [checkoutUrl]
+                properties:
+                  checkoutUrl: { type: string, format: uri }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+  # =====================================================================================
+  # AUDIT  (OUTLINE — TODO: expand)
+  # =====================================================================================
+  /orgs/{orgId}/audit:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+    get:
+      tags: [audit]
+      operationId: listAuditLog
+      summary: List sensitive-action audit entries
+      description: |
+        TODO: expand. Read-only audit log, tenant-filtered, newest first, cursor pagination.
+        **RBAC: OWNER or ADMIN.** Filterable by `action` / `targetType` / actor (TODO). Deny-by-default:
+        non-member → `404`, insufficient role → `403`.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated audit entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, page]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/AuditLogView' } }
+                  page: { $ref: '#/components/schemas/PageMeta' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/ProblemDefault' }
+
+# =======================================================================================
+# COMPONENTS
+# =======================================================================================
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-gg_session
+      description: |
+        `__Host-`-prefixed, httpOnly + Secure + SameSite=Lax session cookie issued by `/auth/login` or
+        `/auth/register` (slice 1, local auth). The `__Host-` prefix structurally forces `Secure`,
+        `Path=/`, and no `Domain`. The session binds the user and the active `orgId` used for tenant
+        resolution. Swappable to OIDC later behind the `IdentityProvider` port without contract change.
+        **Cookie auth alone is not sufficient for unsafe methods** — they additionally require the
+        `csrfToken` double-submit header (see below).
+    csrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: |
+        Double-submit CSRF token. Required on every **unsafe** method (`POST`/`PATCH`/`PUT`/`DELETE`)
+        whenever the request is authenticated by the session cookie. Its value MUST equal the
+        non-HttpOnly `csrf` cookie set alongside the session cookie. A missing or mismatched token →
+        `403` (`code: CSRF_FAILED`). Not required for safe methods or the public `/auth/*` endpoints.
+
+  parameters:
+    OrgId:
+      name: orgId
+      in: path
+      required: true
+      description: Org (root tenant) id. Must be one of the caller's memberships.
+      schema: { type: string, format: uuid }
+    PathId:
+      name: id
+      in: path
+      required: true
+      description: Resource id (UUID v7) of the resource named by the path.
+      schema: { type: string, format: uuid }
+    Slot:
+      name: slot
+      in: path
+      required: true
+      description: Agent slot key (keystone §3).
+      schema: { $ref: '#/components/schemas/AgentSlot' }
+    NodeId:
+      name: nodeId
+      in: path
+      required: true
+      description: RunNode id.
+      schema: { type: string, format: uuid }
+    IntegrationKey:
+      name: key
+      in: path
+      required: true
+      description: Stable integration key (keystone §8).
+      schema: { type: string }
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque pagination cursor returned as `page.nextCursor` by the previous page.
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Max items per page.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      required: false
+      description: Conditional GET — pass the previously returned `ETag`; a still-fresh resource yields `304`.
+      schema: { type: string }
+
+  headers:
+    ETag:
+      description: Entity tag for the representation; use with `If-None-Match` for conditional GETs.
+      schema: { type: string }
+    CacheControl:
+      description: Client-cache directive (e.g. `private, max-age=30, must-revalidate`).
+      schema: { type: string }
+    RateLimitLimit:
+      description: Request quota for the current window.
+      schema: { type: integer }
+    RateLimitRemaining:
+      description: Requests remaining in the current window.
+      schema: { type: integer }
+    RateLimitReset:
+      description: Unix epoch seconds when the window resets.
+      schema: { type: integer }
+    RetryAfter:
+      description: Seconds the client should wait before retrying.
+      schema: { type: integer }
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid session.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: "https://gilgamesh.example/problems/unauthorized"
+            title: Unauthorized
+            status: 401
+            code: UNAUTHENTICATED
+            detail: A valid session is required.
+    Forbidden:
+      description: Authenticated but not permitted (RBAC or cross-tenant).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: "https://gilgamesh.example/problems/forbidden"
+            title: Forbidden
+            status: 403
+            code: FORBIDDEN
+            detail: Your role does not allow this action.
+    CsrfFailed:
+      description: Missing or mismatched CSRF token on an unsafe method (cookie auth).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: "https://gilgamesh.example/problems/csrf-failed"
+            title: Forbidden
+            status: 403
+            code: CSRF_FAILED
+            detail: A valid X-CSRF-Token header matching the csrf cookie is required.
+    NotFound:
+      description: Resource not found (or not visible to the caller's tenant).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: "https://gilgamesh.example/problems/not-found"
+            title: Not Found
+            status: 404
+            code: NOT_FOUND
+    NotModified:
+      description: Not modified — the client's `If-None-Match` ETag still matches (cached copy is fresh).
+    PayloadTooLarge:
+      description: Uploaded file exceeds the maximum permitted size.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: "https://gilgamesh.example/problems/payload-too-large"
+            title: Payload Too Large
+            status: 413
+            code: FILE_TOO_LARGE
+    UnsupportedMediaType:
+      description: Uploaded file's MIME type / extension is not in the allowlist (or magic-byte sniff mismatched).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: "https://gilgamesh.example/problems/unsupported-media-type"
+            title: Unsupported Media Type
+            status: 415
+            code: UNSUPPORTED_FILE_TYPE
+    Conflict:
+      description: State or uniqueness conflict.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: "https://gilgamesh.example/problems/conflict"
+            title: Conflict
+            status: 409
+            code: CONFLICT
+            detail: A resource with that slug already exists in this org.
+    UnprocessableEntity:
+      description: Validation failed.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: "https://gilgamesh.example/problems/validation"
+            title: Unprocessable Entity
+            status: 422
+            code: VALIDATION_FAILED
+            errors:
+              - field: email
+                detail: must be a valid email address
+    TooManyRequests:
+      description: Rate limit exceeded.
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+        X-RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+        X-RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+        X-RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: "https://gilgamesh.example/problems/rate-limited"
+            title: Too Many Requests
+            status: 429
+            code: RATE_LIMITED
+    ProblemDefault:
+      description: Unexpected error (RFC 9457 Problem).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: about:blank
+            title: Internal Server Error
+            status: 500
+            code: INTERNAL
+
+  schemas:
+    # ---------------------------------------------------------------------------------
+    # Frozen enums (keystone §1) — verbatim. AgentSlot/AgentFamily/integration keys are
+    # stable lowercase; all others SCREAMING_SNAKE.
+    # ---------------------------------------------------------------------------------
+    Role:
+      type: string
+      enum: [OWNER, ADMIN, MEMBER, VIEWER]
+    ProjectFormat:
+      type: string
+      enum: [BDD, TRADITIONAL]
+    AgentSlot:
+      type: string
+      description: Stable lowercase agent slot keys (keystone §3).
+      enum: [lead, arch, manual, web, api, android, ios, perf, visual, sec, a11y]
+    AgentFamily:
+      type: string
+      description: Stable lowercase agent family keys.
+      enum: [proceso, ui, backend, guardian]
+    AgentRuntimeStatus:
+      type: string
+      description: |
+        Derived: IDLE if not enabled; BUSY if the agent is in a currently running RunNode; else ACTIVE.
+      enum: [ACTIVE, BUSY, IDLE]
+    TestCasePriority:
+      type: string
+      enum: [HIGH, MEDIUM, LOW]
+    TestCaseStatus:
+      type: string
+      enum: [NOTRUN, PASS, FAIL, BLOCKED, SKIPPED]
+    RunStatus:
+      type: string
+      enum: [QUEUED, RUNNING, DONE, FAILED, CANCELED]
+    RunMode:
+      type: string
+      enum: [BDD, STEPS]
+    RunTrigger:
+      type: string
+      enum: [MANUAL, CI, SCHEDULE]
+    RunNodeKind:
+      type: string
+      enum: [DISPATCH, STAGE, CONSOLIDATE]
+    RunNodeState:
+      type: string
+      enum: [IDLE, QUEUED, RUNNING, DONE_PASS, DONE_FAIL]
+    ArtifactType:
+      type: string
+      enum: [VIDEO, SCREENSHOT, HAR, LOG, REPORT_HTML]
+    CaptureMode:
+      type: string
+      enum: ["OFF", "ON_FAIL", "ALWAYS", "ON_DEMAND"]
+    IntegrationGroup:
+      type: string
+      enum: [SOURCE_REPOS, PROJECT_TRACKING, TEST_MANAGEMENT, COMMUNICATION, CICD, DEVICES_BROWSERS]
+    Plan:
+      type: string
+      enum: [TEAM, PRO, ENTERPRISE]
+    BillingCycle:
+      type: string
+      enum: [MONTHLY, ANNUAL]
+    SubscriptionStatus:
+      type: string
+      enum: [TRIALING, ACTIVE, PAST_DUE, CANCELED]
+    KnowledgeDocStatus:
+      type: string
+      enum: [UPLOADED, INDEXING, INDEXED, FAILED]
+    BrainTier:
+      type: string
+      description: LLM tier behind the AgentBrainPort (keystone §5). Not exposed on any v1 endpoint.
+      enum: [HAIKU, SONNET, OPUS]
+
+    # ---------------------------------------------------------------------------------
+    # Entities (keystone §2) — fields verbatim. Server-only secrets
+    # (passwordHash, tokenHash, embedding) are intentionally never represented here.
+    # ---------------------------------------------------------------------------------
+    Org:
+      type: object
+      description: Root tenant.
+      required: [id, name, slug, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid, description: UUID v7 }
+        name: { type: string }
+        slug: { type: string, description: Unique org slug. }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    User:
+      type: object
+      description: Global user (may belong to many orgs). `passwordHash` (Argon2id) is server-only and never serialized.
+      required: [id, email, firstName, lastName, status, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email, description: Unique (citext). }
+        firstName: { type: string }
+        middleName: { type: string }
+        lastName: { type: string }
+        status: { type: string, enum: [ACTIVE, DISABLED] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Membership:
+      type: object
+      description: RBAC join of User ↔ Org. Unique(orgId,userId).
+      required: [id, orgId, userId, role, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        orgId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        role: { $ref: '#/components/schemas/Role' }
+        createdAt: { type: string, format: date-time }
+
+    Session:
+      type: object
+      description: Local-auth session. `tokenHash` is server-only and never serialized.
+      required: [id, userId, expiresAt, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        expiresAt: { type: string, format: date-time }
+        ip: { type: string }
+        userAgent: { type: string }
+        createdAt: { type: string, format: date-time }
+        revokedAt: { type: string, format: date-time }
+
+    Project:
+      type: object
+      description: Project under an Org. Unique(orgId,slug).
+      required: [id, orgId, name, slug, format, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        orgId: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        format: { $ref: '#/components/schemas/ProjectFormat' }
+        repoProvider: { type: string, enum: [github, gitlab, bitbucket, ado] }
+        repoFullName: { type: string, examples: [gsanchezm/omnipizza-web] }
+        repoBranch: { type: string }
+        repoCommit: { type: string }
+        repoLastSyncAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Slice:
+      type: object
+      description: Vertical slice (Checkout/Login/Catalog/Payments/Imported). Unique(projectId,key).
+      required: [id, orgId, projectId, key, name, order]
+      properties:
+        id: { type: string, format: uuid }
+        orgId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        key: { type: string }
+        name: { type: string }
+        order: { type: integer }
+
+    Feature:
+      type: object
+      description: BDD `.feature` file (Gherkin).
+      required: [id, orgId, projectId, name, path, content, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        orgId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        sliceId: { type: string, format: uuid }
+        name: { type: string }
+        path: { type: string }
+        content: { type: string, description: Gherkin text. }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Scenario:
+      type: object
+      description: A parsed scenario within a Feature.
+      required: [id, orgId, featureId, name, order]
+      properties:
+        id: { type: string, format: uuid }
+        orgId: { type: string, format: uuid }
+        featureId: { type: string, format: uuid }
+        name: { type: string }
+        order: { type: integer }
+        lastStatus: { $ref: '#/components/schemas/TestCaseStatus' }
+
+    TestCase:
+      type: object
+      description: Traditional test case (e.g. key TC_CHK_001).
+      required: [id, orgId, projectId, key, title, steps, data, expected, priority, status, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        orgId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        sliceId: { type: string, format: uuid }
+        key: { type: string, examples: [TC_CHK_001] }
+        title: { type: string }
+        steps: { type: string }
+        data: { type: string }
+        expected: { type: string }
+        priority: { $ref: '#/components/schemas/TestCasePriority' }
+        status: { $ref: '#/components/schemas/TestCaseStatus' }
+        assignedAgentId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Agent:
+      type: object
+      description: Per-Org agent catalog entry (one of the 11). Unique(orgId,slot). Seeded from roster §3.
+      required: [id, orgId, slot, deityName, role, family, glyph, culture, defaultTool, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        orgId: { type: string, format: uuid }
+        slot: { $ref: '#/components/schemas/AgentSlot' }
+        deityName: { type: string, examples: [Zeus] }
+        role: { type: string, description: "Human label, e.g. QA Lead." }
+        family: { $ref: '#/components/schemas/AgentFamily' }
+        glyph: { type: string, examples: [ZE] }
+        culture: { type: string, examples: [Grecia] }
+        defaultTool: { type: string, examples: [Helix Core] }
+        createdAt: { type: string, format: date-time }
+
+    ToolBinding:
+      type: object
+      description: Per-Project agent state + tool selection (Strategy). Unique(projectId,agentId).
+      required: [id, orgId, projectId, agentId, tool, enabled, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        orgId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        agentId: { type: string, format: uuid }
+        tool: { type: string, description: Selected tool (∈ the agent's role options). }
+        enabled: { type: boolean, description: Awake when true. }
+        updatedAt: { type: string, format: date-time }
+
+    Run:
+      type: object
+      description: A test run over a DAG of stages.
+      required: [id, orgId, projectId, status, mode, trigger, selectedStages, progress, runLabel, createdById, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        orgId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/RunStatus' }
+        mode: { $ref: '#/components/schemas/RunMode' }
+        trigger: { $ref: '#/components/schemas/RunTrigger' }
+        selectedStages: { type: array, items: { type: string } }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        runLabel: { type: string, examples: ["local · main · 2026-05-25 19:00:02"] }
+        commitSha: { type: string }
+        passed: { type: integer }
+        failed: { type: integer }
+        skipped: { type: integer }
+        total: { type: integer }
+        ratePct: { type: number }
+        durationMs: { type: integer }
+        createdById: { type: string, format: uuid }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    RunNode:
+      type: object
+      description: A node of the run DAG (dispatch / stage / consolidate).
+      required: [id, orgId, runId, key, kind, level, deps, state]
+      properties:
+        id: { type: string, format: uuid }
+        orgId: { type: string, format: uuid }
+        runId: { type: string, format: uuid }
+        key: { type: string, examples: [__dispatch, checkout.feature, __consolidate] }
+        kind: { $ref: '#/components/schemas/RunNodeKind' }
+        agentId: { type: string, format: uuid }
+        tool: { type: string }
+        feature: { type: string }
+        sliceId: { type: string, format: uuid }
+        level: { type: integer }
+        deps: { type: array, items: { type: string } }
+        state: { $ref: '#/components/schemas/RunNodeState' }
+        passed: { type: integer }
+        failed: { type: integer }
+        skipped: { type: integer }
+        durationMs: { type: integer }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+
+    Artifact:
+      type: object
+      description: |
+        Run artifact. `storageKey` is the internal blob key (server-only); the API returns it as a
+        signed expiring `url` via `ArtifactView`, never the raw key or a public URL.
+      required: [id, orgId, runId, type, storageKey, contentType, sizeBytes, capturedAt]
+      properties:
+        id: { type: string, format: uuid }
+        orgId: { type: string, format: uuid }
+        runId: { type: string, format: uuid }
+        runNodeId: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/ArtifactType' }
+        storageKey: { type: string, writeOnly: true, description: Internal blob key; never serialized in responses. }
+        contentType: { type: string }
+        sizeBytes: { type: integer, format: int64, description: "64-bit (BigInt); videos can exceed 2^31." }
+        capturedAt: { type: string, format: date-time }
+        meta: { type: object, additionalProperties: true }
+
+    Integration:
+      type: object
+      description: |
+        Per-Org integration connection. `secretRef` (a Key Vault reference — NEVER a raw token) is
+        server-only and never serialized.
+      required: [id, orgId, key, group, connected, config]
+      properties:
+        id: { type: string, format: uuid }
+        orgId: { type: string, format: uuid }
+        key: { type: string, description: Stable integration key (keystone §8). }
+        group: { $ref: '#/components/schemas/IntegrationGroup' }
+        connected: { type: boolean }
+        config:
+          type: object
+          description: |
+            **Non-secret** per-integration settings only (server-validated against a per-`key` allowlist
+            of typed keys). Credentials are NEVER placed here — they are accepted only via the write-only
+            `secret` field and stored as a Key Vault reference (`secretRef`), which is itself never
+            serialized. A token mistakenly placed in `config` would be rejected server-side. (Per-key
+            typed schemas with `additionalProperties:false` are the GA hardening for this OUTLINE shape.)
+        connectedById: { type: string, format: uuid }
+        connectedAt: { type: string, format: date-time }
+
+    Subscription:
+      type: object
+      description: Org subscription (mock billing now). Unique(orgId).
+      required: [id, orgId, plan, billingCycle, seats, status, runMinutesQuota, runMinutesUsed]
+      properties:
+        id: { type: string, format: uuid }
+        orgId: { type: string, format: uuid }
+        plan: { $ref: '#/components/schemas/Plan' }
+        billingCycle: { $ref: '#/components/schemas/BillingCycle' }
+        seats: { type: integer }
+        status: { $ref: '#/components/schemas/SubscriptionStatus' }
+        runMinutesQuota: { type: integer }
+        runMinutesUsed: { type: integer }
+        providerCustomerId: { type: string }
+        providerSubscriptionId: { type: string }
+        currentPeriodEnd: { type: string, format: date-time }
+
+    KnowledgeDoc:
+      type: object
+      description: Private RAG source document. `storageKey` is server-only and never serialized.
+      required: [id, orgId, name, sizeBytes, status, createdById, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        orgId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        name: { type: string }
+        sizeBytes: { type: integer, format: int64, description: "64-bit (BigInt); videos can exceed 2^31." }
+        status: { $ref: '#/components/schemas/KnowledgeDocStatus' }
+        createdById: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+
+    KnowledgeChunk:
+      type: object
+      description: |
+        A tenant-scoped RAG chunk. The 1536-dim `embedding` vector is server-only (pgvector) and never
+        serialized.
+      required: [id, orgId, docId, ordinal, content]
+      properties:
+        id: { type: string, format: uuid }
+        orgId: { type: string, format: uuid }
+        docId: { type: string, format: uuid }
+        ordinal: { type: integer }
+        content: { type: string }
+
+    AuditLog:
+      type: object
+      description: Immutable sensitive-action audit entry.
+      required: [id, orgId, action, targetType, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        orgId: { type: string, format: uuid }
+        actorUserId: { type: string, format: uuid }
+        action: { type: string, examples: [member.role.changed] }
+        targetType: { type: string, examples: [Membership] }
+        targetId: { type: string }
+        metadata: { type: object, additionalProperties: true }
+        ip: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    # ---------------------------------------------------------------------------------
+    # View DTOs (response representations). `XView` = the API-returned shape of entity X.
+    # ---------------------------------------------------------------------------------
+    OrgView:
+      allOf: [ { $ref: '#/components/schemas/Org' } ]
+      description: Org response DTO.
+    UserView:
+      allOf: [ { $ref: '#/components/schemas/User' } ]
+      description: User response DTO (never includes passwordHash).
+    MembershipView:
+      allOf:
+        - { $ref: '#/components/schemas/Membership' }
+        - type: object
+          properties:
+            user: { $ref: '#/components/schemas/UserView' }
+      description: |
+        Membership response DTO, optionally embedding the user. **Perf:** when `listMembers` embeds
+        `user` (cursor up to 100), the users MUST be loaded via a **single join / Prisma `include`**, not
+        a per-row fetch (no N+1).
+    SessionView:
+      allOf: [ { $ref: '#/components/schemas/Session' } ]
+      description: Session response DTO (never includes tokenHash).
+    ProjectView:
+      allOf: [ { $ref: '#/components/schemas/Project' } ]
+      description: Project response DTO.
+    SliceView:
+      allOf: [ { $ref: '#/components/schemas/Slice' } ]
+      description: Slice response DTO.
+    FeatureView:
+      allOf:
+        - { $ref: '#/components/schemas/Feature' }
+        - type: object
+          properties:
+            scenarios: { type: array, items: { $ref: '#/components/schemas/ScenarioView' } }
+      description: Feature response DTO, optionally including parsed scenarios.
+    ScenarioView:
+      allOf: [ { $ref: '#/components/schemas/Scenario' } ]
+      description: Scenario response DTO.
+    TestCaseView:
+      allOf: [ { $ref: '#/components/schemas/TestCase' } ]
+      description: Test case response DTO.
+    AgentView:
+      allOf:
+        - { $ref: '#/components/schemas/Agent' }
+        - type: object
+          required: [toolOptions]
+          properties:
+            toolOptions:
+              type: array
+              items: { type: string }
+              description: Per-role tool options (keystone §3); first element is the default tool.
+      description: Agent catalog response DTO (entity + available tool options).
+    ToolBindingView:
+      allOf: [ { $ref: '#/components/schemas/ToolBinding' } ]
+      description: ToolBinding response DTO.
+    ProjectAgentView:
+      type: object
+      description: |
+        Composite project-agent view = catalog `Agent` + its per-Project `ToolBinding` + derived
+        `runtimeStatus`. Drives the Agent room and the Strategy tool selector.
+      required: [agent, runtimeStatus]
+      properties:
+        agent: { $ref: '#/components/schemas/AgentView' }
+        toolBinding:
+          oneOf:
+            - { $ref: '#/components/schemas/ToolBindingView' }
+            - { type: 'null' }
+          description: Null until a binding is first created for this project.
+        runtimeStatus: { $ref: '#/components/schemas/AgentRuntimeStatus' }
+    RunView:
+      allOf:
+        - { $ref: '#/components/schemas/Run' }
+        - type: object
+          properties:
+            nodes: { type: array, items: { $ref: '#/components/schemas/RunNodeView' } }
+      description: Run response DTO, optionally including the resolved DAG nodes.
+    RunNodeView:
+      allOf: [ { $ref: '#/components/schemas/RunNode' } ]
+      description: |
+        Run node response DTO. Exposes `agentId` only (keystone §2 `RunNode` has no denormalized display
+        fields). The DAG canvas (design-system §9.7) resolves `deityName`/`glyph`/`family` per node from
+        the **client-cached agent catalog** (`GET /orgs/{orgId}/agents`, ETag-cached — see perf note on
+        the catalog GETs), not a per-node lookup — so rendering a DAG is O(1) catalog reads, not N.
+    ArtifactView:
+      type: object
+      description: Artifact response DTO — metadata plus a signed, expiring URL (no raw storageKey).
+      required: [id, runId, type, contentType, sizeBytes, capturedAt, url, urlExpiresAt]
+      properties:
+        id: { type: string, format: uuid }
+        runId: { type: string, format: uuid }
+        runNodeId: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/ArtifactType' }
+        contentType: { type: string }
+        sizeBytes: { type: integer, format: int64, description: "64-bit (BigInt); videos can exceed 2^31." }
+        capturedAt: { type: string, format: date-time }
+        meta: { type: object, additionalProperties: true }
+        url: { type: string, format: uri, description: Short-lived signed URL. }
+        urlExpiresAt: { type: string, format: date-time }
+    IntegrationView:
+      allOf: [ { $ref: '#/components/schemas/Integration' } ]
+      description: Integration response DTO (never includes secretRef).
+    SubscriptionView:
+      allOf: [ { $ref: '#/components/schemas/Subscription' } ]
+      description: Subscription response DTO.
+    KnowledgeDocView:
+      allOf: [ { $ref: '#/components/schemas/KnowledgeDoc' } ]
+      description: Knowledge document response DTO (never includes storageKey).
+    KnowledgeChunkView:
+      allOf: [ { $ref: '#/components/schemas/KnowledgeChunk' } ]
+      description: Knowledge chunk response DTO (never includes embedding).
+    AuditLogView:
+      allOf: [ { $ref: '#/components/schemas/AuditLog' } ]
+      description: Audit entry response DTO.
+
+    # ---------------------------------------------------------------------------------
+    # Create DTOs (request bodies). orgId/id/createdAt/updatedAt are NEVER accepted —
+    # tenant + identity + timestamps are server-assigned.
+    # ---------------------------------------------------------------------------------
+    UserCreate:
+      type: object
+      additionalProperties: false
+      required: [email, password, firstName, lastName]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password, writeOnly: true, minLength: 12 }
+        firstName: { type: string }
+        middleName: { type: string }
+        lastName: { type: string }
+    # Auth request DTOs — local email/password bodies with no *Create/*Update/*View analogue.
+    # Introduced as named request schemas (deviations from the keystone DTO naming convention) so
+    # generated clients get stable types; documented in slice-1 spec §13.
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password, writeOnly: true }
+        remember:
+          type: boolean
+          default: false
+          description: When true, session/cookie lifetime is extended.
+    ForgotPasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+    ResetPasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [token, newPassword]
+      properties:
+        token:
+          type: string
+          minLength: 32
+          description: |
+            Single-use reset token from the email link. **Normative entropy: ≥ 128 bits** of CSPRNG
+            randomness. Stored server-side **only as a hash**, with a **short expiry (≤ 30 min)**, and
+            invalidated on first use (single-use). The example value is illustrative, not a fixed format.
+        newPassword: { type: string, format: password, writeOnly: true, minLength: 12 }
+    OrgCreate:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string }
+        slug: { type: string, description: Optional; derived from name if omitted. }
+    MembershipCreate:
+      type: object
+      additionalProperties: false
+      required: [email, role]
+      properties:
+        email: { type: string, format: email, description: Existing user is added; otherwise invited. }
+        role: { $ref: '#/components/schemas/Role' }
+    ProjectCreate:
+      type: object
+      additionalProperties: false
+      description: Onboarding payload (3-step wizard). Repo fields are optional.
+      required: [name, format]
+      properties:
+        name: { type: string }
+        slug: { type: string, description: Optional; derived from name if omitted. }
+        format: { $ref: '#/components/schemas/ProjectFormat' }
+        repoProvider: { type: string, enum: [github, gitlab, bitbucket, ado] }
+        repoFullName: { type: string }
+        repoBranch: { type: string }
+    SliceCreate:
+      type: object
+      additionalProperties: false
+      required: [key, name]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        order: { type: integer }
+    FeatureCreate:
+      type: object
+      additionalProperties: false
+      required: [name, path, content]
+      properties:
+        sliceId: { type: string, format: uuid }
+        name: { type: string }
+        path: { type: string }
+        content: { type: string }
+    TestCaseCreate:
+      type: object
+      additionalProperties: false
+      required: [key, title, steps, data, expected, priority]
+      properties:
+        sliceId: { type: string, format: uuid }
+        key: { type: string }
+        title: { type: string }
+        steps: { type: string }
+        data: { type: string }
+        expected: { type: string }
+        priority: { $ref: '#/components/schemas/TestCasePriority' }
+        assignedAgentId: { type: string, format: uuid }
+    RunCreate:
+      type: object
+      additionalProperties: false
+      description: Run enqueue payload. The server resolves the DAG from `selectedStages`.
+      required: [mode, selectedStages]
+      properties:
+        mode: { $ref: '#/components/schemas/RunMode' }
+        trigger:
+          allOf: [ { $ref: '#/components/schemas/RunTrigger' } ]
+          default: MANUAL
+        selectedStages:
+          type: array
+          minItems: 1
+          items: { type: string }
+          description: Toggled stage keys from the Orchestration canvas.
+        runLabel: { type: string }
+        commitSha: { type: string }
+
+    # ---------------------------------------------------------------------------------
+    # Update DTOs (PATCH bodies — partial; all properties optional).
+    # ---------------------------------------------------------------------------------
+    OrgUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string }
+        slug: { type: string }
+    UserUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: |
+        Self-service profile fields only. The privileged `status` (ACTIVE|DISABLED) is **intentionally
+        excluded** to prevent mass-assignment self-enable/disable — flipping a user's `status` is an
+        admin-only, audited operation on a separate endpoint, never a self-PATCH.
+      properties:
+        firstName: { type: string }
+        middleName: { type: string }
+        lastName: { type: string }
+    MembershipUpdate:
+      type: object
+      additionalProperties: false
+      required: [role]
+      properties:
+        role: { $ref: '#/components/schemas/Role' }
+    ProjectUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string }
+        format: { $ref: '#/components/schemas/ProjectFormat' }
+        repoProvider: { type: string, enum: [github, gitlab, bitbucket, ado] }
+        repoFullName: { type: string }
+        repoBranch: { type: string }
+        repoCommit: { type: string }
+    SliceUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string }
+        order: { type: integer }
+    FeatureUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        sliceId: { type: string, format: uuid }
+        name: { type: string }
+        path: { type: string }
+        content: { type: string }
+    TestCaseUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        sliceId: { type: string, format: uuid }
+        key: { type: string }
+        title: { type: string }
+        steps: { type: string }
+        data: { type: string }
+        expected: { type: string }
+        priority: { $ref: '#/components/schemas/TestCasePriority' }
+        status: { $ref: '#/components/schemas/TestCaseStatus' }
+        assignedAgentId: { type: string, format: uuid }
+    ToolBindingUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: PATCH a project agent — select tool and/or toggle awake.
+      properties:
+        tool: { type: string, description: Must be one of the agent's role tool options. }
+        enabled: { type: boolean }
+    IntegrationUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Connect/disconnect/configure. `secret` is write-only and stored as a Key Vault ref.
+      properties:
+        connected: { type: boolean }
+        config:
+          type: object
+          description: "Non-secret per-`key` settings only (server-validated allowlist). Never put credentials here — use `secret`."
+        secret: { type: string, writeOnly: true, description: "Raw token; vaulted server-side as `secretRef`, never echoed or placed in `config`." }
+
+    # ---------------------------------------------------------------------------------
+    # Run event (keystone §5) — SSE payload, oneOf discriminated by `type`.
+    # ---------------------------------------------------------------------------------
+    RunEvent:
+      oneOf:
+        - { $ref: '#/components/schemas/RunEventNodeState' }
+        - { $ref: '#/components/schemas/RunEventLog' }
+        - { $ref: '#/components/schemas/RunEventArtifact' }
+        - { $ref: '#/components/schemas/RunEventSummary' }
+      discriminator:
+        propertyName: type
+        mapping:
+          NODE_STATE: '#/components/schemas/RunEventNodeState'
+          LOG: '#/components/schemas/RunEventLog'
+          ARTIFACT: '#/components/schemas/RunEventArtifact'
+          SUMMARY: '#/components/schemas/RunEventSummary'
+    RunEventNodeState:
+      type: object
+      additionalProperties: false
+      required: [type, nodeKey, state, at]
+      properties:
+        type: { type: string, const: NODE_STATE }
+        nodeKey: { type: string }
+        state: { $ref: '#/components/schemas/RunNodeState' }
+        at: { type: string, format: date-time }
+    RunEventLog:
+      type: object
+      additionalProperties: false
+      required: [type, level, text, at]
+      properties:
+        type: { type: string, const: LOG }
+        nodeKey: { type: string }
+        level: { type: string, enum: [sys, run, pass, fail, log] }
+        text: { type: string }
+        at: { type: string, format: date-time }
+    RunEventArtifact:
+      type: object
+      additionalProperties: false
+      description: |
+        SSE wire form of the `ARTIFACT` event. **Divergence from keystone §5 (intentional, documented in
+        run-lifecycle.md §5/§10):** the kernel-internal `RunEvent.ARTIFACT` carries the raw `storageKey`
+        (the kernel just wrote the blob), but the API SSE relay MUST NOT serialize internal storage paths
+        to the browser (README "storageKey is never serialized in any response"). The relay therefore
+        emits the **persisted `Artifact.id` (`artifactId`)** instead; the client mints a signed URL on
+        demand via `GET /artifacts/{id}`. The keystone port event is left frozen; only this wire DTO and
+        the run-lifecycle relay change.
+      required: [type, nodeKey, artifact]
+      properties:
+        type: { type: string, const: ARTIFACT }
+        nodeKey: { type: string }
+        artifact:
+          type: object
+          additionalProperties: false
+          required: [type, artifactId, contentType, sizeBytes]
+          properties:
+            type: { $ref: '#/components/schemas/ArtifactType' }
+            artifactId: { type: string, format: uuid, description: "Persisted Artifact.id; resolve the blob via GET /artifacts/{id} (signed URL). The raw storageKey is never sent over SSE." }
+            contentType: { type: string }
+            sizeBytes: { type: integer, format: int64, description: "64-bit (BigInt); videos can exceed 2^31." }
+    RunEventSummary:
+      type: object
+      additionalProperties: false
+      required: [type, passed, failed, skipped, total, ratePct, durationMs]
+      properties:
+        type: { type: string, const: SUMMARY }
+        passed: { type: integer }
+        failed: { type: integer }
+        skipped: { type: integer }
+        total: { type: integer }
+        ratePct: { type: number }
+        durationMs: { type: integer }
+
+    # ---------------------------------------------------------------------------------
+    # Report (layered) — keystone §6 / prototype §7.
+    # ---------------------------------------------------------------------------------
+    ReportView:
+      type: object
+      description: Layered run report — summary, per-tool cards, and per-tool drill-down.
+      required: [runId, runLabel, summary, tools]
+      properties:
+        runId: { type: string, format: uuid }
+        runLabel: { type: string }
+        commitSha: { type: string }
+        summary:
+          type: object
+          required: [passed, failed, skipped, total, ratePct, durationMs]
+          properties:
+            passed: { type: integer }
+            failed: { type: integer }
+            skipped: { type: integer }
+            total: { type: integer }
+            ratePct: { type: number }
+            durationMs: { type: integer }
+        tools:
+          type: array
+          description: "One card per tool that ran (or noData=true if nothing was ingested)."
+          items:
+            type: object
+            required: [tool, kind, noData]
+            properties:
+              tool: { type: string }
+              slot: { $ref: '#/components/schemas/AgentSlot' }
+              kind: { type: string, enum: [CASE, PERF, VISUAL, SEC, A11Y, API], description: "Report-card category. Non-CASE values are the SCREAMING_SNAKE form of the parallel AgentSlot key (perf/visual/sec/a11y/api)." }
+              ran: { type: integer }
+              passed: { type: integer }
+              failed: { type: integer }
+              skipped: { type: integer }
+              ratePct: { type: number }
+              noData: { type: boolean }
+              cases:
+                type: array
+                description: |
+                  Bounded **first page** of the CASE-kind drill-down. The full list is paginated via
+                  `GET /runs/{id}/report/tools/{tool}/cases` so this payload never grows unbounded.
+                items: { $ref: '#/components/schemas/ReportCase' }
+              perf:
+                type: object
+                description: Present for PERF-kind tools (gauges + per-scenario latency).
+                properties:
+                  throughputRps: { type: number }
+                  avgMs: { type: number }
+                  p95Ms: { type: number }
+                  errorPct: { type: number }
+                  scenarios:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        rps: { type: number }
+                        p95Ms: { type: number }
+                        errorPct: { type: number }
+    ReportCase:
+      type: object
+      description: |
+        One CASE-kind drill-down row. Used both inline (bounded first page in `ReportView.tools[].cases`)
+        and as the item of the paginated `GET /runs/{id}/report/tools/{tool}/cases`. Media is referenced
+        by `artifactId` only — signed URLs are minted lazily by the viewer, never pre-signed per case.
+      required: [testCaseId, key, status]
+      properties:
+        testCaseId: { type: string, format: uuid }
+        key: { type: string }
+        title: { type: string }
+        status: { $ref: '#/components/schemas/TestCaseStatus' }
+        durationMs: { type: integer }
+        media:
+          type: array
+          items:
+            type: object
+            required: [type]
+            properties:
+              type: { $ref: '#/components/schemas/ArtifactType' }
+              artifactId: { type: string, format: uuid, description: "Fetch the blob via GET /artifacts/{id}." }
+              capture: { $ref: '#/components/schemas/CaptureMode' }
+
+    # ---------------------------------------------------------------------------------
+    # Session context (/auth/me, login, register).
+    # ---------------------------------------------------------------------------------
+    MeView:
+      type: object
+      description: |
+        Current session context — the authenticated user, memberships, and active org. **Perf
+        (`GET /auth/me` is an 80 ms hot path):** the `memberships[].org` embed MUST be resolved as a
+        **single Prisma `include`** (one query, not one per membership — no N+1); the reverse lookup
+        "which orgs does this user belong to?" is already index-backed by `Membership(userId)`
+        (schema.prisma `@@index([userId])`).
+      required: [user, memberships]
+      properties:
+        user: { $ref: '#/components/schemas/UserView' }
+        memberships:
+          type: array
+          items:
+            type: object
+            required: [org, role]
+            properties:
+              org: { $ref: '#/components/schemas/OrgView' }
+              role: { $ref: '#/components/schemas/Role' }
+        activeOrgId:
+          oneOf:
+            - { type: string, format: uuid }
+            - { type: 'null' }
+          description: The org the session is currently scoped to (null right after register).
+
+    # ---------------------------------------------------------------------------------
+    # Pagination + errors.
+    # ---------------------------------------------------------------------------------
+    PageMeta:
+      type: object
+      description: Cursor-pagination metadata.
+      required: [hasMore, limit]
+      properties:
+        nextCursor:
+          oneOf:
+            - { type: string }
+            - { type: 'null' }
+          description: Opaque cursor for the next page, or null if none.
+        hasMore: { type: boolean }
+        limit: { type: integer }
+
+    Problem:
+      type: object
+      description: RFC 9457 problem details (`application/problem+json`).
+      required: [title, status]
+      properties:
+        type: { type: string, format: uri, default: about:blank, description: A URI identifying the problem type. }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string, format: uri }
+        code: { type: string, description: Stable machine-readable error code. }
+        errors:
+          type: array
+          description: Field-level validation errors (extension member).
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              detail: { type: string }

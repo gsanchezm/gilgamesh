@@ -1,0 +1,263 @@
+// Gilgamesh — applied Prisma schema (slice 1 subset of the data-model contract).
+// The full contract lives at specs/data-model/schema.prisma; later slices add the
+// remaining models (Feature, Scenario, TestCase, Run, RunNode, Artifact, Integration,
+// KnowledgeDoc/Chunk) via incremental migrations.
+//
+// IDs and timestamps are assigned by the application layer (Uuid7IdGenerator / Clock),
+// so columns carry no Prisma @default — the records arrive fully populated. citext is
+// pre-installed in the database (docker/postgres/init.sql).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum ProjectFormat {
+  BDD
+  TRADITIONAL
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum RepoProvider {
+  github
+  gitlab
+  bitbucket
+  ado
+}
+
+enum AgentSlot {
+  lead
+  arch
+  manual
+  web
+  api
+  android
+  ios
+  perf
+  visual
+  sec
+  a11y
+}
+
+enum AgentFamily {
+  proceso
+  ui
+  backend
+  guardian
+}
+
+enum Plan {
+  TEAM
+  PRO
+  ENTERPRISE
+}
+
+enum BillingCycle {
+  MONTHLY
+  ANNUAL
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+model Org {
+  id        String   @id @db.Uuid
+  name      String
+  slug      String   @unique
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @map("updated_at")
+
+  memberships  Membership[]
+  projects     Project[]
+  slices       Slice[]
+  agents       Agent[]
+  toolBindings ToolBinding[]
+  subscription Subscription?
+  auditLogs    AuditLog[]
+
+  @@map("orgs")
+}
+
+model User {
+  id           String     @id @db.Uuid
+  // App normalizes emails to lowercase (domain Email VO), so a plain unique text column
+  // gives case-insensitive uniqueness without the citext extension.
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  firstName    String     @map("first_name")
+  middleName   String?    @map("middle_name")
+  lastName     String     @map("last_name")
+  status       UserStatus
+  createdAt    DateTime   @map("created_at")
+  updatedAt    DateTime   @map("updated_at")
+
+  memberships Membership[]
+  sessions    Session[]
+  auditEvents AuditLog[]   @relation("AuditLogActor")
+
+  @@map("users")
+}
+
+model Membership {
+  id        String   @id @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  role      Role
+  createdAt DateTime @map("created_at")
+
+  org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model Session {
+  id        String    @id @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  ip        String?
+  userAgent String?   @map("user_agent")
+  createdAt DateTime  @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Project {
+  id           String        @id @db.Uuid
+  orgId        String        @map("org_id") @db.Uuid
+  name         String
+  slug         String
+  format       ProjectFormat
+  repoProvider RepoProvider? @map("repo_provider")
+  repoFullName String?       @map("repo_full_name")
+  repoBranch   String?       @map("repo_branch")
+  repoCommit   String?       @map("repo_commit")
+  createdAt    DateTime      @map("created_at")
+  updatedAt    DateTime      @map("updated_at")
+
+  org          Org           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  slices       Slice[]
+  toolBindings ToolBinding[]
+
+  @@unique([orgId, slug])
+  @@map("projects")
+}
+
+model Slice {
+  id        String @id @db.Uuid
+  orgId     String @map("org_id") @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  key       String
+  name      String
+  order     Int
+
+  org     Org     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, key])
+  @@index([orgId])
+  @@map("slices")
+}
+
+model Agent {
+  id          String      @id @db.Uuid
+  orgId       String      @map("org_id") @db.Uuid
+  slot        AgentSlot
+  deityName   String      @map("deity_name")
+  role        String
+  family      AgentFamily
+  glyph       String
+  culture     String
+  defaultTool String      @map("default_tool")
+  createdAt   DateTime    @map("created_at")
+
+  org          Org           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  toolBindings ToolBinding[]
+
+  @@unique([orgId, slot])
+  @@map("agents")
+}
+
+model ToolBinding {
+  id        String   @id @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  agentId   String   @map("agent_id") @db.Uuid
+  tool      String
+  enabled   Boolean
+  updatedAt DateTime @map("updated_at")
+
+  org     Org     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  agent   Agent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, agentId])
+  @@index([orgId])
+  @@index([agentId])
+  @@map("tool_bindings")
+}
+
+model Subscription {
+  id                     String             @id @db.Uuid
+  orgId                  String             @unique @map("org_id") @db.Uuid
+  plan                   Plan
+  billingCycle           BillingCycle       @map("billing_cycle")
+  seats                  Int
+  status                 SubscriptionStatus
+  runMinutesQuota        Int                @map("run_minutes_quota")
+  runMinutesUsed         Int                @map("run_minutes_used")
+  providerCustomerId     String?            @map("provider_customer_id")
+  providerSubscriptionId String?            @map("provider_subscription_id")
+  currentPeriodEnd       DateTime?          @map("current_period_end")
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model AuditLog {
+  id          String   @id @db.Uuid
+  // Nullable: non-org-scoped events (auth.register / auth.login) are recorded before a tenant exists.
+  orgId       String?  @map("org_id") @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  action      String
+  targetType  String   @map("target_type")
+  targetId    String?  @map("target_id")
+  metadata    Json
+  ip          String?
+  createdAt   DateTime @map("created_at")
+
+  org   Org?  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  actor User? @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, createdAt(sort: Desc)])
+  @@index([actorUserId])
+  @@map("audit_logs")
+}

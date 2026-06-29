@@ -1,0 +1,769 @@
+// =============================================================================
+// Gilgamesh — Prisma schema (DECLARATIVE DESIGN CONTRACT — DO NOT APPLY)
+// =============================================================================
+// This file expresses the data model from the Foundation Keystone
+// (specs/_keystone/foundation-vocabulary.md §1 enums, §2 entities) as a
+// declarative contract. It is a SPEC artifact only:
+//   - No `migrations/` directory accompanies it.
+//   - It is never `prisma migrate`d, `db push`ed, generated, or applied here.
+//   - It pins names/enums/relations so downstream artifacts agree.
+//
+// Conventions (Keystone §0):
+//   - DB: snake_case tables/columns (via @@map / @map). Prisma models PascalCase.
+//   - IDs: UUID v7 string, stored as native postgres `uuid`. `@default(uuid(7))`
+//     is Prisma 6.1+ application-side generation; if the engine version lacks it,
+//     drop the default and assign UUID v7 in the application layer (same contract).
+//   - Every tenant-scoped row carries a non-null `orgId` FK (indexed) — row-level
+//     tenant isolation, enforced in EVERY query (see data-model.md §Tenant Isolation).
+//   - Timestamps follow the Keystone field lists VERBATIM. Entities the Keystone
+//     lists without timestamps (Slice, Scenario, RunNode, KnowledgeChunk,
+//     Subscription, Integration) intentionally omit createdAt/updatedAt.
+//   - No `deletedAt` on any entity (Keystone notes none) → hard delete + cascade.
+//
+// pgvector / citext: enabled via the `postgresqlExtensions` preview feature.
+//   KnowledgeChunk.embedding is `Unsupported("vector(1536)")` — Prisma has no
+//   native vector type. The ANN (HNSW) index cannot be expressed in Prisma schema
+//   and is created via raw SQL in the first migration (see bottom of this file
+//   and data-model.md §Performance).
+// =============================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  // citext → case-insensitive User.email ; vector → KnowledgeChunk.embedding (pgvector)
+  extensions = [citext, vector]
+}
+
+// =============================================================================
+// ENUMS — mapped 1:1 from Keystone §1 (SCREAMING_SNAKE, except the documented
+// lowercase stable-key enums: AgentSlot, AgentFamily, RepoProvider).
+// =============================================================================
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum ProjectFormat {
+  BDD
+  TRADITIONAL
+}
+
+/// Stable lowercase keys (§0). Persisted on Agent.slot.
+enum AgentSlot {
+  lead
+  arch
+  manual
+  web
+  api
+  android
+  ios
+  perf
+  visual
+  sec
+  a11y
+}
+
+/// Stable lowercase keys (§0). Persisted on Agent.family.
+enum AgentFamily {
+  proceso
+  ui
+  backend
+  guardian
+}
+
+/// DERIVED VALUE — NOT a stored column. Keystone §1 marks this derived:
+/// IDLE if !ToolBinding.enabled; BUSY if the agent has a RunNode in RUNNING;
+/// else ACTIVE. Defined for DTO/API typing; Agent has no status field (§2).
+enum AgentRuntimeStatus {
+  ACTIVE
+  BUSY
+  IDLE
+}
+
+enum TestCasePriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum TestCaseStatus {
+  NOTRUN
+  PASS
+  FAIL
+  BLOCKED
+  SKIPPED
+}
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+  CANCELED
+}
+
+enum RunMode {
+  BDD
+  STEPS
+}
+
+enum RunTrigger {
+  MANUAL
+  CI
+  SCHEDULE
+}
+
+enum RunNodeKind {
+  DISPATCH
+  STAGE
+  CONSOLIDATE
+}
+
+enum RunNodeState {
+  IDLE
+  QUEUED
+  RUNNING
+  DONE_PASS
+  DONE_FAIL
+}
+
+enum ArtifactType {
+  VIDEO
+  SCREENSHOT
+  HAR
+  LOG
+  REPORT_HTML
+}
+
+/// Defined per Keystone §1; NOT attached to a stored column in v0.1 — §2 entities
+/// carry no capture-mode field. Used by capture-settings DTOs/use-cases.
+enum CaptureMode {
+  OFF
+  ON_FAIL
+  ALWAYS
+  ON_DEMAND
+}
+
+enum IntegrationGroup {
+  SOURCE_REPOS
+  PROJECT_TRACKING
+  TEST_MANAGEMENT
+  COMMUNICATION
+  CICD
+  DEVICES_BROWSERS
+}
+
+enum Plan {
+  TEAM
+  PRO
+  ENTERPRISE
+}
+
+enum BillingCycle {
+  MONTHLY
+  ANNUAL
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum KnowledgeDocStatus {
+  UPLOADED
+  INDEXING
+  INDEXED
+  FAILED
+}
+
+/// Defined per Keystone §1; NOT a stored column — used by AgentBrainPort (§5).
+enum BrainTier {
+  HAIKU
+  SONNET
+  OPUS
+}
+
+/// DERIVED from §2 inline spec `User.status(ACTIVE|DISABLED)` (not in §1 list).
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+/// DERIVED from §2 inline spec `Project.repoProvider?(github|gitlab|bitbucket|ado)`.
+/// Lowercase stable keys (§0). Closed set of 4 → modeled as an enum (contrast
+/// Integration.key, an open 17-key registry kept as String + §8 reference).
+enum RepoProvider {
+  github
+  gitlab
+  bitbucket
+  ado
+}
+
+// =============================================================================
+// TENANT ROOTS (not org-scoped): Org, User, Session
+// =============================================================================
+
+/// Root tenant. Deleting an Org hard-purges its entire tenant subtree (Cascade).
+model Org {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Tenant subtree (every child carries org_id — see §Tenant Isolation).
+  memberships     Membership[]
+  projects        Project[]
+  slices          Slice[]
+  features        Feature[]
+  scenarios       Scenario[]
+  testCases       TestCase[]
+  agents          Agent[]
+  toolBindings    ToolBinding[]
+  runs            Run[]
+  runNodes        RunNode[]
+  artifacts       Artifact[]
+  integrations    Integration[]
+  subscription    Subscription?
+  knowledgeDocs   KnowledgeDoc[]
+  knowledgeChunks KnowledgeChunk[]
+  auditLogs       AuditLog[]
+
+  @@map("orgs")
+}
+
+/// Global identity — can belong to many Orgs (via Membership). NOT org-scoped.
+model User {
+  id           String     @id @default(uuid(7)) @db.Uuid
+  email        String     @unique @db.Citext
+  passwordHash String     @map("password_hash") // Argon2id
+  firstName    String     @map("first_name")
+  middleName   String?    @map("middle_name")
+  lastName     String     @map("last_name")
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  memberships           Membership[]
+  sessions              Session[]
+  runsCreated           Run[]          @relation("RunCreatedBy")
+  knowledgeDocsCreated  KnowledgeDoc[] @relation("KnowledgeDocCreatedBy")
+  integrationsConnected Integration[]  @relation("IntegrationConnectedBy")
+  auditEvents           AuditLog[]     @relation("AuditLogActor")
+
+  @@map("users")
+}
+
+/// Local-auth session, keyed to a global User (NOT org-scoped). revokedAt is
+/// logical invalidation (not a soft-delete of the row).
+model Session {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  ip        String?
+  userAgent String?   @map("user_agent")
+  createdAt DateTime  @default(now()) @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt]) // background sweep of expired sessions
+  @@map("sessions")
+}
+
+// =============================================================================
+// RBAC
+// =============================================================================
+
+/// RBAC join (User ↔ Org with a Role). Unique(orgId,userId).
+model Membership {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  role      Role
+  createdAt DateTime @default(now()) @map("created_at")
+
+  org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId]) // left-prefix serves as the org_id index
+  @@index([userId])         // reverse: "which orgs does this user belong to?"
+  @@map("memberships")
+}
+
+// =============================================================================
+// PROJECT & AUTHORING
+// =============================================================================
+
+model Project {
+  id             String        @id @default(uuid(7)) @db.Uuid
+  orgId          String        @map("org_id") @db.Uuid
+  name           String
+  slug           String
+  format         ProjectFormat
+  repoProvider   RepoProvider? @map("repo_provider")
+  repoFullName   String?       @map("repo_full_name")
+  repoBranch     String?       @map("repo_branch")
+  repoCommit     String?       @map("repo_commit")
+  repoLastSyncAt DateTime?     @map("repo_last_sync_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  org           Org            @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  slices        Slice[]
+  features      Feature[]
+  testCases     TestCase[]
+  toolBindings  ToolBinding[]
+  runs          Run[]
+  knowledgeDocs KnowledgeDoc[]
+
+  @@unique([orgId, slug]) // left-prefix serves as the org_id index
+  @@map("projects")
+}
+
+/// Vertical slice (Checkout/Login/Catalog/Payments/Imported). No timestamps (§2).
+model Slice {
+  id        String @id @default(uuid(7)) @db.Uuid
+  orgId     String @map("org_id") @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  key       String
+  name      String
+  order     Int
+
+  org       Org        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  features  Feature[]
+  testCases TestCase[]
+  runNodes  RunNode[]
+
+  @@unique([projectId, key])
+  @@index([orgId])
+  @@map("slices")
+}
+
+/// BDD `.feature` file (gherkin text in `content`).
+model Feature {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  sliceId   String?  @map("slice_id") @db.Uuid
+  name      String
+  path      String
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  org       Org        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  slice     Slice?     @relation(fields: [sliceId], references: [id], onDelete: SetNull)
+  scenarios Scenario[]
+
+  @@index([orgId])
+  @@index([projectId])
+  @@index([sliceId])
+  @@map("features")
+}
+
+/// Parsed scenario within a Feature. No timestamps (§2).
+model Scenario {
+  id         String          @id @default(uuid(7)) @db.Uuid
+  orgId      String          @map("org_id") @db.Uuid
+  featureId  String          @map("feature_id") @db.Uuid
+  name       String
+  order      Int
+  lastStatus TestCaseStatus? @map("last_status")
+
+  org     Org     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  feature Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([featureId])
+  @@map("scenarios")
+}
+
+/// Traditional test case (e.g. key=TC_CHK_001).
+model TestCase {
+  id              String           @id @default(uuid(7)) @db.Uuid
+  orgId           String           @map("org_id") @db.Uuid
+  projectId       String           @map("project_id") @db.Uuid
+  sliceId         String?          @map("slice_id") @db.Uuid
+  key             String
+  title           String
+  steps           String           @db.Text
+  data            String           @db.Text
+  expected        String           @db.Text
+  priority        TestCasePriority
+  status          TestCaseStatus   @default(NOTRUN)
+  assignedAgentId String?          @map("assigned_agent_id") @db.Uuid
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  org           Org     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project       Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  slice         Slice?  @relation(fields: [sliceId], references: [id], onDelete: SetNull)
+  assignedAgent Agent?  @relation(fields: [assignedAgentId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, key]) // EXTENSION: human ID unique per project (left-prefix = projectId index)
+  @@index([orgId])
+  @@index([sliceId])
+  @@index([assignedAgentId])
+  @@index([projectId, status])   // PERF: list filter "by status within a project" (<=200ms list budget)
+  @@index([projectId, priority]) // PERF: list filter "by priority within a project"
+  @@map("test_cases")
+}
+
+// =============================================================================
+// AGENTS (per-Org catalog of 11) + per-Project tool binding
+// =============================================================================
+
+/// Per-Org catalog of the 11 deity-agents (seeded from Keystone §3).
+/// `role` here is a display label (e.g. "QA Lead"), NOT the RBAC Role enum.
+model Agent {
+  id          String      @id @default(uuid(7)) @db.Uuid
+  orgId       String      @map("org_id") @db.Uuid
+  slot        AgentSlot
+  deityName   String      @map("deity_name")
+  role        String // display label
+  family      AgentFamily
+  glyph       String
+  culture     String
+  defaultTool String      @map("default_tool")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  org          Org           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  toolBindings ToolBinding[]
+  runNodes     RunNode[]
+  testCases    TestCase[]
+
+  @@unique([orgId, slot]) // left-prefix serves as the org_id index
+  @@map("agents")
+}
+
+/// Per-Project agent state + tool selection (Strategy). enabled == "awake".
+model ToolBinding {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  agentId   String   @map("agent_id") @db.Uuid
+  tool      String
+  enabled   Boolean  @default(false)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  org     Org     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  agent   Agent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, agentId])
+  @@index([orgId])
+  @@index([agentId])
+  @@map("tool_bindings")
+}
+
+// =============================================================================
+// RUNS & DAG ORCHESTRATION
+// =============================================================================
+
+model Run {
+  id             String     @id @default(uuid(7)) @db.Uuid
+  orgId          String     @map("org_id") @db.Uuid
+  projectId      String     @map("project_id") @db.Uuid
+  status         RunStatus  @default(QUEUED)
+  mode           RunMode
+  trigger        RunTrigger
+  selectedStages String[]   @map("selected_stages")
+  progress       Int        @default(0) // domain invariant 0..100 (enforced app-side)
+  runLabel       String     @map("run_label")
+  commitSha      String?    @map("commit_sha")
+  passed         Int?
+  failed         Int?
+  skipped        Int?
+  total          Int?
+  ratePct        Float?     @map("rate_pct")
+  durationMs     Int?       @map("duration_ms")
+  createdById    String     @map("created_by_id") @db.Uuid
+  startedAt      DateTime?  @map("started_at")
+  finishedAt     DateTime?  @map("finished_at")
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  org       Org        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User       @relation("RunCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  runNodes  RunNode[]
+  artifacts Artifact[]
+
+  @@index([projectId, createdAt(sort: Desc)]) // runs list by project, newest-first (display ordering)
+  @@index([projectId, id(sort: Desc)])        // PERF: keyset-pagination cursor. id is UUID v7 (time-ordered)
+                                              // so this is newest-first AND an unambiguous tiebreaker —
+                                              // createdAt is not unique, so a (createdAt,id) cursor could
+                                              // skip/duplicate rows sharing a timestamp on deep pages.
+  @@index([projectId, status])                // queue / filter by status within a project
+  @@index([orgId])
+  @@index([createdById])
+  @@map("runs")
+}
+
+/// DAG node. `key` is the node identifier referenced by `deps`/waves/RunEvent
+/// (Keystone §5) — unique within a Run. `agentId?`/`sliceId?` null on
+/// __dispatch/__consolidate nodes.
+model RunNode {
+  id         String       @id @default(uuid(7)) @db.Uuid
+  orgId      String       @map("org_id") @db.Uuid
+  runId      String       @map("run_id") @db.Uuid
+  key        String
+  kind       RunNodeKind
+  agentId    String?      @map("agent_id") @db.Uuid
+  tool       String?
+  feature    String?
+  sliceId    String?      @map("slice_id") @db.Uuid
+  level      Int
+  deps       String[] // references other RunNode.key values within the same run
+  state      RunNodeState @default(IDLE)
+  passed     Int?
+  failed     Int?
+  skipped    Int?
+  durationMs Int?         @map("duration_ms")
+  startedAt  DateTime?    @map("started_at")
+  finishedAt DateTime?    @map("finished_at")
+
+  org       Org        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  run       Run        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  agent     Agent?     @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  slice     Slice?     @relation(fields: [sliceId], references: [id], onDelete: SetNull)
+  artifacts Artifact[]
+
+  @@unique([runId, key])           // §5 contract: node key uniquely resolves within a run
+  @@index([runId, level])          // HOT PATH: fetch a run's DAG ordered by wave/level
+  @@index([orgId])
+  @@index([agentId])
+  @@index([sliceId])
+  @@index([orgId, state, agentId]) // PERF: derive AgentRuntimeStatus=BUSY (agent has a RunNode in RUNNING)
+                                   // as a set-based lookup, tenant-scoped, instead of 11 per-agent existence
+                                   // checks (N+1). A partial index WHERE state='RUNNING' (raw SQL, see end of
+                                   // file) is even tighter but is not Prisma-expressible.
+  @@map("run_nodes")
+}
+
+/// Blob captured during a run. Never public — served via signed expiring URL.
+/// sizeBytes is BigInt (videos can exceed the 2^31 Int range).
+model Artifact {
+  id          String       @id @default(uuid(7)) @db.Uuid
+  orgId       String       @map("org_id") @db.Uuid
+  runId       String       @map("run_id") @db.Uuid
+  runNodeId   String?      @map("run_node_id") @db.Uuid
+  type        ArtifactType
+  storageKey  String       @map("storage_key")
+  contentType String       @map("content_type")
+  sizeBytes   BigInt       @map("size_bytes")
+  capturedAt  DateTime     @map("captured_at")
+  meta        Json
+
+  org     Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  run     Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  runNode RunNode? @relation(fields: [runNodeId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([runId])
+  @@index([runNodeId])
+  @@map("artifacts")
+}
+
+// =============================================================================
+// INTEGRATIONS & BILLING
+// =============================================================================
+
+/// One row per (org, integration key). secretRef is a Key Vault REFERENCE only —
+/// raw tokens are NEVER stored. config holds non-secret settings.
+model Integration {
+  id            String           @id @default(uuid(7)) @db.Uuid
+  orgId         String           @map("org_id") @db.Uuid
+  key           String // stable key (Keystone §8): github, jira, slack, ...
+  group         IntegrationGroup
+  connected     Boolean          @default(false)
+  secretRef     String?          @map("secret_ref")
+  config        Json
+  connectedById String?          @map("connected_by_id") @db.Uuid
+  connectedAt   DateTime?        @map("connected_at")
+
+  org         Org   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  connectedBy User? @relation("IntegrationConnectedBy", fields: [connectedById], references: [id], onDelete: SetNull)
+
+  @@unique([orgId, key]) // left-prefix serves as the org_id index
+  @@map("integrations")
+}
+
+/// 1:1 with Org. Mock provider now (PaymentProvider port).
+model Subscription {
+  id                     String             @id @default(uuid(7)) @db.Uuid
+  orgId                  String             @unique @map("org_id") @db.Uuid
+  plan                   Plan
+  billingCycle           BillingCycle       @map("billing_cycle")
+  seats                  Int
+  status                 SubscriptionStatus
+  runMinutesQuota        Int                @map("run_minutes_quota")
+  runMinutesUsed         Int                @default(0) @map("run_minutes_used")
+  providerCustomerId     String?            @map("provider_customer_id")
+  providerSubscriptionId String?            @map("provider_subscription_id")
+  currentPeriodEnd       DateTime?          @map("current_period_end")
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+// =============================================================================
+// KNOWLEDGE (private RAG) — pgvector
+// =============================================================================
+
+/// Private RAG source document. projectId? null → org-wide knowledge.
+model KnowledgeDoc {
+  id          String             @id @default(uuid(7)) @db.Uuid
+  orgId       String             @map("org_id") @db.Uuid
+  projectId   String?            @map("project_id") @db.Uuid
+  name        String
+  sizeBytes   BigInt             @map("size_bytes")
+  storageKey  String             @map("storage_key")
+  status      KnowledgeDocStatus @default(UPLOADED)
+  createdById String             @map("created_by_id") @db.Uuid
+  createdAt   DateTime           @default(now()) @map("created_at")
+
+  org       Org              @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project   Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdBy User             @relation("KnowledgeDocCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  chunks    KnowledgeChunk[]
+
+  @@index([orgId])
+  @@index([projectId])
+  @@index([createdById])
+  @@map("knowledge_docs")
+}
+
+/// Chunk with a 1536-dim embedding. Tenant-scoped retrieval: filter org_id,
+/// then ORDER BY embedding <=> $query (cosine) LIMIT k.
+/// NOTE: `embedding` is Unsupported — insert chunks via $executeRaw; the
+/// typed client cannot set vector columns. The HNSW index is raw SQL (below).
+model KnowledgeChunk {
+  id        String                      @id @default(uuid(7)) @db.Uuid
+  orgId     String                      @map("org_id") @db.Uuid
+  docId     String                      @map("doc_id") @db.Uuid
+  ordinal   Int
+  content   String                      @db.Text
+  embedding Unsupported("vector(1536)")
+
+  org Org          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  doc KnowledgeDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([docId])
+  // HOT PATH: ANN vector index — see raw-SQL note at end of file (cannot be
+  // expressed in Prisma schema).
+  @@map("knowledge_chunks")
+}
+
+// =============================================================================
+// AUDIT
+// =============================================================================
+
+/// Append-only sensitive-action audit. actorUserId? null for system actions.
+/// targetId is a free-form id (often a UUID) → kept as String (polymorphic).
+/// TAMPER-EVIDENCE (ASVS V7): append-only is ENFORCED at the DB grant level — the application DB role
+/// has INSERT + SELECT only; UPDATE/DELETE on `audit_logs` are REVOKEd (raw SQL companion at end of file).
+/// The Log Analytics sink (infra §3) is the immutable, retained copy. NOTE the `onDelete: Cascade` below:
+/// an Org purge would destroy audit history, so export-before-purge is a HARD step in the guarded
+/// Org-purge operation (data-model.md §8), not a recommendation.
+model AuditLog {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  action      String
+  targetType  String   @map("target_type")
+  targetId    String?  @map("target_id")
+  metadata    Json
+  ip          String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  org   Org   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  actor User? @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, createdAt(sort: Desc)])      // org audit browse, newest-first (covers org_id)
+  @@index([orgId, targetType, targetId])       // per-entity history
+  @@index([actorUserId])                       // actor activity
+  @@map("audit_logs")
+}
+
+// =============================================================================
+// RAW-SQL COMPANIONS (apply in the first migration — NOT expressible in Prisma)
+// =============================================================================
+// pgvector ANN index (cosine). HNSW: high recall, fast top-k, no training step.
+//
+//   CREATE EXTENSION IF NOT EXISTS vector;
+//   CREATE EXTENSION IF NOT EXISTS citext;
+//
+// --- RECALL-CORRECTNESS (GA-blocking, not just a scale follow-up) ----------------------------------
+// A SINGLE GLOBAL HNSW index post-filters org_id: HNSW returns ~ef_search nearest neighbors, THEN drops
+// rows that don't match the tenant. For a tenant that is a minority of the table, most candidates are
+// foreign-org and discarded -> fewer than k results and collapsing recall AT ANY multi-tenant ratio.
+// The org predicate MUST be PRE-filtering. Primary fix: PARTITION knowledge_chunks BY org_id (hash/list)
+// with a PER-PARTITION HNSW so every scan is already tenant-local (works on any pgvector version):
+//
+//   -- (declarative target; real DDL recreates the table partitioned)
+//   -- CREATE TABLE knowledge_chunks (...) PARTITION BY HASH (org_id);
+//   -- one partition per bucket, each with its own HNSW:
+//   CREATE INDEX knowledge_chunks_embedding_hnsw
+//     ON knowledge_chunks                       -- (created on each partition)
+//     USING hnsw (embedding vector_cosine_ops)
+//     WITH (m = 16, ef_construction = 64);
+//
+// Quick win on pgvector 0.8+ (until partitioned): keep the global index but force pre-filtering at
+// query time:
+//   SET hnsw.iterative_scan = relaxed_order;   -- keep scanning until k tenant-local rows are found
+//   SET hnsw.ef_search = 100;                  -- raise per query for the recall/latency trade
+//
+// Tenant-scoped retrieval keeps the org_id predicate ahead of the ANN scan:
+//   SELECT id, content
+//     FROM knowledge_chunks
+//    WHERE org_id = $1
+//    ORDER BY embedding <=> $2
+//    LIMIT $3;
+// CI MUST assert a recall@k floor + the vector p95 (data-model.md §6.4/§10).
+// Footprint note: a 1536-dim HNSW won't stay resident in shared_buffers on Postgres B1ms (1 vCPU/2 GiB,
+// infra §5) — size the instance or partition before relying on the <150ms p95.
+//
+// --- run_nodes BUSY-derivation partial index (PERF; not Prisma-expressible) ------------------------
+//   CREATE INDEX IF NOT EXISTS run_nodes_running_by_agent
+//     ON run_nodes (agent_id)
+//     WHERE state = 'RUNNING';
+//   -- set-based BUSY derivation for the Agent room (no 11x per-agent existence checks):
+//   --   SELECT DISTINCT rn.agent_id FROM run_nodes rn
+//   --     JOIN runs r ON r.id = rn.run_id
+//   --    WHERE r.project_id = $1 AND rn.state = 'RUNNING';
+//
+// --- audit_logs append-only enforcement (SECURITY; ASVS V7; not Prisma-expressible) ----------------
+//   -- The application DB role may INSERT + SELECT audit rows but NEVER mutate/erase them:
+//   REVOKE UPDATE, DELETE, TRUNCATE ON audit_logs FROM gilgamesh_app;
+//   GRANT  INSERT, SELECT            ON audit_logs TO   gilgamesh_app;
+//   -- The Log Analytics sink (infra §3) is the immutable retained copy; an Org purge exports+retains
+//   -- audit rows FIRST (hard step in the guarded purge), since audit_logs.org_id cascades on Org delete.
+//
+// Defense-in-depth (see data-model.md §Tenant Isolation) — Row-Level Security,
+// applied per tenant-scoped table, e.g.:
+//
+//   ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+//   ALTER TABLE projects FORCE ROW LEVEL SECURITY;
+//   CREATE POLICY tenant_isolation ON projects
+//     USING (org_id = current_setting('app.current_org_id')::uuid)
+//     WITH CHECK (org_id = current_setting('app.current_org_id')::uuid);
+//   -- Prisma connects as a NON-superuser, NON-BYPASSRLS app role so policies apply.
+//   -- Each request/txn issues: SET LOCAL app.current_org_id = '<orgId>';
+// =============================================================================
