@@ -1,5 +1,5 @@
 import { ApplicationError, type Clock } from '@gilgamesh/application';
-import { type CanActivate, type ExecutionContext, Inject, Injectable } from '@nestjs/common';
+import { type CanActivate, type ExecutionContext, Inject, Injectable, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import type { RateLimitConfig } from '../config';
 import { TOKENS } from '../persistence/tokens';
@@ -20,6 +20,8 @@ const LIMITED_PATHS = ['/auth/login', '/auth/register', '/auth/forgot-password',
  */
 @Injectable()
 export class RateLimitGuard implements CanActivate {
+  private readonly logger = new Logger(RateLimitGuard.name);
+
   constructor(
     @Inject(RATE_LIMIT) private readonly opts: RateLimitConfig,
     @Inject(RATE_LIMIT_STORE) private readonly store: RateLimitStore,
@@ -33,10 +35,23 @@ export class RateLimitGuard implements CanActivate {
 
     const ip = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
     const body = req.body as { email?: unknown } | undefined;
-    const email = typeof body?.email === 'string' ? body.email.toLowerCase() : '';
+    // Normalize identically to the auth use cases (which trim+lowercase) so whitespace-padded
+    // variants can't mint fresh buckets for the same account and bypass the throttle.
+    // Normalize identically to the auth use cases (which trim+lowercase) so whitespace-padded
+    // variants can't mint fresh buckets for the same account and bypass the throttle.
+    const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
     const key = `${path}:${ip}:${email}`;
 
-    const { count, resetAt } = await this.store.hit(key, this.opts.windowMs);
+    let hit: { count: number; resetAt: number };
+    try {
+      hit = await this.store.hit(key, this.opts.windowMs);
+    } catch (err) {
+      // Fail open: a rate-limit store (Redis) outage must not take down auth. Degrade to no
+      // throttling for the blip rather than 500-ing every login/register.
+      this.logger.warn(`rate-limit store unavailable, allowing request: ${String(err)}`);
+      return true;
+    }
+    const { count, resetAt } = hit;
 
     const res = context.switchToHttp().getResponse<Response>();
     res.setHeader('X-RateLimit-Limit', String(this.opts.limit));

@@ -16,6 +16,9 @@ export interface ApiConfig {
   redisUrl: string;
   /** Allowlisted browser origins for CORS (empty = same-origin only). */
   corsOrigins: string[];
+  /** Express `trust proxy` hop count. The real client IP (used as a rate-limit key) is only
+   *  correct when this matches the number of appending proxies in front of the API. */
+  trustProxy: number;
   rateLimit: RateLimitConfig;
 }
 
@@ -54,12 +57,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     .map((o) => o.trim())
     .filter(Boolean);
 
+  const trustProxy = Number(env.TRUST_PROXY ?? 1);
+  if (!Number.isInteger(trustProxy) || trustProxy < 0) {
+    throw new Error(`Config error: TRUST_PROXY must be a non-negative integer (got "${env.TRUST_PROXY}").`);
+  }
+
   return {
     nodeEnv: env.NODE_ENV ?? 'development',
     port,
     databaseUrl,
     redisUrl,
     corsOrigins,
+    trustProxy,
     rateLimit: rateLimitFromEnv(env),
   };
 }

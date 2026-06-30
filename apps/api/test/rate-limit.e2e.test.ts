@@ -8,6 +8,7 @@ import { AppModule } from '../src/app.module';
 // deliberately lowers it to exercise the 429 branch, then restores the env afterwards.
 const ORIGINAL_LIMIT = process.env.AUTH_RATE_LIMIT;
 const ORIGINAL_WINDOW = process.env.AUTH_RATE_WINDOW_MS;
+const ORIGINAL_REDIS = process.env.REDIS_URL;
 const LIMIT = 3;
 
 let app: INestApplication;
@@ -15,6 +16,9 @@ let app: INestApplication;
 beforeAll(async () => {
   process.env.AUTH_RATE_LIMIT = String(LIMIT);
   process.env.AUTH_RATE_WINDOW_MS = '60000';
+  // Pin the in-memory store regardless of ambient env, so a shell-wide REDIS_URL can't make this
+  // suite non-hermetic (a Redis-backed re-run within the window would pre-throttle the assertions).
+  delete process.env.REDIS_URL;
   // The RATE_LIMIT provider reads the env at module-compile time, so set it before compiling.
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   app = moduleRef.createNestApplication();
@@ -27,6 +31,8 @@ afterAll(async () => {
   else process.env.AUTH_RATE_LIMIT = ORIGINAL_LIMIT;
   if (ORIGINAL_WINDOW === undefined) delete process.env.AUTH_RATE_WINDOW_MS;
   else process.env.AUTH_RATE_WINDOW_MS = ORIGINAL_WINDOW;
+  if (ORIGINAL_REDIS === undefined) delete process.env.REDIS_URL;
+  else process.env.REDIS_URL = ORIGINAL_REDIS;
 });
 
 const login = (email: string) =>
@@ -55,5 +61,17 @@ describe('Auth rate limiting (AC-AUTH-13)', () => {
       const res = await login(other);
       expect(res.status).not.toBe(429);
     }
+  });
+
+  it('treats whitespace-padded emails as the same bucket (no padding bypass)', async () => {
+    const canonical = 'pad-victim@example.com';
+    for (let i = 1; i <= LIMIT; i++) {
+      const res = await login(canonical);
+      expect(res.status).not.toBe(429);
+    }
+    // A padded variant resolves to the same account at the auth layer, so it must NOT get a fresh
+    // bucket — otherwise the throttle is trivially bypassable.
+    const padded = await login(`  ${canonical} `);
+    expect(padded.status).toBe(429);
   });
 });

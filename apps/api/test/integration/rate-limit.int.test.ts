@@ -27,8 +27,11 @@ describe('RedisRateLimitStore (real Redis)', () => {
     const key = `test:reset:${Date.now()}`;
     const before = Date.now();
     const hit = await store.hit(key, 60_000);
+    const after = Date.now();
+    // resetAt = (a clock reading between before and after) + ttl, ttl <= windowMs — so this upper
+    // bound holds with zero latency-dependent slack.
     expect(hit.resetAt).toBeGreaterThan(before);
-    expect(hit.resetAt).toBeLessThanOrEqual(before + 60_000 + 100);
+    expect(hit.resetAt).toBeLessThanOrEqual(after + 60_000);
   });
 
   it('expires the window via native TTL, resetting the count', async () => {

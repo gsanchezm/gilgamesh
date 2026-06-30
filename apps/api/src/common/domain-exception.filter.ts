@@ -1,6 +1,6 @@
 import { ApplicationError, type AppErrorCode } from '@gilgamesh/application';
 import { DomainError } from '@gilgamesh/domain';
-import { type ArgumentsHost, Catch, type ExceptionFilter } from '@nestjs/common';
+import { type ArgumentsHost, Catch, type ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import type { Response } from 'express';
 
 const STATUS: Record<AppErrorCode, number> = {
@@ -16,19 +16,49 @@ const STATUS: Record<AppErrorCode, number> = {
   RATE_LIMITED: 429,
 };
 
-/** Maps domain/application errors to RFC9457-shaped responses with stable titles. */
-@Catch(ApplicationError, DomainError)
+/**
+ * Maps every error to an RFC9457 problem+json response: domain/application errors to their stable
+ * code+status, Nest HttpExceptions to their status, and anything unmapped (e.g. an infra/Redis/Prisma
+ * failure) to a generic 500 — so no endpoint can ever leak Nest's default `{statusCode,message}` shape.
+ * Catch-all (no @Catch args) and registered as the global APP_FILTER.
+ */
+@Catch()
 export class DomainExceptionFilter implements ExceptionFilter {
-  catch(exception: ApplicationError | DomainError, host: ArgumentsHost): void {
+  private readonly logger = new Logger(DomainExceptionFilter.name);
+
+  catch(exception: unknown, host: ArgumentsHost): void {
     const res = host.switchToHttp().getResponse<Response>();
-    const status = exception instanceof ApplicationError ? STATUS[exception.code] : 422;
-    const code = exception instanceof ApplicationError ? exception.code : 'DOMAIN_ERROR';
+    let status: number;
+    let code: string;
+    let detail: string;
+
+    if (exception instanceof ApplicationError) {
+      status = STATUS[exception.code];
+      code = exception.code;
+      detail = exception.message;
+    } else if (exception instanceof DomainError) {
+      status = 422;
+      code = 'DOMAIN_ERROR';
+      detail = exception.message;
+    } else if (exception instanceof HttpException) {
+      status = exception.getStatus();
+      code = exception.name;
+      detail = exception.message;
+    } else {
+      // Unmapped (infra) error: log the real cause server-side, return a generic body so internals
+      // are never leaked to the client.
+      status = 500;
+      code = 'INTERNAL';
+      detail = 'An unexpected error occurred.';
+      this.logger.error('Unhandled error', exception instanceof Error ? exception.stack : String(exception));
+    }
+
     res.status(status).type('application/problem+json').json({
       type: 'about:blank',
       title: code,
       status,
       code,
-      detail: exception.message,
+      detail,
     });
   }
 }

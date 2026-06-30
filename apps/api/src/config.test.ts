@@ -44,6 +44,17 @@ describe('loadConfig', () => {
   it('includes the rate-limit config', () => {
     expect(loadConfig({ ...base, AUTH_RATE_LIMIT: '7' }).rateLimit).toEqual({ limit: 7, windowMs: 60_000 });
   });
+
+  it('defaults trustProxy to 1 and reads TRUST_PROXY', () => {
+    expect(loadConfig(base).trustProxy).toBe(1);
+    expect(loadConfig({ ...base, TRUST_PROXY: '2' }).trustProxy).toBe(2);
+    expect(loadConfig({ ...base, TRUST_PROXY: '0' }).trustProxy).toBe(0);
+  });
+
+  it('rejects a negative or non-integer TRUST_PROXY', () => {
+    expect(() => loadConfig({ ...base, TRUST_PROXY: '-1' })).toThrow(/TRUST_PROXY/);
+    expect(() => loadConfig({ ...base, TRUST_PROXY: 'abc' })).toThrow(/TRUST_PROXY/);
+  });
 });
 
 describe('rateLimitFromEnv', () => {
