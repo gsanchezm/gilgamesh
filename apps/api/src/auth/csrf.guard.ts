@@ -1,9 +1,8 @@
 import { ApplicationError } from '@gilgamesh/application';
 import { type CanActivate, type ExecutionContext, Injectable } from '@nestjs/common';
 import type { Request } from 'express';
+import { CSRF_COOKIE, SESSION_COOKIE } from './cookie-names';
 
-const SESSION_COOKIE = '__Host-gg_session';
-const CSRF_COOKIE = 'csrf';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 // Public (security: []) endpoints: unsafe but pre-session, so exempt by path even if a stale
 // session cookie is still attached (e.g. AC-AUTH-04 logs in while a register cookie is present).

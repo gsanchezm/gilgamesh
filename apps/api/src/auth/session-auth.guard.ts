@@ -9,8 +9,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { TOKENS } from '../persistence/tokens';
-
-const SESSION_COOKIE = '__Host-gg_session';
+import { SESSION_COOKIE } from './cookie-names';
 
 type AuthedRequest = Request & {
   userId?: string;

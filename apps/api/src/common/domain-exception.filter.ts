@@ -4,6 +4,33 @@ import { type ArgumentsHost, Catch, type ExceptionFilter, HttpException, Logger 
 import { Prisma } from '@prisma/client';
 import type { Response } from 'express';
 
+// Express body-parser (and other http-errors middleware) throw before Nest's pipeline; their `type`
+// maps to a stable client-error code so an oversized/malformed body is a precise 4xx, not a 500.
+const HTTP_ERROR_CODES: Record<string, string> = {
+  'entity.too.large': 'PAYLOAD_TOO_LARGE',
+  'entity.parse.failed': 'MALFORMED_BODY',
+  'request.aborted': 'BAD_REQUEST',
+  'charset.unsupported': 'UNSUPPORTED_MEDIA_TYPE',
+  'encoding.unsupported': 'UNSUPPORTED_MEDIA_TYPE',
+};
+
+/**
+ * Narrows an unknown error to an http-errors-shaped client error (4xx with `expose: true`), as
+ * thrown by Express body-parser. Returns null for anything else so server/infra errors still map
+ * to a generic 500 (no internals leaked).
+ */
+function asClientHttpError(e: unknown): { status: number; type?: string; message: string } | null {
+  if (typeof e !== 'object' || e === null) return null;
+  const o = e as { status?: unknown; statusCode?: unknown; expose?: unknown; type?: unknown; message?: unknown };
+  const raw = typeof o.status === 'number' ? o.status : typeof o.statusCode === 'number' ? o.statusCode : null;
+  if (raw === null || !Number.isInteger(raw) || raw < 400 || raw >= 500 || o.expose !== true) return null;
+  return {
+    status: raw,
+    type: typeof o.type === 'string' ? o.type : undefined,
+    message: typeof o.message === 'string' ? o.message : 'The request could not be processed.',
+  };
+}
+
 const STATUS: Record<AppErrorCode, number> = {
   EMAIL_IN_USE: 409,
   WEAK_PASSWORD: 422,
@@ -31,6 +58,7 @@ export class DomainExceptionFilter implements ExceptionFilter {
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const res = host.switchToHttp().getResponse<Response>();
+    const clientHttpError = asClientHttpError(exception);
     let status: number;
     let code: string;
     let detail: string;
@@ -62,6 +90,11 @@ export class DomainExceptionFilter implements ExceptionFilter {
       status = 404;
       code = 'NOT_FOUND';
       detail = 'The requested resource was not found.';
+    } else if (clientHttpError) {
+      // Body-parser / http-errors client error (oversized or malformed body): preserve its 4xx.
+      status = clientHttpError.status;
+      code = HTTP_ERROR_CODES[clientHttpError.type ?? ''] ?? (status === 413 ? 'PAYLOAD_TOO_LARGE' : 'BAD_REQUEST');
+      detail = clientHttpError.message;
     } else {
       // Unmapped (infra) error: log the real cause server-side, return a generic body so internals
       // are never leaked to the client.

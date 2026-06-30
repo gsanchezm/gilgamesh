@@ -180,9 +180,10 @@ export class InMemoryFeatureRepository implements FeatureRepository {
     return this.byId.get(id) ?? null;
   }
   async listForProject(projectId: string, sliceId?: string): Promise<FeatureRecord[]> {
-    return [...this.byId.values()].filter(
-      (f) => f.projectId === projectId && (sliceId === undefined || f.sliceId === sliceId),
-    );
+    return [...this.byId.values()]
+      .filter((f) => f.projectId === projectId && (sliceId === undefined || f.sliceId === sliceId))
+      // Mirror PrismaFeatureRepository: createdAt asc, id asc tiebreak (deterministic creation order).
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
   async save(rec: FeatureRecord): Promise<void> {
     this.byId.set(rec.id, rec);
@@ -229,9 +230,10 @@ export class InMemoryTestCaseRepository implements TestCaseRepository {
     return this.byId.get(id) ?? null;
   }
   async listForProject(projectId: string, sliceId?: string): Promise<TestCaseRecord[]> {
-    return [...this.byId.values()].filter(
-      (t) => t.projectId === projectId && (sliceId === undefined || t.sliceId === sliceId),
-    );
+    return [...this.byId.values()]
+      .filter((t) => t.projectId === projectId && (sliceId === undefined || t.sliceId === sliceId))
+      // Mirror PrismaTestCaseRepository: key asc = monotonic creation order (TC_PRJ_001…).
+      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   }
   async save(rec: TestCaseRecord): Promise<void> {
     this.byId.set(rec.id, rec);
@@ -250,8 +252,10 @@ export class InMemoryRunRepository implements RunRepository {
     return this.rows.find((r) => r.id === id) ?? null;
   }
   async listForProject(projectId: string): Promise<RunRecord[]> {
-    // Newest-first (most recently inserted).
-    return this.rows.filter((r) => r.projectId === projectId).reverse();
+    // Mirror PrismaRunRepository: createdAt desc, id desc tiebreak (newest run first, deterministic).
+    return this.rows
+      .filter((r) => r.projectId === projectId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
   }
 }
 

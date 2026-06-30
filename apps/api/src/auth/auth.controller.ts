@@ -2,13 +2,11 @@ import { randomBytes } from 'node:crypto';
 import { GetMe, LoginUser, LogoutUser, type MeView, RegisterUser } from '@gilgamesh/application';
 import { Body, Controller, Get, HttpCode, Post, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
+import { CSRF_COOKIE, SESSION_COOKIE } from './cookie-names';
 import { CurrentUser, SessionId } from './current-user.decorator';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { SessionAuthGuard } from './session-auth.guard';
-
-const SESSION_COOKIE = '__Host-gg_session';
-const CSRF_COOKIE = 'csrf';
 
 function setSessionCookie(res: Response, token: string, maxAgeMs?: number): void {
   res.cookie(SESSION_COOKIE, token, {

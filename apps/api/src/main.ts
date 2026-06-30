@@ -1,8 +1,10 @@
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { ProdAppModule } from './app.module';
+import { configureBodyParser } from './common/body-parser';
 import { loadConfig } from './config';
 
 /**
@@ -13,7 +15,11 @@ import { loadConfig } from './config';
  */
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
-  const app = await NestFactory.create(ProdAppModule);
+  const app = await NestFactory.create<NestExpressApplication>(ProdAppModule);
+
+  // Deterministic body-size limit (large enough for the biggest valid .feature; see input-limits).
+  // Must run before any request is handled — main.ts never calls app.init() directly, listen() does.
+  configureBodyParser(app);
 
   // Behind a reverse proxy / load balancer, trust exactly the configured number of hops so req.ip
   // is the real client IP (the rate-limit key depends on it). Validated config, not hardcoded — a
