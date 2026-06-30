@@ -1,0 +1,23 @@
+title = "gilgamesh gitleaks config"
+
+[extend]
+useDefault = true
+
+# Known local-dev infrastructure creds and test fixtures — NOT real secrets. Production secrets
+# are vault refs (keystone), never committed.
+[allowlist]
+description = "Local-dev + test fixtures"
+regexes = [
+  '''gilgamesh:gilgamesh''',        # docker-compose / CI / config local Postgres creds
+  '''C0rrect-Horse!''',             # shared test-user password fixture
+  '''redis://localhost:6379''',
+]
+paths = [
+  '''.*\.test\.ts$''',
+  '''.*\.spec\.ts$''',
+  '''apps/api/acceptance/.*''',
+  '''apps/web/e2e/.*''',
+  '''docker-compose\.yml$''',
+  '''docker/postgres/init\.sql$''',
+  '''\.github/workflows/.*''',
+]
