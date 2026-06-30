@@ -21,12 +21,15 @@ function setSessionCookie(res: Response, token: string, maxAgeMs?: number): void
 }
 
 // Non-HttpOnly companion cookie for the double-submit CSRF check (must be readable by the SPA).
-function setCsrfCookie(res: Response): void {
+// maxAge tracks the session cookie on login so it isn't dropped on browser close while the session
+// persists; it is also re-minted on GET /auth/me so a restored session always has a usable token.
+function setCsrfCookie(res: Response, maxAgeMs?: number): void {
   res.cookie(CSRF_COOKIE, randomBytes(32).toString('base64url'), {
     httpOnly: false,
     secure: true,
     sameSite: 'lax',
     path: '/',
+    ...(maxAgeMs !== undefined ? { maxAge: maxAgeMs } : {}),
   });
 }
 
@@ -68,14 +71,21 @@ export class AuthController {
       password: dto.password,
       rememberMe: dto.rememberMe,
     });
-    setSessionCookie(res, result.sessionToken, result.expiresAt.getTime() - Date.now());
-    setCsrfCookie(res);
+    const maxAgeMs = result.expiresAt.getTime() - Date.now();
+    setSessionCookie(res, result.sessionToken, maxAgeMs);
+    setCsrfCookie(res, maxAgeMs);
     return { userId: result.userId, activeOrgId: result.activeOrgId };
   }
 
   @Get('me')
   @UseGuards(SessionAuthGuard)
-  async me(@CurrentUser() userId: string): Promise<MeView> {
+  async me(
+    @CurrentUser() userId: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<MeView> {
+    // Re-mint the double-submit token so a session restored from the httpOnly cookie (e.g. after a
+    // browser restart that dropped the csrf cookie) can still perform mutations.
+    setCsrfCookie(res);
     return this.getMe.execute({ userId });
   }
 
