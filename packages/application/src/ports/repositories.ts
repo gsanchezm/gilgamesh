@@ -47,6 +47,9 @@ export interface ProjectRepository {
 export interface SliceRepository {
   createMany(recs: SliceRecord[]): Promise<void>;
   listForProject(projectId: string): Promise<SliceRecord[]>;
+  findById(id: string): Promise<SliceRecord | null>;
+  save(rec: SliceRecord): Promise<void>;
+  delete(id: string): Promise<void>;
 }
 
 export interface AgentRepository {

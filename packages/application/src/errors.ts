@@ -8,7 +8,8 @@ export type AppErrorCode =
   | 'INVALID_TOOL'
   | 'VALIDATION'
   | 'CSRF_FAILED'
-  | 'RATE_LIMITED';
+  | 'RATE_LIMITED'
+  | 'CONFLICT';
 
 /** A use-case-level failure with a stable code that adapters map to a transport status. */
 export class ApplicationError extends Error {

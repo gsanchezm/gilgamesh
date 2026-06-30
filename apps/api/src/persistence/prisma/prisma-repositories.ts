@@ -117,7 +117,16 @@ export class PrismaSliceRepository implements SliceRepository {
     await this.db.slice.createMany({ data: recs });
   }
   listForProject(projectId: string): Promise<SliceRecord[]> {
-    return this.db.slice.findMany({ where: { projectId } });
+    return this.db.slice.findMany({ where: { projectId }, orderBy: { order: 'asc' } });
+  }
+  findById(id: string): Promise<SliceRecord | null> {
+    return this.db.slice.findUnique({ where: { id } });
+  }
+  async save(rec: SliceRecord): Promise<void> {
+    await this.db.slice.upsert({ where: { id: rec.id }, create: rec, update: rec });
+  }
+  async delete(id: string): Promise<void> {
+    await this.db.slice.delete({ where: { id } });
   }
 }
 

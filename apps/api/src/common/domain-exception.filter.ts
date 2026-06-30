@@ -14,6 +14,7 @@ const STATUS: Record<AppErrorCode, number> = {
   VALIDATION: 422,
   CSRF_FAILED: 403,
   RATE_LIMITED: 429,
+  CONFLICT: 409,
 };
 
 /**

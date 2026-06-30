@@ -108,7 +108,19 @@ export class InMemorySliceRepository implements SliceRepository {
     this.rows.push(...recs);
   }
   async listForProject(projectId: string): Promise<SliceRecord[]> {
-    return this.rows.filter((s) => s.projectId === projectId);
+    return this.rows.filter((s) => s.projectId === projectId).sort((a, b) => a.order - b.order);
+  }
+  async findById(id: string): Promise<SliceRecord | null> {
+    return this.rows.find((s) => s.id === id) ?? null;
+  }
+  async save(rec: SliceRecord): Promise<void> {
+    const idx = this.rows.findIndex((s) => s.id === rec.id);
+    if (idx >= 0) this.rows[idx] = rec;
+    else this.rows.push(rec);
+  }
+  async delete(id: string): Promise<void> {
+    const idx = this.rows.findIndex((s) => s.id === id);
+    if (idx >= 0) this.rows.splice(idx, 1);
   }
 }
 
