@@ -8,3 +8,4 @@ export * from './brain';
 export * from './kernel';
 export * from './payment';
 export * from './knowledge';
+export * from './integrations';

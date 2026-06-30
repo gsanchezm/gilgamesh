@@ -2,6 +2,7 @@ import type {
   AgentRecord,
   AuditLogRecord,
   FeatureRecord,
+  IntegrationRecord,
   MembershipRecord,
   OrgRecord,
   ProjectRecord,
@@ -48,6 +49,7 @@ export interface ProjectRepository {
   findById(id: string): Promise<ProjectRecord | null>;
   existsBySlug(orgId: string, slug: string): Promise<boolean>;
   listForOrg(orgId: string): Promise<ProjectRecord[]>;
+  save(rec: ProjectRecord): Promise<void>;
 }
 
 export interface SliceRepository {
@@ -106,6 +108,12 @@ export interface ToolBindingRepository {
   findByProjectAndAgent(projectId: string, agentId: string): Promise<ToolBindingRecord | null>;
   save(rec: ToolBindingRecord): Promise<void>;
   setEnabledForProject(projectId: string, enabled: boolean, at: Date): Promise<void>;
+}
+
+export interface IntegrationRepository {
+  listForOrg(orgId: string): Promise<IntegrationRecord[]>;
+  findByKey(orgId: string, key: string): Promise<IntegrationRecord | null>;
+  upsert(rec: IntegrationRecord): Promise<void>;
 }
 
 export interface SubscriptionRepository {

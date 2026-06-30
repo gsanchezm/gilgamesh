@@ -64,8 +64,30 @@ export interface ProjectRecord {
   repoFullName: string | null;
   repoBranch: string | null;
   repoCommit: string | null;
+  repoLastSyncAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export type IntegrationGroup =
+  | 'SOURCE_REPOS'
+  | 'PROJECT_TRACKING'
+  | 'TEST_MANAGEMENT'
+  | 'COMMUNICATION'
+  | 'CICD'
+  | 'DEVICES_BROWSERS';
+
+/** A per-org integration connection (slice 6). `secretRef` is a vault reference — NEVER a raw token. */
+export interface IntegrationRecord {
+  id: string;
+  orgId: string;
+  key: string;
+  group: IntegrationGroup;
+  connected: boolean;
+  secretRef: string | null;
+  config: Record<string, unknown>;
+  connectedById: string | null;
+  connectedAt: Date | null;
 }
 
 export interface SliceRecord {

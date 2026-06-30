@@ -2,6 +2,7 @@ import type {
   AgentRepository,
   AuditLogRepository,
   FeatureRepository,
+  IntegrationRepository,
   MembershipRepository,
   OrgRepository,
   ProjectRepository,
@@ -23,6 +24,7 @@ import type {
   AgentRecord,
   AuditLogRecord,
   FeatureRecord,
+  IntegrationRecord,
   KnowledgeChunkRecord,
   MembershipRecord,
   OrgRecord,
@@ -42,6 +44,7 @@ import type {
 import { DeterministicBrain } from '../brain/stub-brain';
 import { DeterministicKernel } from '../kernel/deterministic-kernel';
 import { MockPaymentProvider } from '../payment/mock-payment-provider';
+import { MockRepoProvider, StubSecretVault } from '../integrations/mock-repo-provider';
 import { FakeClock, FakePasswordHasher, FakeTokenGenerator, SeqIdGenerator } from './fakes';
 
 export class InMemoryUserRepository implements UserRepository {
@@ -117,6 +120,25 @@ export class InMemoryProjectRepository implements ProjectRepository {
   }
   async listForOrg(orgId: string): Promise<ProjectRecord[]> {
     return [...this.byId.values()].filter((p) => p.orgId === orgId);
+  }
+  async save(rec: ProjectRecord): Promise<void> {
+    this.byId.set(rec.id, rec);
+  }
+}
+
+export class InMemoryIntegrationRepository implements IntegrationRepository {
+  private readonly byOrgKey = new Map<string, IntegrationRecord>();
+  private k(orgId: string, key: string): string {
+    return `${orgId}::${key}`;
+  }
+  async listForOrg(orgId: string): Promise<IntegrationRecord[]> {
+    return [...this.byOrgKey.values()].filter((r) => r.orgId === orgId);
+  }
+  async findByKey(orgId: string, key: string): Promise<IntegrationRecord | null> {
+    return this.byOrgKey.get(this.k(orgId, key)) ?? null;
+  }
+  async upsert(rec: IntegrationRecord): Promise<void> {
+    this.byOrgKey.set(this.k(rec.orgId, rec.key), rec);
   }
 }
 
@@ -335,6 +357,9 @@ export interface InMemoryContext {
   subscriptions: InMemorySubscriptionRepository;
   audit: InMemoryAuditLogRepository;
   knowledge: InMemoryKnowledgeChunkRepository;
+  integrations: InMemoryIntegrationRepository;
+  repoProvider: MockRepoProvider;
+  vault: StubSecretVault;
   uow: InMemoryUnitOfWork;
   clock: FakeClock;
   ids: SeqIdGenerator;
@@ -371,6 +396,9 @@ export function createInMemoryContext(): InMemoryContext {
   return {
     ...repos,
     knowledge,
+    integrations: new InMemoryIntegrationRepository(),
+    repoProvider: new MockRepoProvider(),
+    vault: new StubSecretVault(),
     uow: new InMemoryUnitOfWork(repos),
     clock: new FakeClock(),
     ids: new SeqIdGenerator(),

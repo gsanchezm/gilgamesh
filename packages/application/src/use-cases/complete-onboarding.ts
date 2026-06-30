@@ -77,6 +77,7 @@ export class CompleteOnboarding {
         repoFullName: input.repoFullName ?? null,
         repoBranch: input.repoBranch ?? null,
         repoCommit: null,
+        repoLastSyncAt: null,
         createdAt: now,
         updatedAt: now,
       });
