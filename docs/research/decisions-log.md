@@ -331,3 +331,21 @@ Fixed, re-verified green (domain 49 · application 122 · api 72 · web 55 · in
 - **[LOW]** `scrubChunk` ran the `[^\n]*`-anchored copyright regex before `<br>`→newline (latent over-reach,
   0 impact on the shipped corpus); reordered. Correctly excluded as non-findings: the missing `orgId` (intended
   global KB) and the lexical-hash stub (intended until the Brain slice).
+
+## Paso 9 — Slice 6 scope (Integrations) — owner decisions S6 (2026-06-30)
+
+Owner picked **Integrations (connect a Git repo)** as slice 6. Scope = SOURCE_REPOS only. Decisions (advisor-reviewed):
+- **S6-A — Deterministic stub `RepoProvider` [S6-NEW port]** (verify/listRepos/listFeatureFiles), offline.
+  Real OAuth/webhooks + the other integration groups (tracking/comms/ci/devices) deferred.
+- **S6-B — Secret hygiene:** the raw token is NEVER persisted/logged/returned/audited — only a synthetic
+  `secretRef` (`vault://{orgId}/{key}`). The stub verifies then discards the token via `SecretVault.put`
+  [S6-NEW port] (no `get()`). Mirrors GenerateDrafts' "never store the raw prompt".
+- **S6-C — Keystone-aligned surface + one explicit extension:** connect/disconnect/config all route through
+  the single keystone mutator `PATCH /orgs/{orgId}/integrations/{key}` (intent in body). Repo feature import is
+  **[S6-NEW]** `POST /projects/{id}/repo/import` (recorded as an explicit extension, not a silent path).
+- **S6-D — Lifecycle = upsert-on-PATCH:** org starts with zero Integration rows; List merges the static
+  SOURCE_REPOS catalog against connected rows; PATCH connect upserts. No change to CompleteOnboarding.
+- **Enum map:** `Integration.key` `ado_repos` → `Project.repoProvider` `ado` (different value sets).
+- **Import idempotency:** upsert Features by path; resolve the integration by `project.orgId` (never client org).
+
+Spec at `specs/slices/06-integrations/spec.md` (AC-INT-01..09). Building on `slice-6-integrations`.
