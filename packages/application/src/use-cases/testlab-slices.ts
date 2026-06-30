@@ -4,9 +4,11 @@ import type { IdGenerator } from '../ports/id';
 import type { SliceRecord } from '../ports/records';
 import type {
   AuditLogRepository,
+  FeatureRepository,
   MembershipRepository,
   ProjectRepository,
   SliceRepository,
+  TestCaseRepository,
 } from '../ports/repositories';
 import { requireProjectAccess } from './authz';
 
@@ -121,12 +123,26 @@ export class UpdateSlice {
 }
 
 export class DeleteSlice {
-  constructor(private readonly deps: SliceDeps) {}
+  constructor(
+    private readonly deps: SliceDeps & { features: FeatureRepository; testCases: TestCaseRepository },
+  ) {}
 
   async execute(input: { userId: string; sliceId: string }): Promise<void> {
     const slice = await this.deps.slices.findById(input.sliceId);
     if (!slice) throw new ApplicationError('NOT_FOUND', 'Slice not found.');
     await requireProjectAccess(this.deps, input.userId, slice.projectId, [...AUTHORS]);
+
+    // Detach dependents so both persistence wirings behave identically (the Postgres FK
+    // onDelete:SetNull is kept as defense-in-depth, but the in-memory adapter can't see it).
+    for (const f of await this.deps.features.listForProject(slice.projectId, slice.id)) {
+      f.sliceId = null;
+      await this.deps.features.save(f);
+    }
+    for (const t of await this.deps.testCases.listForProject(slice.projectId, slice.id)) {
+      t.sliceId = null;
+      await this.deps.testCases.save(t);
+    }
+
     await this.deps.slices.delete(slice.id);
     await audit(this.deps, slice.orgId, input.userId, 'slice.deleted', slice.id, {});
   }

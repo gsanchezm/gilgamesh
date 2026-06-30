@@ -50,4 +50,11 @@ describe('parseFeature (gherkin)', () => {
     expect(f.name).toBe('Spaced');
     expect(f.scenarios[0]?.name).toBe('Trimmed');
   });
+
+  it('does not count "Scenario:" lines inside a doc string', () => {
+    const f = parseFeature(
+      'Feature: F\n  Scenario: Real\n    Given a payload\n      """\n      Scenario: not a real one\n      """\n    Then ok\n',
+    );
+    expect(f.scenarios.map((s) => s.name)).toEqual(['Real']);
+  });
 });

@@ -58,6 +58,19 @@ describe('Test Lab — test case authoring', () => {
     await expect(new GetTestCase(ctx).execute({ userId, testCaseId: created.id })).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
+  it("normalizes an empty-string sliceId/assignedAgentId to null (no '' persisted)", async () => {
+    const tc = await new CreateTestCase(ctx).execute({
+      userId,
+      projectId,
+      title: 'X',
+      priority: 'LOW',
+      sliceId: '',
+      assignedAgentId: '',
+    });
+    expect(tc.sliceId).toBeNull();
+    expect(tc.assignedAgentId).toBeNull();
+  });
+
   it('rejects a missing title or an invalid priority (AC-TC-04)', async () => {
     await expect(
       new CreateTestCase(ctx).execute({ userId, projectId, title: '   ', priority: 'HIGH' }),

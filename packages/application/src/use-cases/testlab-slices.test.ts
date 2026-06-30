@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createInMemoryContext, type InMemoryContext } from '../testing/in-memory';
 import { CompleteOnboarding } from './complete-onboarding';
 import { RegisterUser } from './register-user';
+import { CreateFeature } from './testlab-features';
 import { CreateSlice, DeleteSlice, ListSlices, UpdateSlice } from './testlab-slices';
+import { CreateTestCase } from './testlab-testcases';
 
 describe('Test Lab — slice authoring', () => {
   let ctx: InMemoryContext;
@@ -63,6 +65,23 @@ describe('Test Lab — slice authoring', () => {
     await new DeleteSlice(ctx).execute({ userId, sliceId: s.id });
     const after = await new ListSlices(ctx).execute({ userId, projectId });
     expect(after.some((x) => x.id === s.id)).toBe(false);
+  });
+
+  it('detaches dependent features and test cases on delete (sliceId -> null)', async () => {
+    const s = await new CreateSlice(ctx).execute({ userId, projectId, key: 'regression', name: 'Regression' });
+    const f = await new CreateFeature(ctx).execute({
+      userId,
+      projectId,
+      path: 'a.feature',
+      content: 'Feature: A\n  Scenario: One\n    Then ok\n',
+      sliceId: s.id,
+    });
+    const tc = await new CreateTestCase(ctx).execute({ userId, projectId, title: 'T', priority: 'LOW', sliceId: s.id });
+
+    await new DeleteSlice(ctx).execute({ userId, sliceId: s.id });
+
+    expect((await ctx.features.findById(f.id))?.sliceId).toBeNull();
+    expect((await ctx.testCases.findById(tc.id))?.sliceId).toBeNull();
   });
 
   it('enforces tenant isolation (another tenant gets NOT_FOUND)', async () => {

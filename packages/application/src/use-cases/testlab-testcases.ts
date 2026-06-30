@@ -136,7 +136,7 @@ export class CreateTestCase {
       id: this.deps.ids.next(),
       orgId: project.orgId,
       projectId: project.id,
-      sliceId: input.sliceId ?? null,
+      sliceId: input.sliceId || null,
       key: nextKey(existing, prefix),
       title,
       steps: input.steps ?? '',
@@ -144,7 +144,7 @@ export class CreateTestCase {
       expected: input.expected ?? '',
       priority: input.priority,
       status: 'NOTRUN',
-      assignedAgentId: input.assignedAgentId ?? null,
+      assignedAgentId: input.assignedAgentId || null,
       createdAt: now,
       updatedAt: now,
     };
@@ -217,11 +217,11 @@ export class UpdateTestCase {
     }
     if (input.sliceId !== undefined) {
       if (input.sliceId) await resolveSlicePrefix(this.deps, tc.projectId, input.sliceId);
-      tc.sliceId = input.sliceId;
+      tc.sliceId = input.sliceId || null;
     }
     if (input.assignedAgentId !== undefined) {
       if (input.assignedAgentId) await requireAgentInOrg(this.deps, tc.orgId, input.assignedAgentId);
-      tc.assignedAgentId = input.assignedAgentId;
+      tc.assignedAgentId = input.assignedAgentId || null;
     }
     if (input.steps !== undefined) tc.steps = input.steps;
     if (input.data !== undefined) tc.data = input.data;

@@ -21,9 +21,17 @@ const SCENARIO_RE = /^\s*Scenario(?: Outline| Template)?:\s*(.*)$/;
 export function parseFeature(content: string): ParsedFeature {
   let name: string | null = null;
   const scenarios: ParsedScenario[] = [];
+  let inDocString = false;
 
   for (const line of content.split(/\r?\n/)) {
     const trimmed = line.trim();
+    // Doc-string fences (""" or ```) delimit step arguments; a "Scenario:" inside one is data,
+    // not a real scenario, so toggle on the fence and skip everything between fences.
+    if (trimmed === '"""' || trimmed === '```') {
+      inDocString = !inDocString;
+      continue;
+    }
+    if (inDocString) continue;
     if (trimmed === '' || trimmed.startsWith('#')) continue;
 
     if (name === null) {

@@ -125,7 +125,7 @@ export class CreateFeature {
       id: this.deps.ids.next(),
       orgId: project.orgId,
       projectId: project.id,
-      sliceId: input.sliceId ?? null,
+      sliceId: input.sliceId || null,
       name: parsed.name,
       path: input.path,
       content: input.content,
@@ -233,7 +233,7 @@ export class UpdateFeature {
     if (input.path !== undefined) feature.path = input.path;
     if (input.sliceId !== undefined) {
       if (input.sliceId) await requireSliceInProject(this.deps, feature.projectId, input.sliceId);
-      feature.sliceId = input.sliceId;
+      feature.sliceId = input.sliceId || null;
     }
     feature.updatedAt = this.deps.clock.now();
     await this.deps.features.save(feature);

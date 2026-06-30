@@ -75,8 +75,10 @@ const providers: Provider[] = [
       audit: AuditLogRepository,
       ids: IdGenerator,
       clock: Clock,
-    ) => new DeleteSlice({ slices, projects, memberships, audit, ids, clock }),
-    inject: [T.Slices, T.Projects, T.Memberships, T.Audit, T.Ids, T.Clock],
+      features: FeatureRepository,
+      testCases: TestCaseRepository,
+    ) => new DeleteSlice({ slices, projects, memberships, audit, ids, clock, features, testCases }),
+    inject: [T.Slices, T.Projects, T.Memberships, T.Audit, T.Ids, T.Clock, T.Features, T.TestCases],
   },
   // Features
   {
