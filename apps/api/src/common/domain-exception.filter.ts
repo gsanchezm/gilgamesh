@@ -13,6 +13,7 @@ const STATUS: Record<AppErrorCode, number> = {
   INVALID_TOOL: 422,
   VALIDATION: 422,
   CSRF_FAILED: 403,
+  RATE_LIMITED: 429,
 };
 
 /** Maps domain/application errors to RFC9457-shaped responses with stable titles. */

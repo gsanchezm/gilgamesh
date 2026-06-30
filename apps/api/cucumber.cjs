@@ -9,6 +9,9 @@
 process.env.DATABASE_URL =
   process.env.DATABASE_URL ||
   'postgresql://gilgamesh:gilgamesh@localhost:5432/gilgamesh?schema=public';
+// Effectively disable the auth rate limit for the acceptance sweep (it re-registers the same
+// user across dozens of scenarios); the 429 behavior is proven by a dedicated e2e instead.
+process.env.AUTH_RATE_LIMIT = process.env.AUTH_RATE_LIMIT || '1000000';
 
 const FEATURES = '../../specs/slices/01-auth-onboarding-agent-room';
 

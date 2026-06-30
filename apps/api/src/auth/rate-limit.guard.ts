@@ -1,0 +1,53 @@
+import { ApplicationError, type Clock } from '@gilgamesh/application';
+import { type CanActivate, type ExecutionContext, Inject, Injectable } from '@nestjs/common';
+import type { Request, Response } from 'express';
+import type { RateLimitConfig } from '../config';
+import { TOKENS } from '../persistence/tokens';
+import { RATE_LIMIT_STORE, type RateLimitStore } from './rate-limit-store';
+
+export const RATE_LIMIT = 'RATE_LIMIT';
+
+// Throttled auth endpoints (spec AC-AUTH-13 / §10.2). forgot/reset land with slice #7.
+const LIMITED_PATHS = ['/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password'];
+
+/**
+ * Fixed-window rate limit on auth endpoints, keyed by (path + IP + email) — per-IP-per-account.
+ * Counting is delegated to a {@link RateLimitStore} port (in-memory single-instance, or Redis with
+ * native TTL eviction for multi-replica). Exceeding the window => 429 RATE_LIMITED + Retry-After;
+ * every throttled response carries the X-RateLimit-* headers.
+ *
+ * Deferred (§10.2): a per-IP-only bound (org-farming) and exponential-backoff account lockout (N=10).
+ */
+@Injectable()
+export class RateLimitGuard implements CanActivate {
+  constructor(
+    @Inject(RATE_LIMIT) private readonly opts: RateLimitConfig,
+    @Inject(RATE_LIMIT_STORE) private readonly store: RateLimitStore,
+    @Inject(TOKENS.Clock) private readonly clock: Clock,
+  ) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const req = context.switchToHttp().getRequest<Request>();
+    const path = LIMITED_PATHS.find((p) => req.path.endsWith(p));
+    if (!path) return true;
+
+    const ip = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+    const body = req.body as { email?: unknown } | undefined;
+    const email = typeof body?.email === 'string' ? body.email.toLowerCase() : '';
+    const key = `${path}:${ip}:${email}`;
+
+    const { count, resetAt } = await this.store.hit(key, this.opts.windowMs);
+
+    const res = context.switchToHttp().getResponse<Response>();
+    res.setHeader('X-RateLimit-Limit', String(this.opts.limit));
+    res.setHeader('X-RateLimit-Remaining', String(Math.max(0, this.opts.limit - count)));
+    res.setHeader('X-RateLimit-Reset', String(Math.ceil(resetAt / 1000)));
+
+    if (count > this.opts.limit) {
+      const retryAfterSec = Math.max(1, Math.ceil((resetAt - this.clock.now().getTime()) / 1000));
+      res.setHeader('Retry-After', String(retryAfterSec));
+      throw new ApplicationError('RATE_LIMITED', 'Too many requests. Please retry later.');
+    }
+    return true;
+  }
+}

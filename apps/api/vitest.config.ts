@@ -18,5 +18,8 @@ export default defineConfig({
     // Integration tests (require Docker Postgres) run via `pnpm test:int`.
     exclude: ['**/node_modules/**', '**/dist/**', '**/*.int.test.ts'],
     setupFiles: ['./test/setup.ts'],
+    // Sweep e2e re-register users across tests; the 429 path is proven by a dedicated test
+    // that overrides RATE_LIMIT to a tiny value.
+    env: { AUTH_RATE_LIMIT: '1000000' },
   },
 });

@@ -3,9 +3,13 @@ import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { AgentsModule } from './agents/agents.module';
 import { AuthModule } from './auth/auth.module';
 import { CsrfGuard } from './auth/csrf.guard';
+import { InMemoryRateLimitStore } from './auth/in-memory-rate-limit-store';
+import { RATE_LIMIT_STORE } from './auth/rate-limit-store';
+import { RATE_LIMIT, RateLimitGuard } from './auth/rate-limit.guard';
 import { SecurityModule } from './auth/security.module';
 import { DomainExceptionFilter } from './common/domain-exception.filter';
 import { buildValidationPipe } from './common/validation.pipe';
+import { rateLimitFromEnv } from './config';
 import { HealthController } from './health.controller';
 import { OrgsModule } from './orgs/orgs.module';
 import { PersistenceModule } from './persistence/persistence.module';
@@ -20,6 +24,11 @@ const FEATURE_MODULES = [SecurityModule, AuthModule, ProjectsModule, AgentsModul
  *  CSRF guard and exception filter as production. */
 export const APP_PROVIDERS = [
   { provide: APP_PIPE, useValue: buildValidationPipe() },
+  { provide: RATE_LIMIT, useFactory: () => rateLimitFromEnv() },
+  // In-memory store keeps the whole suite + harness Docker-free. A later step splits this per
+  // composition (in-memory here, Redis in ProdAppModule) once the Redis adapter lands.
+  { provide: RATE_LIMIT_STORE, useClass: InMemoryRateLimitStore },
+  { provide: APP_GUARD, useClass: RateLimitGuard },
   { provide: APP_GUARD, useClass: CsrfGuard },
   { provide: APP_FILTER, useClass: DomainExceptionFilter },
 ];
