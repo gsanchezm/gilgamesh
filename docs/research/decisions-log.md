@@ -361,3 +361,15 @@ migration with projects.repo_last_sync_at + PrismaIntegrationRepository + Integr
 knowledge + integrations). Secret hygiene verified: the raw token never appears in any view/list/audit/row.
 Deferred: real provider OAuth/webhooks/sync; the non-SOURCE_REPOS groups; a real Key Vault with get(). Awaiting
 owner review/merge.
+
+**Slice 6 adversarial review (2026-06-30) — fixed before merge.** A 14-agent review confirmed the S6-B token
+invariant HOLDS (no raw-token leak in any wiring) and found 1 HIGH + nits, all fixed + re-verified green
+(application 135 · api 80 · int 14 · BDD 94 · Playwright 6):
+- **[HIGH]** concurrent/double-submit repo import created duplicate Features (existence read outside the tx +
+  no DB uniqueness on path). Added `@@unique([projectId, path])` (+ migration) + a `FeatureRepository.upsertByPath`
+  (atomic create-or-update keyed on the path, preserving id/sliceId/createdAt); ImportRepoFeatures upserts in-tx
+  → idempotent AND concurrency-safe.
+- **[latent]** the import wrote a full project row from the stale pre-tx snapshot (slice-4 lost-update class) →
+  added `ProjectRepository.linkRepo` (targeted repo-column update) and the import uses it.
+- `listForOrg` now orders by key (deterministic "first connected"); dropped the unused `config` DTO field;
+  added a Postgres-level BDD guard asserting no token in the row/audit + `secretRef == vault://{orgId}/{key}`.
