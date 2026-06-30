@@ -1,4 +1,4 @@
-import { DeterministicBrain } from '@gilgamesh/application';
+import { DeterministicBrain, DeterministicKernel } from '@gilgamesh/application';
 import { Global, Module } from '@nestjs/common';
 import {
   Argon2PasswordHasher,
@@ -15,6 +15,8 @@ import {
   PrismaMembershipRepository,
   PrismaOrgRepository,
   PrismaProjectRepository,
+  PrismaRunRepository,
+  PrismaRunResultRepository,
   PrismaScenarioRepository,
   PrismaSessionRepository,
   PrismaSliceRepository,
@@ -39,6 +41,8 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     { provide: TOKENS.Features, useFactory: (db: PrismaService) => new PrismaFeatureRepository(db), inject: [PrismaService] },
     { provide: TOKENS.Scenarios, useFactory: (db: PrismaService) => new PrismaScenarioRepository(db), inject: [PrismaService] },
     { provide: TOKENS.TestCases, useFactory: (db: PrismaService) => new PrismaTestCaseRepository(db), inject: [PrismaService] },
+    { provide: TOKENS.Runs, useFactory: (db: PrismaService) => new PrismaRunRepository(db), inject: [PrismaService] },
+    { provide: TOKENS.RunResults, useFactory: (db: PrismaService) => new PrismaRunResultRepository(db), inject: [PrismaService] },
     { provide: TOKENS.Agents, useFactory: (db: PrismaService) => new PrismaAgentRepository(db), inject: [PrismaService] },
     { provide: TOKENS.ToolBindings, useFactory: (db: PrismaService) => new PrismaToolBindingRepository(db), inject: [PrismaService] },
     { provide: TOKENS.Subscriptions, useFactory: (db: PrismaService) => new PrismaSubscriptionRepository(db), inject: [PrismaService] },
@@ -49,6 +53,7 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     { provide: TOKENS.Tokens, useValue: new CryptoSessionTokenGenerator() },
     { provide: TOKENS.Clock, useValue: new SystemClock() },
     { provide: TOKENS.Brain, useValue: new DeterministicBrain() },
+    { provide: TOKENS.Kernel, useValue: new DeterministicKernel() },
   ],
   exports: [
     PrismaService,
@@ -61,6 +66,8 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     TOKENS.Features,
     TOKENS.Scenarios,
     TOKENS.TestCases,
+    TOKENS.Runs,
+    TOKENS.RunResults,
     TOKENS.Agents,
     TOKENS.ToolBindings,
     TOKENS.Subscriptions,
@@ -71,6 +78,7 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     TOKENS.Tokens,
     TOKENS.Clock,
     TOKENS.Brain,
+    TOKENS.Kernel,
   ],
 })
 export class PrismaPersistenceModule {}

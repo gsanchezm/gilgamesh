@@ -12,6 +12,10 @@ import type {
   ProjectRecord,
   ProjectRepository,
   Role,
+  RunRecord,
+  RunRepository,
+  RunResultRecord,
+  RunResultRepository,
   ScenarioRecord,
   ScenarioRepository,
   SessionRecord,
@@ -189,6 +193,29 @@ export class PrismaTestCaseRepository implements TestCaseRepository {
   }
   async delete(id: string): Promise<void> {
     await this.db.testCase.delete({ where: { id } });
+  }
+}
+
+export class PrismaRunRepository implements RunRepository {
+  constructor(private readonly db: Prisma.TransactionClient) {}
+  async create(rec: RunRecord): Promise<void> {
+    await this.db.run.create({ data: rec });
+  }
+  findById(id: string): Promise<RunRecord | null> {
+    return this.db.run.findUnique({ where: { id } });
+  }
+  listForProject(projectId: string): Promise<RunRecord[]> {
+    return this.db.run.findMany({ where: { projectId }, orderBy: { createdAt: 'desc' } });
+  }
+}
+
+export class PrismaRunResultRepository implements RunResultRepository {
+  constructor(private readonly db: Prisma.TransactionClient) {}
+  async createMany(recs: RunResultRecord[]): Promise<void> {
+    if (recs.length > 0) await this.db.runResult.createMany({ data: recs });
+  }
+  listForRun(runId: string): Promise<RunResultRecord[]> {
+    return this.db.runResult.findMany({ where: { runId }, orderBy: { order: 'asc' } });
   }
 }
 
