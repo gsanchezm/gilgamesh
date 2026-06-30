@@ -49,4 +49,21 @@ describe('Knowledge / RAG', () => {
   it('rejects an empty query (VALIDATION)', async () => {
     await expect(new SearchKnowledge(ctx).execute({ query: '   ' })).rejects.toMatchObject({ code: 'VALIDATION' });
   });
+
+  it('returns empty for a tokenless query (zero embedding), not a degenerate ranking (AC-KB-05)', async () => {
+    await new IngestKnowledge(ctx).execute(CHUNKS);
+    const res = await new SearchKnowledge(ctx).execute({ query: '!!! ??? —' });
+    expect(res.results).toEqual([]);
+    expect(res.total).toBe(2);
+  });
+
+  it('breaks score ties deterministically by chunk id (AC-KB-05 parity)', async () => {
+    // identical text -> identical embedding -> exact score tie -> deterministic id-asc order.
+    await new IngestKnowledge(ctx).execute([
+      { id: 'chunk-b', source: 'B', headingPath: [], section: '', text: 'identical reference text about testing techniques' },
+      { id: 'chunk-a', source: 'A', headingPath: [], section: '', text: 'identical reference text about testing techniques' },
+    ]);
+    const res = await new SearchKnowledge(ctx).execute({ query: 'testing techniques reference', k: 2 });
+    expect(res.results.map((r) => r.citation.source)).toEqual(['A', 'B']);
+  });
 });

@@ -15,10 +15,11 @@ const FURNITURE: RegExp[] = [
 
 /** Removes PDF page-furniture (running headers/footers, ISTQB copyright) and normalizes whitespace/<br>. */
 export function scrubChunk(text: string): string {
-  let out = text;
+  // Normalize <br>→newline FIRST so the `[^\n]*`-anchored furniture regexes below can't greedily eat
+  // through a literal <br> into real following text.
+  let out = text.replace(/<br\s*\/?>/gi, '\n');
   for (const re of FURNITURE) out = out.replace(re, ' ');
   return out
-    .replace(/<br\s*\/?>/gi, '\n')
     .replace(/[ \t]+/g, ' ')
     .replace(/ ?\n ?/g, '\n')
     .replace(/\n{3,}/g, '\n\n')

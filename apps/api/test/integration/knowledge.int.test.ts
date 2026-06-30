@@ -60,6 +60,26 @@ describe('Knowledge / RAG (Prisma · real Postgres + pgvector)', () => {
     expect(res.results[0]!.score).toBeGreaterThan(res.results[1]!.score);
   });
 
+  it('breaks pgvector cosine ties deterministically by id (AC-KB-05 parity with in-memory)', async () => {
+    // identical text -> identical vector -> exact cosine tie -> the `ORDER BY … , id` tiebreak decides.
+    await new IngestKnowledge({ knowledge, brain }).execute([
+      { id: 'tie-b', source: 'B', headingPath: [], section: '', text: 'identical reference text about testing techniques' },
+      { id: 'tie-a', source: 'A', headingPath: [], section: '', text: 'identical reference text about testing techniques' },
+    ]);
+    const first = await new SearchKnowledge({ knowledge, brain }).execute({ query: 'testing techniques reference', k: 2 });
+    const second = await new SearchKnowledge({ knowledge, brain }).execute({ query: 'testing techniques reference', k: 2 });
+    expect(first.results.map((r) => r.citation.source)).toEqual(['A', 'B']);
+    expect(second.results.map((r) => r.citation.source)).toEqual(first.results.map((r) => r.citation.source));
+  });
+
+  it('returns empty for a tokenless query (zero vector), never NaN scores', async () => {
+    await new IngestKnowledge({ knowledge, brain }).execute([
+      { id: 'z1', source: 's', headingPath: [], section: '', text: 'equivalence partitioning divides the input domain' },
+    ]);
+    const res = await new SearchKnowledge({ knowledge, brain }).execute({ query: '!!! ??? —' });
+    expect(res.results).toEqual([]);
+  });
+
   it('upsert is idempotent on chunk id (re-ingest updates, not duplicates)', async () => {
     const ingest = new IngestKnowledge({ knowledge, brain });
     const chunk = { id: 'k1', source: 's', headingPath: ['H'], section: 'S', text: 'equivalence partitioning divides the input domain into classes' };

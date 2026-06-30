@@ -12,6 +12,14 @@ describe('scrubChunk', () => {
     expect(clean).toContain('Equivalence partitioning');
     expect(clean).toContain('divides the input domain');
   });
+
+  it('keeps text after a <br> that immediately follows the copyright line (scrub ordering)', () => {
+    const dirty =
+      'Intro. © International Software Testing Qualifications Board<br>Equivalence partitioning divides inputs.';
+    const clean = scrubChunk(dirty);
+    expect(clean).not.toMatch(/International Software Testing/);
+    expect(clean).toContain('Equivalence partitioning divides inputs');
+  });
 });
 
 describe('embedText', () => {

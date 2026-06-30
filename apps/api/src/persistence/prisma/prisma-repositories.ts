@@ -347,7 +347,7 @@ export class PrismaKnowledgeChunkRepository implements KnowledgeChunkRepository 
       SELECT id, source, heading_path AS "headingPath", section, content,
              token_estimate AS "tokenEstimate", 1 - (embedding <=> ${vec}::vector) AS score
       FROM knowledge_chunks
-      ORDER BY embedding <=> ${vec}::vector
+      ORDER BY embedding <=> ${vec}::vector, id
       LIMIT ${k}`;
     return rows.map((r) => ({
       chunk: {

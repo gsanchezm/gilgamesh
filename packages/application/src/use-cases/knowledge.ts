@@ -24,6 +24,15 @@ function tokenCount(s: string): number {
   return (s.match(/\S+/g) ?? []).length;
 }
 
+/**
+ * A query with no embeddable [a-z0-9] tokens (e.g. "!!!", punctuation/CJK-only) embeds to an all-zero
+ * vector. Cosine against a zero vector is undefined — in-memory yields 0, but pgvector's `<=>` yields NaN
+ * (→ `score:null` + arbitrary order). Detect it up front and return nothing, so both wirings agree.
+ */
+function isZeroVector(v: number[] | undefined): boolean {
+  return !v || v.every((x) => x === 0);
+}
+
 function citationOf(chunk: KnowledgeChunkRecord): Citation {
   return { source: chunk.source, section: chunk.section, headingPath: chunk.headingPath };
 }
@@ -72,6 +81,7 @@ export class SearchKnowledge {
     if (!q) throw new ApplicationError('VALIDATION', 'A query is required.');
     const k = Math.min(Math.max(Math.trunc(input.k ?? 8), 1), 20);
     const [embedding] = await this.deps.brain.embed([q]);
+    if (isZeroVector(embedding)) return { results: [], total: await this.deps.knowledge.count() };
     const scored = await this.deps.knowledge.search(embedding!, k);
     return {
       results: scored.map((s) => ({ content: s.chunk.content, citation: citationOf(s.chunk), score: s.score })),
@@ -88,6 +98,7 @@ export class KnowledgeRetriever implements KnowledgeRetrievalPort {
     const q = query.trim();
     if (!q) return [];
     const [embedding] = await this.deps.brain.embed([q]);
+    if (isZeroVector(embedding)) return [];
     const scored = await this.deps.knowledge.search(embedding!, k);
     return scored.map((s) => ({ content: s.chunk.content, citation: citationOf(s.chunk), score: s.score }));
   }

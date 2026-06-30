@@ -290,7 +290,8 @@ export class InMemoryKnowledgeChunkRepository implements KnowledgeChunkRepositor
   async search(queryEmbedding: number[], k: number): Promise<ScoredChunk[]> {
     return [...this.byId.values()]
       .map((chunk) => ({ chunk, score: cosineSimilarity(queryEmbedding, chunk.embedding) }))
-      .sort((a, b) => b.score - a.score)
+      // Deterministic tiebreak by id (mirrors the Prisma `ORDER BY … , id`) so ties don't diverge.
+      .sort((a, b) => b.score - a.score || (a.chunk.id < b.chunk.id ? -1 : a.chunk.id > b.chunk.id ? 1 : 0))
       .slice(0, k);
   }
   async count(): Promise<number> {

@@ -71,7 +71,7 @@ export function KnowledgeScreen({ client }: KnowledgeScreenProps) {
                 {r.citation.source}
                 {r.citation.section ? ` · ${r.citation.section}` : ''}
               </cite>
-              <span className="gx-knowledge__score"> ({r.score.toFixed(2)})</span>
+              <span className="gx-knowledge__score"> ({Number.isFinite(r.score) ? r.score.toFixed(2) : '—'})</span>
             </p>
           </li>
         ))}
