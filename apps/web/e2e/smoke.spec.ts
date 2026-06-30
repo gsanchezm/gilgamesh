@@ -39,7 +39,7 @@ test('full flow: login → onboarding (CSRF POST) → agent room toggle + wake-a
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // 3) Agent room: the freshly-onboarded tenant has all 11 agents awake.
-  await expect(page.getByText('Agent room')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Agent room' })).toBeVisible();
   await expect(page.getByText(/11 agents · OmniPizza/)).toBeVisible();
   await expect(page.getByText('11 / 11')).toBeVisible();
 

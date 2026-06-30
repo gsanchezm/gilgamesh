@@ -25,7 +25,7 @@ test('Knowledge: search the shared KB and see results with source citations', as
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(page.getByText('Agent room')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Agent room' })).toBeVisible();
 
   await page.goto('/knowledge');
   await expect(page.getByRole('heading', { name: 'Knowledge base' })).toBeVisible();

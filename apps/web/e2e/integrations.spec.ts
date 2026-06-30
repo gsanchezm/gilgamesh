@@ -24,7 +24,7 @@ test('Integrations: connect a source repo (CSRF) and see it connected', async ({
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(page.getByText('Agent room')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Agent room' })).toBeVisible();
 
   await page.goto('/integrations');
   await expect(page.getByRole('heading', { name: 'Integrations' })).toBeVisible();

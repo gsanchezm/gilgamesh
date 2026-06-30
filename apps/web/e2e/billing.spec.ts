@@ -24,7 +24,7 @@ test('Billing: view plan + usage, change plan, mock checkout to ACTIVE', async (
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(page.getByText('Agent room')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Agent room' })).toBeVisible();
 
   // Billing is active-org scoped via the restored session.
   await page.goto('/billing');

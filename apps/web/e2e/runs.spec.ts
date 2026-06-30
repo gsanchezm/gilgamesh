@@ -24,7 +24,7 @@ test('Test execution: author a feature, run it, and see aggregated results', asy
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(page.getByText('Agent room')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Agent room' })).toBeVisible();
 
   const projectId = /\/projects\/([^/]+)\/agents/.exec(page.url())?.[1];
   expect(projectId).toBeTruthy();

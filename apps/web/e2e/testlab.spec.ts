@@ -28,7 +28,7 @@ test('Test Lab: author a slice, a feature (parsed), a test case, and generate dr
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(page.getByText('Agent room')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Agent room' })).toBeVisible();
 
   // Deep-link into the Test Lab (a reload that exercises the /auth/me session restore).
   const projectId = /\/projects\/([^/]+)\/agents/.exec(page.url())?.[1];
