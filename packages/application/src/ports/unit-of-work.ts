@@ -1,12 +1,15 @@
 import type {
   AgentRepository,
   AuditLogRepository,
+  FeatureRepository,
   MembershipRepository,
   OrgRepository,
   ProjectRepository,
+  ScenarioRepository,
   SessionRepository,
   SliceRepository,
   SubscriptionRepository,
+  TestCaseRepository,
   ToolBindingRepository,
   UserRepository,
 } from './repositories';
@@ -22,6 +25,9 @@ export interface Repositories {
   sessions: SessionRepository;
   projects: ProjectRepository;
   slices: SliceRepository;
+  features: FeatureRepository;
+  scenarios: ScenarioRepository;
+  testCases: TestCaseRepository;
   agents: AgentRepository;
   toolBindings: ToolBindingRepository;
   subscriptions: SubscriptionRepository;

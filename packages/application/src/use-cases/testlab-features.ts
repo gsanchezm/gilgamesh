@@ -11,6 +11,7 @@ import type {
   ScenarioRepository,
   SliceRepository,
 } from '../ports/repositories';
+import type { UnitOfWork } from '../ports/unit-of-work';
 import { requireProjectAccess } from './authz';
 
 export interface ScenarioView {
@@ -39,6 +40,7 @@ export interface FeatureSummaryView {
 const AUTHORS = ['OWNER', 'ADMIN', 'MEMBER'] as const;
 
 interface FeatureDeps {
+  uow: UnitOfWork;
   features: FeatureRepository;
   scenarios: ScenarioRepository;
   slices: SliceRepository;
@@ -132,9 +134,12 @@ export class CreateFeature {
       createdAt: now,
       updatedAt: now,
     };
-    await this.deps.features.create(feature);
     const scenarios = this.toScenarioRecords(feature, parsed.scenarios);
-    await this.deps.scenarios.replaceForFeature(feature.id, scenarios);
+    // Feature row + its scenarios commit or roll back together (mirrors CompleteOnboarding).
+    await this.deps.uow.transaction(async (repos) => {
+      await repos.features.create(feature);
+      await repos.scenarios.replaceForFeature(feature.id, scenarios);
+    });
     await audit(this.deps, project.orgId, input.userId, 'feature.created', feature.id, {
       scenarioCount: scenarios.length,
     });
@@ -216,6 +221,7 @@ export class UpdateFeature {
     await requireProjectAccess(this.deps, input.userId, feature.projectId, [...AUTHORS]);
 
     let scenarios = await this.deps.scenarios.listForFeature(feature.id);
+    let contentChanged = false;
     if (input.content !== undefined && input.content !== feature.content) {
       const parsed = parseOrReject(input.content);
       feature.content = input.content;
@@ -228,7 +234,7 @@ export class UpdateFeature {
         order: s.order,
         lastStatus: null,
       }));
-      await this.deps.scenarios.replaceForFeature(feature.id, scenarios);
+      contentChanged = true;
     }
     if (input.path !== undefined) feature.path = input.path;
     if (input.sliceId !== undefined) {
@@ -236,7 +242,11 @@ export class UpdateFeature {
       feature.sliceId = input.sliceId || null;
     }
     feature.updatedAt = this.deps.clock.now();
-    await this.deps.features.save(feature);
+    // Feature row + re-parsed scenarios commit atomically (no stale content vs scenarios window).
+    await this.deps.uow.transaction(async (repos) => {
+      await repos.features.save(feature);
+      if (contentChanged) await repos.scenarios.replaceForFeature(feature.id, scenarios);
+    });
     await audit(this.deps, feature.orgId, input.userId, 'feature.updated', feature.id, {
       scenarioCount: scenarios.length,
     });
@@ -251,8 +261,10 @@ export class DeleteFeature {
     const feature = await this.deps.features.findById(input.featureId);
     if (!feature) throw new ApplicationError('NOT_FOUND', 'Feature not found.');
     await requireProjectAccess(this.deps, input.userId, feature.projectId, [...AUTHORS]);
-    await this.deps.scenarios.deleteForFeature(feature.id);
-    await this.deps.features.delete(feature.id);
+    await this.deps.uow.transaction(async (repos) => {
+      await repos.scenarios.deleteForFeature(feature.id);
+      await repos.features.delete(feature.id);
+    });
     await audit(this.deps, feature.orgId, input.userId, 'feature.deleted', feature.id, {});
   }
 }

@@ -22,6 +22,7 @@ import {
   type ScenarioRepository,
   type SliceRepository,
   type TestCaseRepository,
+  type UnitOfWork,
   UpdateFeature,
   UpdateSlice,
   UpdateTestCase,
@@ -84,6 +85,7 @@ const providers: Provider[] = [
   {
     provide: CreateFeature,
     useFactory: (
+      uow: UnitOfWork,
       features: FeatureRepository,
       scenarios: ScenarioRepository,
       slices: SliceRepository,
@@ -92,8 +94,8 @@ const providers: Provider[] = [
       audit: AuditLogRepository,
       ids: IdGenerator,
       clock: Clock,
-    ) => new CreateFeature({ features, scenarios, slices, projects, memberships, audit, ids, clock }),
-    inject: [T.Features, T.Scenarios, T.Slices, T.Projects, T.Memberships, T.Audit, T.Ids, T.Clock],
+    ) => new CreateFeature({ uow, features, scenarios, slices, projects, memberships, audit, ids, clock }),
+    inject: [T.UnitOfWork, T.Features, T.Scenarios, T.Slices, T.Projects, T.Memberships, T.Audit, T.Ids, T.Clock],
   },
   {
     provide: ListFeatures,
@@ -118,6 +120,7 @@ const providers: Provider[] = [
   {
     provide: UpdateFeature,
     useFactory: (
+      uow: UnitOfWork,
       features: FeatureRepository,
       scenarios: ScenarioRepository,
       slices: SliceRepository,
@@ -126,12 +129,13 @@ const providers: Provider[] = [
       audit: AuditLogRepository,
       ids: IdGenerator,
       clock: Clock,
-    ) => new UpdateFeature({ features, scenarios, slices, projects, memberships, audit, ids, clock }),
-    inject: [T.Features, T.Scenarios, T.Slices, T.Projects, T.Memberships, T.Audit, T.Ids, T.Clock],
+    ) => new UpdateFeature({ uow, features, scenarios, slices, projects, memberships, audit, ids, clock }),
+    inject: [T.UnitOfWork, T.Features, T.Scenarios, T.Slices, T.Projects, T.Memberships, T.Audit, T.Ids, T.Clock],
   },
   {
     provide: DeleteFeature,
     useFactory: (
+      uow: UnitOfWork,
       features: FeatureRepository,
       scenarios: ScenarioRepository,
       slices: SliceRepository,
@@ -140,8 +144,8 @@ const providers: Provider[] = [
       audit: AuditLogRepository,
       ids: IdGenerator,
       clock: Clock,
-    ) => new DeleteFeature({ features, scenarios, slices, projects, memberships, audit, ids, clock }),
-    inject: [T.Features, T.Scenarios, T.Slices, T.Projects, T.Memberships, T.Audit, T.Ids, T.Clock],
+    ) => new DeleteFeature({ uow, features, scenarios, slices, projects, memberships, audit, ids, clock }),
+    inject: [T.UnitOfWork, T.Features, T.Scenarios, T.Slices, T.Projects, T.Memberships, T.Audit, T.Ids, T.Clock],
   },
   // Test cases
   {
