@@ -1,6 +1,7 @@
 import { ApplicationError, type AppErrorCode } from '@gilgamesh/application';
 import { DomainError } from '@gilgamesh/domain';
 import { type ArgumentsHost, Catch, type ExceptionFilter, HttpException, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { Response } from 'express';
 
 const STATUS: Record<AppErrorCode, number> = {
@@ -45,6 +46,16 @@ export class DomainExceptionFilter implements ExceptionFilter {
       status = exception.getStatus();
       code = exception.name;
       detail = exception.message;
+    } else if (exception instanceof Prisma.PrismaClientKnownRequestError && exception.code === 'P2002') {
+      // Unique-constraint violation (e.g. a racing create on a unique key) -> a retryable conflict.
+      status = 409;
+      code = 'CONFLICT';
+      detail = 'That resource already exists.';
+    } else if (exception instanceof Prisma.PrismaClientKnownRequestError && exception.code === 'P2025') {
+      // Update/delete of a row that was concurrently removed -> not found, not a 500.
+      status = 404;
+      code = 'NOT_FOUND';
+      detail = 'The requested resource was not found.';
     } else {
       // Unmapped (infra) error: log the real cause server-side, return a generic body so internals
       // are never leaked to the client.

@@ -37,17 +37,19 @@ export class RateLimitGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<Request>();
-    const path = LIMITED_PATHS.find((p) => req.path.endsWith(p));
-    if (!path) return true;
+    // Strip trailing slashes before matching: Express non-strict routing dispatches "/auth/login/"
+    // to the same handler, so an un-normalized endsWith would let a trailing slash dodge the bucket.
+    const normalizedPath = (req.path || '/').replace(/\/+$/, '') || '/';
+    if (!LIMITED_PATHS.some((p) => normalizedPath.endsWith(p))) return true;
 
     const ip = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
     const body = req.body as { email?: unknown } | undefined;
     // Normalize identically to the auth use cases (which trim+lowercase) so whitespace-padded
     // variants can't mint fresh buckets for the same account and bypass the throttle.
-    // Normalize identically to the auth use cases (which trim+lowercase) so whitespace-padded
-    // variants can't mint fresh buckets for the same account and bypass the throttle.
     const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
-    const key = `${path}:${ip}:${email}`;
+    // Key on the full normalized path (not just the matched suffix) so the parameterized
+    // /projects/:id/test-cases/generate route buckets per (project + IP), not per IP for all tenants.
+    const key = `${normalizedPath}:${ip}:${email}`;
 
     let hit: { count: number; resetAt: number };
     try {

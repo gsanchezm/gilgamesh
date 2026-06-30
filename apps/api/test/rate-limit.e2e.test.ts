@@ -63,6 +63,20 @@ describe('Auth rate limiting (AC-AUTH-13)', () => {
     }
   });
 
+  it('throttles a trailing-slash variant of a limited path (no slash bypass)', async () => {
+    const email = 'slash-victim@example.com';
+    for (let i = 1; i <= LIMIT; i++) {
+      const res = await login(email);
+      expect(res.status).not.toBe(429);
+    }
+    // Express non-strict routing dispatches "/auth/login/" to the same handler; it must share the
+    // bucket and be throttled, not bypass the guard.
+    const slashed = await request(app.getHttpServer())
+      .post('/auth/login/')
+      .send({ email, password: 'wrong-Password1' });
+    expect(slashed.status).toBe(429);
+  });
+
   it('treats whitespace-padded emails as the same bucket (no padding bypass)', async () => {
     const canonical = 'pad-victim@example.com';
     for (let i = 1; i <= LIMIT; i++) {
