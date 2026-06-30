@@ -13,13 +13,12 @@ process.env.DATABASE_URL =
 // user across dozens of scenarios); the 429 behavior is proven by a dedicated e2e instead.
 process.env.AUTH_RATE_LIMIT = process.env.AUTH_RATE_LIMIT || '1000000';
 
-const FEATURES = '../../specs/slices/01-auth-onboarding-agent-room';
-
 module.exports = {
   default: {
     requireModule: ['@swc-node/register'],
     require: ['acceptance/**/*.ts'],
-    paths: [`${FEATURES}/*.feature`],
+    // All built slices' feature files (01-auth-onboarding-agent-room, 02-test-lab-authoring, …).
+    paths: ['../../specs/slices/*/*.feature'],
     format: ['summary', 'progress'],
     // The default run covers only the built surface. Scenarios needing code not yet
     // in slice 1 are @wip; UI-only ones @ui (Playwright); fault-injection ones @manual.

@@ -9,6 +9,7 @@ import { OrgsModule } from '../../src/orgs/orgs.module';
 import { PrismaPersistenceModule } from '../../src/persistence/prisma/prisma-persistence.module';
 import { PrismaService } from '../../src/persistence/prisma/prisma.service';
 import { ProjectsModule } from '../../src/projects/projects.module';
+import { TestLabModule } from '../../src/testlab/testlab.module';
 import type { GilgameshWorld } from './world';
 
 // Booting Nest + connecting Prisma can take a moment on the first scenario.
@@ -21,7 +22,15 @@ let db: PrismaService;
 // pipe (422 on bad input) + the domain->Problem exception filter, mounted under /api/v1.
 BeforeAll(async () => {
   const moduleRef = await Test.createTestingModule({
-    imports: [PrismaPersistenceModule, SecurityModule, AuthModule, ProjectsModule, AgentsModule, OrgsModule],
+    imports: [
+      PrismaPersistenceModule,
+      SecurityModule,
+      AuthModule,
+      ProjectsModule,
+      AgentsModule,
+      OrgsModule,
+      TestLabModule,
+    ],
     providers: APP_PROVIDERS,
   }).compile();
   app = moduleRef.createNestApplication();
@@ -47,6 +56,6 @@ Before(async function (this: GilgameshWorld) {
   this.lastProjectId = null;
   this.projectsByName = new Map();
   await db.$executeRawUnsafe(
-    'TRUNCATE orgs, users, memberships, sessions, projects, slices, agents, tool_bindings, subscriptions, audit_logs CASCADE',
+    'TRUNCATE orgs, users, memberships, sessions, projects, slices, features, scenarios, test_cases, agents, tool_bindings, subscriptions, audit_logs CASCADE',
   );
 });
