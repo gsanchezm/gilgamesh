@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cosineSimilarity, embedText, scrubChunk } from './rag';
+import { cosineSimilarity, embedText, MAX_EMBED_CHARS, scrubChunk } from './rag';
 
 describe('scrubChunk', () => {
   it('strips page furniture + the ISTQB copyright line and normalizes <br>', () => {
@@ -36,6 +36,12 @@ describe('embedText', () => {
   it('returns a zero vector for empty text (no NaN)', () => {
     const v = embedText('   ');
     expect(v.every((x) => x === 0)).toBe(true);
+  });
+
+  it('caps hashing work at MAX_EMBED_CHARS (bounded on hostile input)', () => {
+    const huge = 'a'.repeat(MAX_EMBED_CHARS + 5000);
+    const capped = 'a'.repeat(MAX_EMBED_CHARS);
+    expect(embedText(huge)).toEqual(embedText(capped));
   });
 });
 

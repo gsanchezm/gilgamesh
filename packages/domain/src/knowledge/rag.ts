@@ -6,6 +6,9 @@
  * in the Brain slice.
  */
 export const EMBED_DIM = 1536;
+/** Hard cap on text fed to the embedder — real chunks are < ~4 KB; this bounds hashing work on any
+ *  pathologically long input (e.g. a giant search query), so iteration is never user-unbounded. */
+export const MAX_EMBED_CHARS = 20_000;
 
 const FURNITURE: RegExp[] = [
   /Page\s+\d+\s+of\s+\d+/gi, // running page footers
@@ -42,7 +45,9 @@ function fnv1a(s: string): number {
  */
 export function embedText(text: string, dim: number = EMBED_DIM): number[] {
   const vec = new Array<number>(dim).fill(0);
-  const tokens = text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  // Bound the work so a pathologically long input can't drive unbounded token hashing (DoS).
+  const src = text.length > MAX_EMBED_CHARS ? text.slice(0, MAX_EMBED_CHARS) : text;
+  const tokens = src.toLowerCase().match(/[a-z0-9]+/g) ?? [];
   for (const tok of tokens) {
     const idx = fnv1a(tok) % dim;
     vec[idx] = (vec[idx] ?? 0) + 1;

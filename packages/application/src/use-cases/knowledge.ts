@@ -10,6 +10,7 @@ import type {
 import type { KnowledgeChunkRecord } from '../ports/records';
 
 const MIN_TOKENS = 4; // drop near-empty boilerplate-only chunks (e.g. a stray page number) after scrubbing
+const MAX_QUERY_CHARS = 512; // a search query never needs more; bounds work on hostile input
 
 export interface RawChunk {
   id: string;
@@ -77,7 +78,7 @@ export class SearchKnowledge {
   constructor(private readonly deps: KnowledgeDeps) {}
 
   async execute(input: { query: string; k?: number }): Promise<SearchResultView> {
-    const q = input.query.trim();
+    const q = input.query.trim().slice(0, MAX_QUERY_CHARS);
     if (!q) throw new ApplicationError('VALIDATION', 'A query is required.');
     const k = Math.min(Math.max(Math.trunc(input.k ?? 8), 1), 20);
     const [embedding] = await this.deps.brain.embed([q]);
@@ -95,7 +96,7 @@ export class KnowledgeRetriever implements KnowledgeRetrievalPort {
   constructor(private readonly deps: KnowledgeDeps) {}
 
   async retrieve(query: string, k: number): Promise<RetrievedChunk[]> {
-    const q = query.trim();
+    const q = query.trim().slice(0, MAX_QUERY_CHARS);
     if (!q) return [];
     const [embedding] = await this.deps.brain.embed([q]);
     if (isZeroVector(embedding)) return [];
