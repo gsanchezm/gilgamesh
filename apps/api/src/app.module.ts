@@ -18,6 +18,7 @@ import { PersistenceModule } from './persistence/persistence.module';
 import { PrismaPersistenceModule } from './persistence/prisma/prisma-persistence.module';
 import { TOKENS } from './persistence/tokens';
 import { BillingModule } from './billing/billing.module';
+import { KnowledgeModule } from './knowledge/knowledge.module';
 import { ProjectsModule } from './projects/projects.module';
 import { RunsModule } from './runs/runs.module';
 import { TestLabModule } from './testlab/testlab.module';
@@ -33,6 +34,7 @@ const FEATURE_MODULES = [
   TestLabModule,
   RunsModule,
   BillingModule,
+  KnowledgeModule,
 ];
 
 /** Shared global providers — reused by the BDD/int harnesses so they enforce the same pipe,

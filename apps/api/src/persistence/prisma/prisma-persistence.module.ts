@@ -1,4 +1,11 @@
-import { DeterministicBrain, DeterministicKernel, MockPaymentProvider } from '@gilgamesh/application';
+import {
+  type AgentBrainPort,
+  DeterministicBrain,
+  DeterministicKernel,
+  type KnowledgeChunkRepository,
+  KnowledgeRetriever,
+  MockPaymentProvider,
+} from '@gilgamesh/application';
 import { Global, Module } from '@nestjs/common';
 import {
   Argon2PasswordHasher,
@@ -12,6 +19,7 @@ import {
   PrismaAgentRepository,
   PrismaAuditLogRepository,
   PrismaFeatureRepository,
+  PrismaKnowledgeChunkRepository,
   PrismaMembershipRepository,
   PrismaOrgRepository,
   PrismaProjectRepository,
@@ -55,6 +63,17 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     { provide: TOKENS.Brain, useValue: new DeterministicBrain() },
     { provide: TOKENS.Kernel, useValue: new DeterministicKernel() },
     { provide: TOKENS.Payment, useValue: new MockPaymentProvider() },
+    {
+      provide: TOKENS.Knowledge,
+      useFactory: (db: PrismaService) => new PrismaKnowledgeChunkRepository(db),
+      inject: [PrismaService],
+    },
+    {
+      provide: TOKENS.KnowledgeRetrieval,
+      useFactory: (brain: AgentBrainPort, knowledge: KnowledgeChunkRepository) =>
+        new KnowledgeRetriever({ brain, knowledge }),
+      inject: [TOKENS.Brain, TOKENS.Knowledge],
+    },
   ],
   exports: [
     PrismaService,
@@ -81,6 +100,8 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     TOKENS.Brain,
     TOKENS.Kernel,
     TOKENS.Payment,
+    TOKENS.Knowledge,
+    TOKENS.KnowledgeRetrieval,
   ],
 })
 export class PrismaPersistenceModule {}

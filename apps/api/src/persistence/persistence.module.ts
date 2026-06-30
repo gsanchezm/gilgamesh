@@ -1,12 +1,16 @@
 import {
   type AgentRepository,
   type AuditLogRepository,
+  type AgentBrainPort,
   DeterministicBrain,
   DeterministicKernel,
+  type KnowledgeChunkRepository,
+  KnowledgeRetriever,
   MockPaymentProvider,
   InMemoryAgentRepository,
   InMemoryAuditLogRepository,
   InMemoryFeatureRepository,
+  InMemoryKnowledgeChunkRepository,
   InMemoryMembershipRepository,
   InMemoryOrgRepository,
   InMemoryProjectRepository,
@@ -129,6 +133,13 @@ import { TOKENS } from './tokens';
     { provide: TOKENS.Brain, useValue: new DeterministicBrain() },
     { provide: TOKENS.Kernel, useValue: new DeterministicKernel() },
     { provide: TOKENS.Payment, useValue: new MockPaymentProvider() },
+    { provide: TOKENS.Knowledge, useValue: new InMemoryKnowledgeChunkRepository() },
+    {
+      provide: TOKENS.KnowledgeRetrieval,
+      useFactory: (brain: AgentBrainPort, knowledge: KnowledgeChunkRepository) =>
+        new KnowledgeRetriever({ brain, knowledge }),
+      inject: [TOKENS.Brain, TOKENS.Knowledge],
+    },
   ],
   exports: [
     TOKENS.Users,
@@ -154,6 +165,8 @@ import { TOKENS } from './tokens';
     TOKENS.Brain,
     TOKENS.Kernel,
     TOKENS.Payment,
+    TOKENS.Knowledge,
+    TOKENS.KnowledgeRetrieval,
   ],
 })
 export class PersistenceModule {}

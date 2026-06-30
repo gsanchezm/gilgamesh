@@ -5,8 +5,11 @@ import type {
   AuditLogRepository,
   FeatureRecord,
   FeatureRepository,
+  KnowledgeChunkRecord,
+  KnowledgeChunkRepository,
   MembershipRecord,
   MembershipRepository,
+  ScoredChunk,
   OrgRecord,
   OrgRepository,
   ProjectRecord,
@@ -302,5 +305,65 @@ export class PrismaAuditLogRepository implements AuditLogRepository {
         createdAt: rec.createdAt,
       },
     });
+  }
+}
+
+interface KnowledgeSearchRow {
+  id: string;
+  source: string;
+  headingPath: string[] | null;
+  section: string;
+  content: string;
+  tokenEstimate: number;
+  score: number;
+}
+
+/**
+ * The global shared knowledge base on pgvector. `embedding` is an Unsupported column, so writes and the
+ * cosine-similarity search go through raw SQL; `count` uses the typed client (slice 5).
+ */
+export class PrismaKnowledgeChunkRepository implements KnowledgeChunkRepository {
+  constructor(private readonly db: Prisma.TransactionClient) {}
+
+  async upsertMany(chunks: KnowledgeChunkRecord[]): Promise<void> {
+    for (const c of chunks) {
+      const vec = `[${c.embedding.join(',')}]`;
+      await this.db.$executeRaw`
+        INSERT INTO knowledge_chunks (id, source, heading_path, section, content, embedding, token_estimate)
+        VALUES (${c.id}, ${c.source}, ${c.headingPath}, ${c.section}, ${c.content}, ${vec}::vector, ${c.tokenEstimate})
+        ON CONFLICT (id) DO UPDATE SET
+          source = EXCLUDED.source,
+          heading_path = EXCLUDED.heading_path,
+          section = EXCLUDED.section,
+          content = EXCLUDED.content,
+          embedding = EXCLUDED.embedding,
+          token_estimate = EXCLUDED.token_estimate`;
+    }
+  }
+
+  async search(queryEmbedding: number[], k: number): Promise<ScoredChunk[]> {
+    const vec = `[${queryEmbedding.join(',')}]`;
+    const rows = await this.db.$queryRaw<KnowledgeSearchRow[]>`
+      SELECT id, source, heading_path AS "headingPath", section, content,
+             token_estimate AS "tokenEstimate", 1 - (embedding <=> ${vec}::vector) AS score
+      FROM knowledge_chunks
+      ORDER BY embedding <=> ${vec}::vector
+      LIMIT ${k}`;
+    return rows.map((r) => ({
+      chunk: {
+        id: r.id,
+        source: r.source,
+        headingPath: r.headingPath ?? [],
+        section: r.section,
+        content: r.content,
+        embedding: [], // not needed by consumers of search results
+        tokenEstimate: Number(r.tokenEstimate),
+      },
+      score: Number(r.score),
+    }));
+  }
+
+  async count(): Promise<number> {
+    return this.db.knowledgeChunk.count();
   }
 }

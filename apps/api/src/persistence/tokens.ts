@@ -23,4 +23,6 @@ export const TOKENS = {
   Brain: 'AgentBrainPort',
   Kernel: 'TestKernel',
   Payment: 'PaymentProvider',
+  Knowledge: 'KnowledgeChunkRepository',
+  KnowledgeRetrieval: 'KnowledgeRetrievalPort',
 } as const;

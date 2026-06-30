@@ -416,3 +416,18 @@ model RunResult {
   @@index([runId])
   @@map("run_results")
 }
+
+// Slice 5: the GLOBAL shared knowledge base (owner decision S5-A) — no orgId, retrieval is shared
+// across all orgs. `embedding` is a pgvector column (Unsupported → written/queried via raw SQL in
+// PrismaKnowledgeChunkRepository). The id is the corpus chunk id (text, not a UUID).
+model KnowledgeChunk {
+  id            String                      @id
+  source        String
+  headingPath   String[]                    @map("heading_path")
+  section       String
+  content       String
+  embedding     Unsupported("vector(1536)")
+  tokenEstimate Int                         @map("token_estimate")
+
+  @@map("knowledge_chunks")
+}

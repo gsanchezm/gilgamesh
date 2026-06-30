@@ -14,6 +14,7 @@ import {
   GetFeature,
   GetTestCase,
   type IdGenerator,
+  type KnowledgeRetrievalPort,
   ListFeatures,
   ListSlices,
   ListTestCases,
@@ -213,13 +214,14 @@ const providers: Provider[] = [
     provide: GenerateDrafts,
     useFactory: (
       brain: AgentBrainPort,
+      retrieval: KnowledgeRetrievalPort,
       projects: ProjectRepository,
       memberships: MembershipRepository,
       audit: AuditLogRepository,
       ids: IdGenerator,
       clock: Clock,
-    ) => new GenerateDrafts({ brain, projects, memberships, audit, ids, clock }),
-    inject: [T.Brain, T.Projects, T.Memberships, T.Audit, T.Ids, T.Clock],
+    ) => new GenerateDrafts({ brain, retrieval, projects, memberships, audit, ids, clock }),
+    inject: [T.Brain, T.KnowledgeRetrieval, T.Projects, T.Memberships, T.Audit, T.Ids, T.Clock],
   },
 ];
 
