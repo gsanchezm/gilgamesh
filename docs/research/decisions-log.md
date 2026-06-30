@@ -349,3 +349,15 @@ Owner picked **Integrations (connect a Git repo)** as slice 6. Scope = SOURCE_RE
 - **Import idempotency:** upsert Features by path; resolve the integration by `project.orgId` (never client org).
 
 Spec at `specs/slices/06-integrations/spec.md` (AC-INT-01..09). Building on `slice-6-integrations`.
+
+**Slice 6 status — DONE (2026-06-30).** Built SDD→BDD→TDD across domain (SOURCE_REPO_CATALOG +
+repoProviderForKey), application (Integration record + RepoProvider/SecretVault/IntegrationRepository ports +
+MockRepoProvider/StubSecretVault + ListIntegrations/ConnectIntegration/DisconnectIntegration/ImportRepoFeatures;
+ProjectRecord gains repoLastSyncAt + ProjectRepository.save), api (Prisma Integration + IntegrationGroup +
+migration with projects.repo_last_sync_at + PrismaIntegrationRepository + IntegrationsModule: GET
+/orgs/:orgId/integrations + PATCH /orgs/:orgId/integrations/:key + [S6-NEW] POST /projects/:id/repo/import), web
+(IntegrationsClient + IntegrationsScreen at /integrations + Test Lab import control). Green: typecheck + lint ·
+~340 Docker-free · test:int 14 · BDD 94 scenarios/738 steps · Playwright (smoke + Test Lab + run + billing +
+knowledge + integrations). Secret hygiene verified: the raw token never appears in any view/list/audit/row.
+Deferred: real provider OAuth/webhooks/sync; the non-SOURCE_REPOS groups; a real Key Vault with get(). Awaiting
+owner review/merge.

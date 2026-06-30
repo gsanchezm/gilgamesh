@@ -3,7 +3,10 @@
 > Spec-Driven-Design spec for the sixth vertical slice of Gilgamesh.
 > Authority order: **Keystone** (`specs/_keystone/foundation-vocabulary.md`) → **Decisions log** → **Prototype**.
 > All entity/field/enum/port/path names below are used **verbatim** from the keystone unless marked **[S6-NEW]**.
-> v0.1 — 2026-06-30. Status: DRAFT — building SDD→BDD→TDD on branch `slice-6-integrations`.
+> v0.1 — 2026-06-30. Status: DONE — built SDD→BDD→TDD, green end-to-end (typecheck + lint · ~340 Docker-free ·
+> test:int 14 · BDD 94 scenarios · Playwright integrations) on branch `slice-6-integrations`. Scope: connect a
+> SOURCE_REPOS integration behind a deterministic stub + import .feature files into the Test Lab; the raw token
+> is never persisted (only a vault ref). Owner decisions S6-A..D.
 
 ---
 

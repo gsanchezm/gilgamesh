@@ -184,3 +184,30 @@ orgs. Built SDD→BDD→TDD across all layers, green on branch `slice-5-knowledg
 - **Verified:** typecheck + lint clean · ~304 Docker-free unit/e2e (domain 48 · application 120 · api 72 ·
   web 55 · ui 9) · `test:int` 12 (pgvector against real Postgres) · **BDD 88 scenarios / 694 steps** ·
   **Playwright** smoke + Test Lab + run + billing + knowledge.
+
+## Slice 6 status (Integrations) — DoD COMPLETE
+
+`specs/slices/06-integrations/` — connect a **SOURCE_REPOS** integration (`github, gitlab, bitbucket,
+ado_repos`) behind a deterministic `MockRepoProvider` + a `StubSecretVault` (owner decision S6-A; the raw
+token is verified then **discarded** — only a synthetic `secretRef` is stored, never the token), and **import
+`.feature` files** from a connected repo into the Test Lab. Built SDD→BDD→TDD across all layers, green on
+branch `slice-6-integrations`:
+- **domain** — `SOURCE_REPO_CATALOG` (keystone §8 keys) + `repoProviderForKey` (`ado_repos`→`ado`; the
+  `Integration.key` and `Project.repoProvider` enums differ).
+- **application** — `Integration` record (per-org; `secretRef`, never a token) + `RepoProvider`/`SecretVault`/
+  `IntegrationRepository` ports; `ListIntegrations` (catalog ⨝ connected rows), `ConnectIntegration`
+  (verify → `vault.put` → upsert; audits **without** the token), `DisconnectIntegration`, `ImportRepoFeatures`
+  (resolve the integration by `project.orgId`, pull `.feature` files, **upsert Features by path** = idempotent
+  re-import, link the project incl. `repoLastSyncAt`; UoW-atomic). `ProjectRecord` gains `repoLastSyncAt` +
+  `ProjectRepository.save`.
+- **api** — Prisma `Integration` model + `IntegrationGroup` enum + migration (`projects.repo_last_sync_at`);
+  `PrismaIntegrationRepository` + both wirings bind `Integrations`/`RepoProvider`/`SecretVault`;
+  `IntegrationsModule`: `GET /orgs/:orgId/integrations` + the single keystone mutator
+  `PATCH /orgs/:orgId/integrations/:key` (action in the body) + **[S6-NEW]** `POST /projects/:id/repo/import`.
+- **web** — `IntegrationsClient` + `IntegrationsScreen` at `/integrations` (catalog connect/disconnect);
+  Test Lab gains an "Import from repo" control.
+- **Security (S6-B):** the raw token never appears in any View, list, audit metadata, or DB row (verified by
+  a BDD assertion); OWNER/ADMIN gate; per-`orgId` isolation.
+- **Verified:** typecheck + lint clean · ~340 Docker-free unit/e2e (domain 54 · application 134 · api 80 ·
+  web 63 · ui 9) · `test:int` 14 · **BDD 94 scenarios / 738 steps** · **Playwright** smoke + Test Lab + run +
+  billing + knowledge + integrations.
