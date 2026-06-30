@@ -1,9 +1,11 @@
 import type {
   AgentRepository,
   AuditLogRepository,
+  FeatureRepository,
   MembershipRepository,
   OrgRepository,
   ProjectRepository,
+  ScenarioRepository,
   SessionRepository,
   SliceRepository,
   SubscriptionRepository,
@@ -14,10 +16,12 @@ import type { Repositories, UnitOfWork } from '../ports/unit-of-work';
 import type {
   AgentRecord,
   AuditLogRecord,
+  FeatureRecord,
   MembershipRecord,
   OrgRecord,
   ProjectRecord,
   Role,
+  ScenarioRecord,
   SessionRecord,
   SliceRecord,
   SubscriptionRecord,
@@ -124,6 +128,41 @@ export class InMemorySliceRepository implements SliceRepository {
   }
 }
 
+export class InMemoryFeatureRepository implements FeatureRepository {
+  private readonly byId = new Map<string, FeatureRecord>();
+  async create(rec: FeatureRecord): Promise<void> {
+    this.byId.set(rec.id, rec);
+  }
+  async findById(id: string): Promise<FeatureRecord | null> {
+    return this.byId.get(id) ?? null;
+  }
+  async listForProject(projectId: string, sliceId?: string): Promise<FeatureRecord[]> {
+    return [...this.byId.values()].filter(
+      (f) => f.projectId === projectId && (sliceId === undefined || f.sliceId === sliceId),
+    );
+  }
+  async save(rec: FeatureRecord): Promise<void> {
+    this.byId.set(rec.id, rec);
+  }
+  async delete(id: string): Promise<void> {
+    this.byId.delete(id);
+  }
+}
+
+export class InMemoryScenarioRepository implements ScenarioRepository {
+  private rows: ScenarioRecord[] = [];
+  async replaceForFeature(featureId: string, recs: ScenarioRecord[]): Promise<void> {
+    this.rows = this.rows.filter((s) => s.featureId !== featureId);
+    this.rows.push(...recs);
+  }
+  async listForFeature(featureId: string): Promise<ScenarioRecord[]> {
+    return this.rows.filter((s) => s.featureId === featureId).sort((a, b) => a.order - b.order);
+  }
+  async deleteForFeature(featureId: string): Promise<void> {
+    this.rows = this.rows.filter((s) => s.featureId !== featureId);
+  }
+}
+
 export class InMemoryAgentRepository implements AgentRepository {
   private readonly rows: AgentRecord[] = [];
   async createMany(recs: AgentRecord[]): Promise<void> {
@@ -196,6 +235,8 @@ export interface InMemoryContext {
   sessions: InMemorySessionRepository;
   projects: InMemoryProjectRepository;
   slices: InMemorySliceRepository;
+  features: InMemoryFeatureRepository;
+  scenarios: InMemoryScenarioRepository;
   agents: InMemoryAgentRepository;
   toolBindings: InMemoryToolBindingRepository;
   subscriptions: InMemorySubscriptionRepository;
@@ -217,6 +258,8 @@ export function createInMemoryContext(): InMemoryContext {
     sessions: new InMemorySessionRepository(),
     projects: new InMemoryProjectRepository(),
     slices: new InMemorySliceRepository(),
+    features: new InMemoryFeatureRepository(),
+    scenarios: new InMemoryScenarioRepository(),
     agents: new InMemoryAgentRepository(),
     toolBindings: new InMemoryToolBindingRepository(),
     subscriptions: new InMemorySubscriptionRepository(),

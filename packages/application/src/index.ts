@@ -8,6 +8,7 @@ export * from './use-cases/session';
 export * from './use-cases/agent-room';
 export * from './use-cases/org-queries';
 export * from './use-cases/testlab-slices';
+export * from './use-cases/testlab-features';
 // In-memory repository adapters: used as the temporary persistence wiring until the
 // Prisma adapters land (Docker), and as test doubles. Not a secure/production store.
 export * from './testing/in-memory';

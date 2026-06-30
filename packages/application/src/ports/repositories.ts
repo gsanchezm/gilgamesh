@@ -1,10 +1,12 @@
 import type {
   AgentRecord,
   AuditLogRecord,
+  FeatureRecord,
   MembershipRecord,
   OrgRecord,
   ProjectRecord,
   Role,
+  ScenarioRecord,
   SessionRecord,
   SliceRecord,
   SubscriptionRecord,
@@ -50,6 +52,21 @@ export interface SliceRepository {
   findById(id: string): Promise<SliceRecord | null>;
   save(rec: SliceRecord): Promise<void>;
   delete(id: string): Promise<void>;
+}
+
+export interface FeatureRepository {
+  create(rec: FeatureRecord): Promise<void>;
+  findById(id: string): Promise<FeatureRecord | null>;
+  listForProject(projectId: string, sliceId?: string): Promise<FeatureRecord[]>;
+  save(rec: FeatureRecord): Promise<void>;
+  delete(id: string): Promise<void>;
+}
+
+export interface ScenarioRepository {
+  /** Replaces all scenarios for a feature (used on create + re-parse on update). */
+  replaceForFeature(featureId: string, recs: ScenarioRecord[]): Promise<void>;
+  listForFeature(featureId: string): Promise<ScenarioRecord[]>;
+  deleteForFeature(featureId: string): Promise<void>;
 }
 
 export interface AgentRepository {

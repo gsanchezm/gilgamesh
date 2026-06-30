@@ -3,6 +3,8 @@ import type { AgentSlot, AgentFamily } from '@gilgamesh/domain';
 export type Role = 'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER';
 export type UserStatus = 'ACTIVE' | 'DISABLED';
 export type ProjectFormat = 'BDD' | 'TRADITIONAL';
+export type TestCasePriority = 'HIGH' | 'MEDIUM' | 'LOW';
+export type TestCaseStatus = 'NOTRUN' | 'PASS' | 'FAIL' | 'BLOCKED' | 'SKIPPED';
 export type Plan = 'TEAM' | 'PRO' | 'ENTERPRISE';
 export type BillingCycle = 'MONTHLY' | 'ANNUAL';
 export type SubscriptionStatus = 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
@@ -69,6 +71,27 @@ export interface SliceRecord {
   key: string;
   name: string;
   order: number;
+}
+
+export interface FeatureRecord {
+  id: string;
+  orgId: string;
+  projectId: string;
+  sliceId: string | null;
+  name: string;
+  path: string;
+  content: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ScenarioRecord {
+  id: string;
+  orgId: string;
+  featureId: string;
+  name: string;
+  order: number;
+  lastStatus: TestCaseStatus | null;
 }
 
 export interface AgentRecord {
