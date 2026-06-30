@@ -1,19 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import { loadConfig, rateLimitFromEnv } from './config';
 
-const base = { DATABASE_URL: 'postgresql://gilgamesh@localhost:5432/db' };
+const base = {
+  DATABASE_URL: 'postgresql://gilgamesh@localhost:5432/db',
+  REDIS_URL: 'redis://localhost:6379',
+};
 
 describe('loadConfig', () => {
   it('parses a valid env with sensible defaults', () => {
     const c = loadConfig(base);
     expect(c.databaseUrl).toBe(base.DATABASE_URL);
+    expect(c.redisUrl).toBe(base.REDIS_URL);
     expect(c.port).toBe(3001);
     expect(c.corsOrigins).toEqual([]);
     expect(c.nodeEnv).toBe('development');
   });
 
   it('throws when DATABASE_URL is missing', () => {
-    expect(() => loadConfig({})).toThrow(/DATABASE_URL/);
+    expect(() => loadConfig({ REDIS_URL: base.REDIS_URL })).toThrow(/DATABASE_URL/);
+  });
+
+  it('throws when REDIS_URL is missing', () => {
+    expect(() => loadConfig({ DATABASE_URL: base.DATABASE_URL })).toThrow(/REDIS_URL/);
   });
 
   it('parses CORS_ORIGINS as a trimmed comma list', () => {

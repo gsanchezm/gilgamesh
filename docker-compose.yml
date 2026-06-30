@@ -1,5 +1,5 @@
-# Local-first dev infrastructure. Slice 1 only needs Postgres.
-# Redis (BullMQ) and MinIO (artifacts) are added in later slices.
+# Local-first dev infrastructure. Slice 1 needs Postgres + Redis (auth rate-limit store;
+# BullMQ queues and SSE Redis Streams land in later slices). MinIO (artifacts) is added later.
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -17,6 +17,18 @@ services:
       test: ['CMD-SHELL', 'pg_isready -U gilgamesh -d gilgamesh']
       interval: 5s
       timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: gilgamesh-redis
+    command: ['redis-server', '--appendonly', 'no', '--save', '']
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
       retries: 10
 
 volumes:

@@ -12,6 +12,8 @@ export interface ApiConfig {
   nodeEnv: string;
   port: number;
   databaseUrl: string;
+  /** Redis connection URL — backs the production rate-limit store (and later queues/streams). */
+  redisUrl: string;
   /** Allowlisted browser origins for CORS (empty = same-origin only). */
   corsOrigins: string[];
   rateLimit: RateLimitConfig;
@@ -37,6 +39,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     throw new Error('Config error: DATABASE_URL is required.');
   }
 
+  const redisUrl = env.REDIS_URL?.trim();
+  if (!redisUrl) {
+    throw new Error('Config error: REDIS_URL is required (backs the rate-limit store).');
+  }
+
   const port = Number(env.API_PORT ?? 3001);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error(`Config error: API_PORT must be a port number 1-65535 (got "${env.API_PORT}").`);
@@ -51,6 +58,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     nodeEnv: env.NODE_ENV ?? 'development',
     port,
     databaseUrl,
+    redisUrl,
     corsOrigins,
     rateLimit: rateLimitFromEnv(env),
   };

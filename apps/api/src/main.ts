@@ -15,6 +15,10 @@ async function bootstrap(): Promise<void> {
   const config = loadConfig();
   const app = await NestFactory.create(ProdAppModule);
 
+  // Behind a reverse proxy / load balancer, trust the first hop so req.ip is the real client IP
+  // (the rate-limit key depends on it; without this it collapses to the proxy address).
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   app.setGlobalPrefix('api/v1');
   app.use(helmet());
   app.enableCors({
