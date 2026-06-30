@@ -1,3 +1,4 @@
+import { DeterministicBrain } from '@gilgamesh/application';
 import { Global, Module } from '@nestjs/common';
 import {
   Argon2PasswordHasher,
@@ -10,12 +11,15 @@ import { PrismaService } from './prisma.service';
 import {
   PrismaAgentRepository,
   PrismaAuditLogRepository,
+  PrismaFeatureRepository,
   PrismaMembershipRepository,
   PrismaOrgRepository,
   PrismaProjectRepository,
+  PrismaScenarioRepository,
   PrismaSessionRepository,
   PrismaSliceRepository,
   PrismaSubscriptionRepository,
+  PrismaTestCaseRepository,
   PrismaToolBindingRepository,
   PrismaUserRepository,
 } from './prisma-repositories';
@@ -32,6 +36,9 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     { provide: TOKENS.Sessions, useFactory: (db: PrismaService) => new PrismaSessionRepository(db), inject: [PrismaService] },
     { provide: TOKENS.Projects, useFactory: (db: PrismaService) => new PrismaProjectRepository(db), inject: [PrismaService] },
     { provide: TOKENS.Slices, useFactory: (db: PrismaService) => new PrismaSliceRepository(db), inject: [PrismaService] },
+    { provide: TOKENS.Features, useFactory: (db: PrismaService) => new PrismaFeatureRepository(db), inject: [PrismaService] },
+    { provide: TOKENS.Scenarios, useFactory: (db: PrismaService) => new PrismaScenarioRepository(db), inject: [PrismaService] },
+    { provide: TOKENS.TestCases, useFactory: (db: PrismaService) => new PrismaTestCaseRepository(db), inject: [PrismaService] },
     { provide: TOKENS.Agents, useFactory: (db: PrismaService) => new PrismaAgentRepository(db), inject: [PrismaService] },
     { provide: TOKENS.ToolBindings, useFactory: (db: PrismaService) => new PrismaToolBindingRepository(db), inject: [PrismaService] },
     { provide: TOKENS.Subscriptions, useFactory: (db: PrismaService) => new PrismaSubscriptionRepository(db), inject: [PrismaService] },
@@ -41,6 +48,7 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     { provide: TOKENS.Ids, useValue: new Uuid7IdGenerator() },
     { provide: TOKENS.Tokens, useValue: new CryptoSessionTokenGenerator() },
     { provide: TOKENS.Clock, useValue: new SystemClock() },
+    { provide: TOKENS.Brain, useValue: new DeterministicBrain() },
   ],
   exports: [
     PrismaService,
@@ -50,6 +58,9 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     TOKENS.Sessions,
     TOKENS.Projects,
     TOKENS.Slices,
+    TOKENS.Features,
+    TOKENS.Scenarios,
+    TOKENS.TestCases,
     TOKENS.Agents,
     TOKENS.ToolBindings,
     TOKENS.Subscriptions,
@@ -59,6 +70,7 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     TOKENS.Ids,
     TOKENS.Tokens,
     TOKENS.Clock,
+    TOKENS.Brain,
   ],
 })
 export class PrismaPersistenceModule {}

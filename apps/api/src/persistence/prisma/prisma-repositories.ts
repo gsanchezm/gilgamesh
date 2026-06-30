@@ -3,6 +3,8 @@ import type {
   AgentRepository,
   AuditLogRecord,
   AuditLogRepository,
+  FeatureRecord,
+  FeatureRepository,
   MembershipRecord,
   MembershipRepository,
   OrgRecord,
@@ -10,12 +12,16 @@ import type {
   ProjectRecord,
   ProjectRepository,
   Role,
+  ScenarioRecord,
+  ScenarioRepository,
   SessionRecord,
   SessionRepository,
   SliceRecord,
   SliceRepository,
   SubscriptionRecord,
   SubscriptionRepository,
+  TestCaseRecord,
+  TestCaseRepository,
   ToolBindingRecord,
   ToolBindingRepository,
   UserRecord,
@@ -127,6 +133,62 @@ export class PrismaSliceRepository implements SliceRepository {
   }
   async delete(id: string): Promise<void> {
     await this.db.slice.delete({ where: { id } });
+  }
+}
+
+export class PrismaFeatureRepository implements FeatureRepository {
+  constructor(private readonly db: Prisma.TransactionClient) {}
+  async create(rec: FeatureRecord): Promise<void> {
+    await this.db.feature.create({ data: rec });
+  }
+  findById(id: string): Promise<FeatureRecord | null> {
+    return this.db.feature.findUnique({ where: { id } });
+  }
+  listForProject(projectId: string, sliceId?: string): Promise<FeatureRecord[]> {
+    return this.db.feature.findMany({
+      where: { projectId, ...(sliceId !== undefined ? { sliceId } : {}) },
+    });
+  }
+  async save(rec: FeatureRecord): Promise<void> {
+    await this.db.feature.update({ where: { id: rec.id }, data: rec });
+  }
+  async delete(id: string): Promise<void> {
+    await this.db.feature.delete({ where: { id } });
+  }
+}
+
+export class PrismaScenarioRepository implements ScenarioRepository {
+  constructor(private readonly db: Prisma.TransactionClient) {}
+  async replaceForFeature(featureId: string, recs: ScenarioRecord[]): Promise<void> {
+    await this.db.scenario.deleteMany({ where: { featureId } });
+    if (recs.length > 0) await this.db.scenario.createMany({ data: recs });
+  }
+  listForFeature(featureId: string): Promise<ScenarioRecord[]> {
+    return this.db.scenario.findMany({ where: { featureId }, orderBy: { order: 'asc' } });
+  }
+  async deleteForFeature(featureId: string): Promise<void> {
+    await this.db.scenario.deleteMany({ where: { featureId } });
+  }
+}
+
+export class PrismaTestCaseRepository implements TestCaseRepository {
+  constructor(private readonly db: Prisma.TransactionClient) {}
+  async create(rec: TestCaseRecord): Promise<void> {
+    await this.db.testCase.create({ data: rec });
+  }
+  findById(id: string): Promise<TestCaseRecord | null> {
+    return this.db.testCase.findUnique({ where: { id } });
+  }
+  listForProject(projectId: string, sliceId?: string): Promise<TestCaseRecord[]> {
+    return this.db.testCase.findMany({
+      where: { projectId, ...(sliceId !== undefined ? { sliceId } : {}) },
+    });
+  }
+  async save(rec: TestCaseRecord): Promise<void> {
+    await this.db.testCase.update({ where: { id: rec.id }, data: rec });
+  }
+  async delete(id: string): Promise<void> {
+    await this.db.testCase.delete({ where: { id } });
   }
 }
 

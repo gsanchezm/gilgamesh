@@ -6,6 +6,9 @@ export const TOKENS = {
   Sessions: 'SessionRepository',
   Projects: 'ProjectRepository',
   Slices: 'SliceRepository',
+  Features: 'FeatureRepository',
+  Scenarios: 'ScenarioRepository',
+  TestCases: 'TestCaseRepository',
   Agents: 'AgentRepository',
   ToolBindings: 'ToolBindingRepository',
   Subscriptions: 'SubscriptionRepository',
@@ -15,4 +18,5 @@ export const TOKENS = {
   Ids: 'IdGenerator',
   Tokens: 'TokenGenerator',
   Clock: 'Clock',
+  Brain: 'AgentBrainPort',
 } as const;

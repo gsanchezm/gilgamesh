@@ -79,6 +79,20 @@ enum SubscriptionStatus {
   CANCELED
 }
 
+enum TestCasePriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum TestCaseStatus {
+  NOTRUN
+  PASS
+  FAIL
+  BLOCKED
+  SKIPPED
+}
+
 model Org {
   id        String   @id @db.Uuid
   name      String
@@ -91,6 +105,8 @@ model Org {
   slices       Slice[]
   agents       Agent[]
   toolBindings ToolBinding[]
+  features     Feature[]
+  testCases    TestCase[]
   subscription Subscription?
   auditLogs    AuditLog[]
 
@@ -165,6 +181,8 @@ model Project {
   org          Org           @relation(fields: [orgId], references: [id], onDelete: Cascade)
   slices       Slice[]
   toolBindings ToolBinding[]
+  features     Feature[]
+  testCases    TestCase[]
 
   @@unique([orgId, slug])
   @@map("projects")
@@ -178,8 +196,10 @@ model Slice {
   name      String
   order     Int
 
-  org     Org     @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  org       Org        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  features  Feature[]
+  testCases TestCase[]
 
   @@unique([projectId, key])
   @@index([orgId])
@@ -200,6 +220,7 @@ model Agent {
 
   org          Org           @relation(fields: [orgId], references: [id], onDelete: Cascade)
   toolBindings ToolBinding[]
+  testCases    TestCase[]
 
   @@unique([orgId, slot])
   @@map("agents")
@@ -260,4 +281,66 @@ model AuditLog {
   @@index([orgId, createdAt(sort: Desc)])
   @@index([actorUserId])
   @@map("audit_logs")
+}
+
+model Feature {
+  id        String   @id @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  sliceId   String?  @map("slice_id") @db.Uuid
+  name      String
+  path      String
+  content   String
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @map("updated_at")
+
+  org       Org        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  slice     Slice?     @relation(fields: [sliceId], references: [id], onDelete: SetNull)
+  scenarios Scenario[]
+
+  @@index([projectId])
+  @@index([orgId])
+  @@map("features")
+}
+
+model Scenario {
+  id         String          @id @db.Uuid
+  orgId      String          @map("org_id") @db.Uuid
+  featureId  String          @map("feature_id") @db.Uuid
+  name       String
+  order      Int
+  lastStatus TestCaseStatus? @map("last_status")
+
+  feature Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@index([featureId])
+  @@map("scenarios")
+}
+
+model TestCase {
+  id              String           @id @db.Uuid
+  orgId           String           @map("org_id") @db.Uuid
+  projectId       String           @map("project_id") @db.Uuid
+  sliceId         String?          @map("slice_id") @db.Uuid
+  key             String
+  title           String
+  steps           String
+  data            String
+  expected        String
+  priority        TestCasePriority
+  status          TestCaseStatus
+  assignedAgentId String?          @map("assigned_agent_id") @db.Uuid
+  createdAt       DateTime         @map("created_at")
+  updatedAt       DateTime         @map("updated_at")
+
+  org     Org     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  slice   Slice?  @relation(fields: [sliceId], references: [id], onDelete: SetNull)
+  agent   Agent?  @relation(fields: [assignedAgentId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, key])
+  @@index([projectId])
+  @@index([orgId])
+  @@map("test_cases")
 }
