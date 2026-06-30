@@ -15,11 +15,15 @@ import type {
   ToolBindingRepository,
   UserRepository,
 } from '../ports/repositories';
+import { cosineSimilarity } from '@gilgamesh/domain';
+import type { KnowledgeChunkRepository, ScoredChunk } from '../ports/knowledge';
+import { KnowledgeRetriever } from '../use-cases/knowledge';
 import type { Repositories, UnitOfWork } from '../ports/unit-of-work';
 import type {
   AgentRecord,
   AuditLogRecord,
   FeatureRecord,
+  KnowledgeChunkRecord,
   MembershipRecord,
   OrgRecord,
   ProjectRecord,
@@ -278,6 +282,22 @@ export class InMemorySubscriptionRepository implements SubscriptionRepository {
   }
 }
 
+export class InMemoryKnowledgeChunkRepository implements KnowledgeChunkRepository {
+  private readonly byId = new Map<string, KnowledgeChunkRecord>();
+  async upsertMany(chunks: KnowledgeChunkRecord[]): Promise<void> {
+    for (const c of chunks) this.byId.set(c.id, c);
+  }
+  async search(queryEmbedding: number[], k: number): Promise<ScoredChunk[]> {
+    return [...this.byId.values()]
+      .map((chunk) => ({ chunk, score: cosineSimilarity(queryEmbedding, chunk.embedding) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, k);
+  }
+  async count(): Promise<number> {
+    return this.byId.size;
+  }
+}
+
 export class InMemoryAuditLogRepository implements AuditLogRepository {
   readonly rows: AuditLogRecord[] = [];
   async append(rec: AuditLogRecord): Promise<void> {
@@ -313,6 +333,7 @@ export interface InMemoryContext {
   toolBindings: InMemoryToolBindingRepository;
   subscriptions: InMemorySubscriptionRepository;
   audit: InMemoryAuditLogRepository;
+  knowledge: InMemoryKnowledgeChunkRepository;
   uow: InMemoryUnitOfWork;
   clock: FakeClock;
   ids: SeqIdGenerator;
@@ -321,6 +342,7 @@ export interface InMemoryContext {
   brain: DeterministicBrain;
   kernel: DeterministicKernel;
   payment: MockPaymentProvider;
+  retrieval: KnowledgeRetriever;
 }
 
 export function createInMemoryContext(): InMemoryContext {
@@ -343,15 +365,19 @@ export function createInMemoryContext(): InMemoryContext {
     subscriptions: new InMemorySubscriptionRepository(),
     audit: new InMemoryAuditLogRepository(),
   };
+  const brain = new DeterministicBrain();
+  const knowledge = new InMemoryKnowledgeChunkRepository();
   return {
     ...repos,
+    knowledge,
     uow: new InMemoryUnitOfWork(repos),
     clock: new FakeClock(),
     ids: new SeqIdGenerator(),
     hasher: new FakePasswordHasher(),
     tokens: new FakeTokenGenerator(),
-    brain: new DeterministicBrain(),
+    brain,
     kernel: new DeterministicKernel(),
     payment: new MockPaymentProvider(),
+    retrieval: new KnowledgeRetriever({ knowledge, brain }),
   };
 }

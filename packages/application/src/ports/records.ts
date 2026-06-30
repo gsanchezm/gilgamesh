@@ -190,6 +190,20 @@ export interface SubscriptionRecord {
   currentPeriodEnd: Date | null;
 }
 
+/**
+ * A chunk of the GLOBAL shared knowledge base (slice 5, owner decision S5-A) — no `orgId`, retrieval is
+ * shared across all orgs. The keystone per-org `KnowledgeDoc`/`docId` land with the per-org upload follow-up.
+ */
+export interface KnowledgeChunkRecord {
+  id: string;
+  source: string;
+  headingPath: string[];
+  section: string;
+  content: string;
+  embedding: number[];
+  tokenEstimate: number;
+}
+
 export interface AuditLogRecord {
   id: string;
   /** Null for non-org-scoped events (e.g. auth.register / auth.login before a tenant exists). */

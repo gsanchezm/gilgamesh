@@ -2,6 +2,7 @@ import { ApplicationError } from '../errors';
 import type { AgentBrainPort } from '../ports/brain';
 import type { Clock } from '../ports/clock';
 import type { IdGenerator } from '../ports/id';
+import type { Citation, KnowledgeRetrievalPort } from '../ports/knowledge';
 import type { ProjectFormat, TestCasePriority } from '../ports/records';
 import type { AuditLogRepository, MembershipRepository, ProjectRepository } from '../ports/repositories';
 import { requireProjectAccess } from './authz';
@@ -23,6 +24,7 @@ export interface TestCaseDraft {
 export interface GeneratedDraftsView {
   features: FeatureDraft[];
   testCases: TestCaseDraft[];
+  citations: Citation[];
 }
 
 const AUTHORS = ['OWNER', 'ADMIN', 'MEMBER'] as const;
@@ -36,6 +38,7 @@ const SYSTEM_PROMPT =
 
 interface GenerateDeps {
   brain: AgentBrainPort;
+  retrieval: KnowledgeRetrievalPort;
   projects: ProjectRepository;
   memberships: MembershipRepository;
   audit: AuditLogRepository;
@@ -52,7 +55,7 @@ function asString(v: unknown): string {
 }
 
 /** Parse the brain's text into drafts, tolerating malformed output by dropping invalid entries. */
-function parseDrafts(text: string): GeneratedDraftsView {
+function parseDrafts(text: string): { features: FeatureDraft[]; testCases: TestCaseDraft[] } {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -101,15 +104,26 @@ export class GenerateDrafts {
     const n = Math.trunc(Number(input.count ?? 3));
     const count = Number.isFinite(n) ? Math.min(Math.max(n, 1), 10) : 3;
 
+    // Slice 5: ground the generation in the shared knowledge base (RAG). The stub brain ignores the
+    // grounding deterministically; a real brain uses it. Either way the citations flow to the output.
+    const retrieved = await this.deps.retrieval.retrieve(prompt, 4);
+    const grounding = retrieved.map((r) => `[${r.citation.source}] ${r.content}`).join('\n\n');
+
     const res = await this.deps.brain.complete({
       tier: 'SONNET',
-      system: SYSTEM_PROMPT,
+      system: grounding
+        ? `${SYSTEM_PROMPT}\n\nReference knowledge — ground your drafts in this and cite the source:\n${grounding}`
+        : SYSTEM_PROMPT,
       messages: [{ role: 'user', content: JSON.stringify({ prompt, format, count }) }],
     });
     const parsed = parseDrafts(res.text);
     // Enforce the count cap at the use-case boundary so the invariant holds regardless of which
     // AgentBrainPort adapter is plugged in (the real Claude one may not honor count).
-    const drafts = { features: parsed.features.slice(0, count), testCases: parsed.testCases.slice(0, count) };
+    const drafts: GeneratedDraftsView = {
+      features: parsed.features.slice(0, count),
+      testCases: parsed.testCases.slice(0, count),
+      citations: retrieved.map((r) => r.citation),
+    };
 
     await this.deps.audit.append({
       id: this.deps.ids.next(),
@@ -118,8 +132,13 @@ export class GenerateDrafts {
       action: 'testlab.generated',
       targetType: 'Project',
       targetId: project.id,
-      // Never store the raw prompt — only its length and the produced counts.
-      metadata: { promptLength: prompt.length, features: drafts.features.length, testCases: drafts.testCases.length },
+      // Never store the raw prompt — only its length, the produced counts, and the grounding count.
+      metadata: {
+        promptLength: prompt.length,
+        features: drafts.features.length,
+        testCases: drafts.testCases.length,
+        grounded: retrieved.length,
+      },
       ip: null,
       createdAt: this.deps.clock.now(),
     });

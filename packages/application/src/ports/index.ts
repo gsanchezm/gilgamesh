@@ -7,3 +7,4 @@ export * from './id';
 export * from './brain';
 export * from './kernel';
 export * from './payment';
+export * from './knowledge';

@@ -1,3 +1,4 @@
+import { embedText } from '@gilgamesh/domain';
 import type {
   AgentBrainPort,
   BrainCompleteRequest,
@@ -40,7 +41,9 @@ export class DeterministicBrain implements AgentBrainPort {
   }
 
   async embed(texts: string[]): Promise<number[][]> {
-    return texts.map(() => new Array(1536).fill(0));
+    // Deterministic lexical-hash embedding (slice 5): real lexical similarity, offline. The real
+    // semantic embeddings replace this with the Claude/embedding adapter in the Brain slice.
+    return texts.map((t) => embedText(t));
   }
 
   private featureDraft(title: string, count: number): { name: string; path: string; content: string } {

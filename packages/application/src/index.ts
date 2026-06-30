@@ -13,6 +13,7 @@ export * from './use-cases/testlab-testcases';
 export * from './use-cases/testlab-generate';
 export * from './use-cases/runs';
 export * from './use-cases/subscription';
+export * from './use-cases/knowledge';
 export * from './brain/stub-brain';
 export * from './kernel/deterministic-kernel';
 export * from './payment/mock-payment-provider';

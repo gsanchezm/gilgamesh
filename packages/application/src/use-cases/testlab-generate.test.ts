@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createInMemoryContext, type InMemoryContext } from '../testing/in-memory';
 import { CompleteOnboarding } from './complete-onboarding';
 import { GenerateDrafts } from './testlab-generate';
+import { IngestKnowledge } from './knowledge';
 import { RegisterUser } from './register-user';
 
 describe('Test Lab — AI generate (stub brain)', () => {
@@ -75,6 +76,33 @@ describe('Test Lab — AI generate (stub brain)', () => {
       count: 3,
     });
     expect(drafts.features).toHaveLength(3);
+  });
+
+  it('grounds generation in the knowledge base and returns citations (AC-KB-07)', async () => {
+    await new IngestKnowledge(ctx).execute([
+      {
+        id: 'k1',
+        source: 'bddbooks-formulation.pdf',
+        headingPath: ['Formulation', 'BRIEF'],
+        section: 'BRIEF',
+        text: 'Good scenarios follow BRIEF: business language, real data, intention-revealing, essential, focused, brief.',
+      },
+    ]);
+    const drafts = await new GenerateDrafts(ctx).execute({
+      userId,
+      projectId,
+      prompt: 'BRIEF scenarios business language intention revealing',
+      count: 1,
+    });
+    expect(drafts.citations.length).toBeGreaterThan(0);
+    expect(drafts.citations[0]!.source).toBe('bddbooks-formulation.pdf');
+    const audited = ctx.audit.rows.find((r) => r.action === 'testlab.generated');
+    expect(audited?.metadata).toMatchObject({ grounded: drafts.citations.length });
+  });
+
+  it('returns empty citations when the knowledge base is empty', async () => {
+    const drafts = await new GenerateDrafts(ctx).execute({ userId, projectId, prompt: 'x', count: 1 });
+    expect(drafts.citations).toEqual([]);
   });
 
   it('rejects an empty prompt (VALIDATION)', async () => {
