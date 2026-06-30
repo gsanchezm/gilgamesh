@@ -2,6 +2,7 @@ import { createContext, useContext, type ReactNode } from 'react';
 import { httpAgentsClient, type AgentsClient } from '../lib/agents-client';
 import { httpAuthClient, type AuthClient } from '../lib/auth-client';
 import { httpBillingClient, type BillingClient } from '../lib/billing-client';
+import { httpIntegrationsClient, type IntegrationsClient } from '../lib/integrations-client';
 import { httpKnowledgeClient, type KnowledgeClient } from '../lib/knowledge-client';
 import { httpOnboardingClient, type OnboardingClient } from '../lib/onboarding-client';
 import { httpRunsClient, type RunsClient } from '../lib/runs-client';
@@ -15,6 +16,7 @@ export interface Clients {
   runs: RunsClient;
   billing: BillingClient;
   knowledge: KnowledgeClient;
+  integrations: IntegrationsClient;
 }
 
 const defaultClients: Clients = {
@@ -25,6 +27,7 @@ const defaultClients: Clients = {
   runs: httpRunsClient,
   billing: httpBillingClient,
   knowledge: httpKnowledgeClient,
+  integrations: httpIntegrationsClient,
 };
 
 const ClientsContext = createContext<Clients>(defaultClients);

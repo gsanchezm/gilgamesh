@@ -25,6 +25,15 @@ const aRun = (overrides?: Partial<RunView>): RunView => ({
   ...overrides,
 });
 
+function fakeIntegrations() {
+  return {
+    list: vi.fn(async () => []),
+    connect: vi.fn(async () => ({ key: 'github', name: 'GitHub', group: 'SOURCE_REPOS', connected: true, config: {}, connectedAt: null })),
+    disconnect: vi.fn(async () => ({ key: 'github', name: 'GitHub', group: 'SOURCE_REPOS', connected: false, config: {}, connectedAt: null })),
+    importRepo: vi.fn(async () => ({ imported: 2 })),
+  };
+}
+
 function fakeRuns(overrides?: Partial<RunsClient>): RunsClient {
   return {
     triggerRun: vi.fn(async () => aRun()),
@@ -71,14 +80,14 @@ function fakeClient(overrides?: Partial<TestLabClient>): TestLabClient {
 
 describe('TestLabScreen', () => {
   it('loads and renders slices, features and test cases', async () => {
-    render(<TestLabScreen client={fakeClient()} runsClient={fakeRuns()} projectId="p1" />);
+    render(<TestLabScreen client={fakeClient()} runsClient={fakeRuns()} integrationsClient={fakeIntegrations()} projectId="p1" />);
     expect(await screen.findByText('Checkout')).toBeTruthy();
     expect(screen.getByText('1 slices · 0 features · 0 test cases')).toBeTruthy();
   });
 
   it('adds a slice', async () => {
     const client = fakeClient();
-    render(<TestLabScreen client={client} runsClient={fakeRuns()} projectId="p1" />);
+    render(<TestLabScreen client={client} runsClient={fakeRuns()} integrationsClient={fakeIntegrations()} projectId="p1" />);
     await screen.findByText('Checkout');
 
     fireEvent.change(screen.getByLabelText('Slice key'), { target: { value: 'regression' } });
@@ -90,7 +99,7 @@ describe('TestLabScreen', () => {
   });
 
   it('adds a feature and shows its parsed scenario count', async () => {
-    render(<TestLabScreen client={fakeClient()} runsClient={fakeRuns()} projectId="p1" />);
+    render(<TestLabScreen client={fakeClient()} runsClient={fakeRuns()} integrationsClient={fakeIntegrations()} projectId="p1" />);
     await screen.findByText('Checkout');
 
     fireEvent.change(screen.getByLabelText('Feature path'), { target: { value: 'checkout.feature' } });
@@ -101,7 +110,7 @@ describe('TestLabScreen', () => {
   });
 
   it('adds a test case', async () => {
-    render(<TestLabScreen client={fakeClient()} runsClient={fakeRuns()} projectId="p1" />);
+    render(<TestLabScreen client={fakeClient()} runsClient={fakeRuns()} integrationsClient={fakeIntegrations()} projectId="p1" />);
     await screen.findByText('Checkout');
 
     fireEvent.change(screen.getByLabelText('Test case title'), { target: { value: 'Pay with card' } });
@@ -111,7 +120,7 @@ describe('TestLabScreen', () => {
   });
 
   it('generates drafts', async () => {
-    render(<TestLabScreen client={fakeClient()} runsClient={fakeRuns()} projectId="p1" />);
+    render(<TestLabScreen client={fakeClient()} runsClient={fakeRuns()} integrationsClient={fakeIntegrations()} projectId="p1" />);
     await screen.findByText('Checkout');
 
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'a checkout flow' } });
@@ -127,7 +136,7 @@ describe('TestLabScreen', () => {
       ]),
     });
     const runs = fakeRuns();
-    render(<TestLabScreen client={client} runsClient={runs} projectId="p1" />);
+    render(<TestLabScreen client={client} runsClient={runs} integrationsClient={fakeIntegrations()} projectId="p1" />);
     await screen.findByText('Checkout · 2 scenarios');
 
     fireEvent.click(screen.getByRole('button', { name: 'Run feature Checkout' }));
@@ -145,7 +154,7 @@ describe('TestLabScreen', () => {
         throw new Error('A slice with key "checkout" already exists in this project.');
       }),
     });
-    render(<TestLabScreen client={client} runsClient={fakeRuns()} projectId="p1" />);
+    render(<TestLabScreen client={client} runsClient={fakeRuns()} integrationsClient={fakeIntegrations()} projectId="p1" />);
     await screen.findByText('Checkout');
 
     fireEvent.change(screen.getByLabelText('Slice key'), { target: { value: 'checkout' } });

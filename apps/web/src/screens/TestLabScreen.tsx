@@ -1,5 +1,6 @@
 import { Button } from '@gilgamesh/ui';
 import { useCallback, useEffect, useState } from 'react';
+import type { IntegrationsClient } from '../lib/integrations-client';
 import type { RunSummaryView, RunTargetKind, RunView, RunsClient } from '../lib/runs-client';
 import type {
   FeatureSummaryView,
@@ -13,12 +14,13 @@ import type {
 export interface TestLabScreenProps {
   client: TestLabClient;
   runsClient: RunsClient;
+  integrationsClient: IntegrationsClient;
   projectId: string;
 }
 
 const PRIORITIES: TestCasePriority[] = ['HIGH', 'MEDIUM', 'LOW'];
 
-export function TestLabScreen({ client, runsClient, projectId }: TestLabScreenProps) {
+export function TestLabScreen({ client, runsClient, integrationsClient, projectId }: TestLabScreenProps) {
   const [slices, setSlices] = useState<SliceView[] | null>(null);
   const [features, setFeatures] = useState<FeatureSummaryView[]>([]);
   const [testCases, setTestCases] = useState<TestCaseView[]>([]);
@@ -34,6 +36,9 @@ export function TestLabScreen({ client, runsClient, projectId }: TestLabScreenPr
   const [tcPriority, setTcPriority] = useState<TestCasePriority>('MEDIUM');
   const [prompt, setPrompt] = useState('');
   const [drafts, setDrafts] = useState<GeneratedDraftsView | null>(null);
+  const [repoFullName, setRepoFullName] = useState('');
+  const [repoBranch, setRepoBranch] = useState('main');
+  const [importMsg, setImportMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -68,6 +73,17 @@ export function TestLabScreen({ client, runsClient, projectId }: TestLabScreenPr
       setBusy(false);
     }
   }
+
+  const importRepo = () =>
+    action(async () => {
+      setImportMsg(null);
+      const { imported } = await integrationsClient.importRepo(projectId, {
+        fullName: repoFullName,
+        branch: repoBranch || 'main',
+      });
+      setImportMsg(`Imported ${imported} feature${imported === 1 ? '' : 's'} from ${repoFullName}.`);
+      setFeatures(await client.listFeatures(projectId));
+    });
 
   const addSlice = () =>
     action(async () => {
@@ -151,6 +167,21 @@ export function TestLabScreen({ client, runsClient, projectId }: TestLabScreenPr
         <Button onClick={addSlice} disabled={busy}>
           Add slice
         </Button>
+      </section>
+
+      <section aria-label="Import from repo">
+        <h2>Import from repo</h2>
+        <input
+          aria-label="Repository full name"
+          placeholder="acme/web-app"
+          value={repoFullName}
+          onChange={(e) => setRepoFullName(e.target.value)}
+        />
+        <input aria-label="Branch" placeholder="main" value={repoBranch} onChange={(e) => setRepoBranch(e.target.value)} />
+        <Button onClick={importRepo} disabled={busy || !repoFullName.trim()}>
+          Import features
+        </Button>
+        {importMsg && <p className="gx-testlab__import-msg">{importMsg}</p>}
       </section>
 
       <section aria-label="Features">

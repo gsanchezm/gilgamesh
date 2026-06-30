@@ -74,6 +74,12 @@ function makeClients(): Clients {
       };
     })(),
     knowledge: { search: vi.fn(async () => ({ results: [], total: 0 })) },
+    integrations: {
+      list: vi.fn(async () => []),
+      connect: vi.fn(async () => ({ key: 'github', name: 'GitHub', group: 'SOURCE_REPOS', connected: true, config: {}, connectedAt: null })),
+      disconnect: vi.fn(async () => ({ key: 'github', name: 'GitHub', group: 'SOURCE_REPOS', connected: false, config: {}, connectedAt: null })),
+      importRepo: vi.fn(async () => ({ imported: 0 })),
+    },
   };
 }
 

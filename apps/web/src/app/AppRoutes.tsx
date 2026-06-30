@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { AgentRoomScreen } from '../screens/AgentRoomScreen';
 import { BillingScreen } from '../screens/BillingScreen';
+import { IntegrationsScreen } from '../screens/IntegrationsScreen';
 import { KnowledgeScreen } from '../screens/KnowledgeScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { OnboardingWizard } from '../screens/OnboardingWizard';
@@ -62,9 +63,17 @@ function AgentRoomRoute() {
 }
 
 function TestLabRoute() {
-  const { testlab, runs } = useClients();
+  const { testlab, runs, integrations } = useClients();
   const { projectId } = useParams();
-  return <TestLabScreen client={testlab} runsClient={runs} projectId={projectId ?? ''} />;
+  return (
+    <TestLabScreen client={testlab} runsClient={runs} integrationsClient={integrations} projectId={projectId ?? ''} />
+  );
+}
+
+function IntegrationsRoute() {
+  const { integrations } = useClients();
+  const { activeOrgId } = useSession();
+  return <IntegrationsScreen client={integrations} orgId={activeOrgId ?? ''} />;
 }
 
 function BillingRoute() {
@@ -120,6 +129,14 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <KnowledgeRoute />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/integrations"
+        element={
+          <RequireAuth>
+            <IntegrationsRoute />
           </RequireAuth>
         }
       />
