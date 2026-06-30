@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -5,10 +8,17 @@ import { describe, expect, it } from 'vitest';
  * or outer-layer imports (Clean Architecture — dependencies point inward only). This guards the
  * project's #1 invariant against future drift; a violation fails CI rather than slipping through review.
  */
-const sources = import.meta.glob('./**/*.ts', { eager: true, query: '?raw', import: 'default' }) as Record<
-  string,
-  string
->;
+const SRC_DIR = dirname(fileURLToPath(import.meta.url));
+
+function tsSources(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...tsSources(path));
+    else if (entry.name.endsWith('.ts') && !entry.name.includes('.test.')) out.push(path);
+  }
+  return out;
+}
 
 const FORBIDDEN: RegExp[] = [
   /^@nestjs(\/|$)/,
@@ -33,11 +43,16 @@ describe('architecture: domain is framework-free', () => {
     expect(detect('@gilgamesh/domain')).toBe(false);
   });
 
-  for (const [path, content] of Object.entries(sources)) {
-    if (path.includes('.test.')) continue;
-    it(`${path} imports no framework/outer-layer module`, () => {
-      const bad = importsOf(content).filter(detect);
-      expect(bad, `disallowed imports in ${path}`).toEqual([]);
+  const files = tsSources(SRC_DIR);
+
+  it('scans at least the known domain source files', () => {
+    expect(files.length).toBeGreaterThanOrEqual(5);
+  });
+
+  for (const file of files) {
+    it(`${file.slice(SRC_DIR.length + 1).replace(/\\/g, '/')} imports no framework/outer-layer module`, () => {
+      const bad = importsOf(readFileSync(file, 'utf8')).filter(detect);
+      expect(bad, 'disallowed imports').toEqual([]);
     });
   }
 });
