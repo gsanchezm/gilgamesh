@@ -237,3 +237,53 @@ Then('{string} is later than {string}', function (this: GilgameshWorld, laterNam
   const earlier = new Date(this.notes.get(earlierName) as string | Date).getTime();
   assert.ok(later > earlier, `${laterName} (${later}) is not later than ${earlierName} (${earlier})`);
 });
+
+// ---- Session: /auth/me + logout (AC-AUTH-08/09) ------------------------------------
+
+Given('I am signed in with an active Session', async function (this: GilgameshWorld) {
+  await postRegister(this, validRegister('ishtar@uruk.io'));
+});
+
+Then('that Session has {string} set', async function (this: GilgameshWorld, field: string) {
+  assert.equal(field, 'revokedAt');
+  const session = await this.db.session.findFirst({ orderBy: { createdAt: 'desc' } });
+  assert.ok(session, 'no session persisted');
+  assert.notEqual(session.revokedAt, null, 'the session was not revoked');
+});
+
+Then('the session cookie is cleared', function (this: GilgameshWorld) {
+  const raw = this.response?.headers['set-cookie'];
+  const cookies = Array.isArray(raw) ? raw : raw ? [String(raw)] : [];
+  const cookie = cookies.find((c) => c.startsWith('__Host-gg_session'));
+  assert.ok(cookie, 'expected a Set-Cookie clearing the session');
+  const cleared =
+    /^__Host-gg_session=;/.test(cookie) ||
+    /Expires=Thu, 01 Jan 1970/i.test(cookie) ||
+    /Max-Age=0/i.test(cookie);
+  assert.ok(cleared, `session cookie not cleared: ${cookie}`);
+});
+
+Then(
+  'a subsequent {string} with the old cookie returns {int}',
+  async function (this: GilgameshWorld, call: string, status: number) {
+    const path = call.replace(/^GET\s+/, '');
+    const req = request(this.app.getHttpServer()).get(this.url(path));
+    if (this.cookie) req.set('Cookie', this.cookie);
+    this.response = await req.send();
+    assert.equal(this.response.status, status);
+  },
+);
+
+Then(
+  'the response body is a {string} with the embedded memberships array and {string}',
+  function (this: GilgameshWorld, _view: string, _field: string) {
+    const body = this.response?.body as { user?: unknown; memberships?: unknown } | undefined;
+    assert.ok(body?.user, 'MeView is missing the user object');
+    assert.ok(Array.isArray(body?.memberships), 'MeView is missing the memberships array');
+    assert.ok(body && 'activeOrgId' in body, 'MeView is missing activeOrgId');
+  },
+);
+
+When('I GET {string} without a session cookie', async function (this: GilgameshWorld, path: string) {
+  this.response = await request(this.app.getHttpServer()).get(this.url(path)).send();
+});

@@ -14,3 +14,10 @@ export const ActiveOrg = createParamDecorator(
     return req.activeOrgId ?? null;
   },
 );
+
+/** The authenticated session's id (requires SessionAuthGuard) — used to revoke on logout. */
+export const SessionId = createParamDecorator((_data: unknown, ctx: ExecutionContext): string => {
+  const req = ctx.switchToHttp().getRequest<{ sessionId?: string }>();
+  if (!req.sessionId) throw new Error('SessionId used without SessionAuthGuard');
+  return req.sessionId;
+});

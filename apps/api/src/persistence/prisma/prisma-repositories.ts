@@ -55,7 +55,8 @@ export class PrismaMembershipRepository implements MembershipRepository {
     await this.db.membership.create({ data: rec });
   }
   listForUser(userId: string): Promise<MembershipRecord[]> {
-    return this.db.membership.findMany({ where: { userId } });
+    // Deterministic order: activeOrgId = memberships[0] is user-visible via MeView.
+    return this.db.membership.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } });
   }
   async findRole(orgId: string, userId: string): Promise<Role | null> {
     const m = await this.db.membership.findUnique({ where: { orgId_userId: { orgId, userId } } });

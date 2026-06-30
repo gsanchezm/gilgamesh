@@ -12,7 +12,11 @@ import { TOKENS } from '../persistence/tokens';
 
 const SESSION_COOKIE = '__Host-gg_session';
 
-type AuthedRequest = Request & { userId?: string; activeOrgId?: string | null };
+type AuthedRequest = Request & {
+  userId?: string;
+  activeOrgId?: string | null;
+  sessionId?: string;
+};
 
 function readCookie(header: string | undefined, name: string): string | null {
   if (!header) return null;
@@ -54,6 +58,7 @@ export class SessionAuthGuard implements CanActivate {
 
     const memberships = await this.memberships.listForUser(session.userId);
     req.userId = session.userId;
+    req.sessionId = session.id;
     req.activeOrgId = memberships[0]?.orgId ?? null;
     return true;
   }

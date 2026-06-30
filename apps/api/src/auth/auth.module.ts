@@ -1,9 +1,12 @@
 import {
   type AuditLogRepository,
   type Clock,
+  GetMe,
   type IdGenerator,
   LoginUser,
+  LogoutUser,
   type MembershipRepository,
+  type OrgRepository,
   type PasswordHasher,
   RegisterUser,
   type SessionRepository,
@@ -60,6 +63,22 @@ import { AuthController } from './auth.controller';
         TOKENS.Ids,
         TOKENS.Clock,
       ],
+    },
+    {
+      provide: GetMe,
+      useFactory: (users: UserRepository, memberships: MembershipRepository, orgs: OrgRepository) =>
+        new GetMe({ users, memberships, orgs }),
+      inject: [TOKENS.Users, TOKENS.Memberships, TOKENS.Orgs],
+    },
+    {
+      provide: LogoutUser,
+      useFactory: (
+        sessions: SessionRepository,
+        audit: AuditLogRepository,
+        ids: IdGenerator,
+        clock: Clock,
+      ) => new LogoutUser({ sessions, audit, ids, clock }),
+      inject: [TOKENS.Sessions, TOKENS.Audit, TOKENS.Ids, TOKENS.Clock],
     },
   ],
 })

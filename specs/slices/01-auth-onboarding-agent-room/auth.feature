@@ -88,7 +88,7 @@ Feature: Local authentication
     And I sign in again with rememberMe "true" and note the Session "expiresAt" as "LONG"
     Then "LONG" is later than "SHORT"
 
-  @wip @AC-AUTH-08 @logout @session @security
+  @AC-AUTH-08 @logout @session @security
   Scenario: Sign out revokes the session
     Given I am signed in with an active Session
     When I POST "/auth/logout"
@@ -98,7 +98,7 @@ Feature: Local authentication
     And an AuditLog entry "auth.logout" is recorded
     And a subsequent "GET /auth/me" with the old cookie returns 401
 
-  @wip @AC-AUTH-09 @me @session
+  @AC-AUTH-09 @me @session
   Scenario: Who am I
     Given I am signed in as "ishtar@uruk.io"
     When I GET "/auth/me"
