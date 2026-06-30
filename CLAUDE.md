@@ -98,8 +98,10 @@ All Definition-of-Done blockers are met and verified green:
 
 **Deferred (owner decision S1-B, see `docs/research/decisions-log.md`):** forgot/reset-password +
 EmailPort (AC-AUTH-10/11/12 → slice 7); disabled Google/SSO login controls (AC-AUTH-15 → follow-up); the
-logout UI control and the CI quality-gate workflows (lint/boundaries, SAST, deps/secret scan, bundle-size,
-k6, contract) are follow-ups.
+logout UI control. The base CI pipeline is now wired (`.github/workflows/ci.yml`: typecheck + Docker-free
+tests · integration + BDD on Postgres/Redis services · Playwright) and green; the **specialized quality
+gates** (lint/boundaries, SAST, deps/secret scan, bundle-size, k6, contract) remain follow-ups. Architecture
+boundaries are partially covered by the `domain`/`application` fitness tests.
 
 ## Slice 2 status (Test Lab authoring) — DoD COMPLETE
 
