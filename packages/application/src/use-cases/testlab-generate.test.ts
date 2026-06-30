@@ -52,6 +52,31 @@ describe('Test Lab — AI generate (stub brain)', () => {
     expect(drafts.testCases.every((t) => ['HIGH', 'MEDIUM', 'LOW'].includes(t.priority))).toBe(true);
   });
 
+  it('caps drafts to the requested count even if the brain returns more', async () => {
+    const floodBrain = {
+      complete: async () => ({
+        text: JSON.stringify({
+          features: Array.from({ length: 20 }, (_, i) => ({
+            name: `F${i}`,
+            path: 'x.feature',
+            content: 'Feature: X\n  Scenario: S\n    Then ok',
+          })),
+          testCases: [],
+        }),
+        usage: { inputTokens: 0, outputTokens: 0 },
+      }),
+      stream: async function* () {},
+      embed: async () => [],
+    };
+    const drafts = await new GenerateDrafts({ ...ctx, brain: floodBrain }).execute({
+      userId,
+      projectId,
+      prompt: 'x',
+      count: 3,
+    });
+    expect(drafts.features).toHaveLength(3);
+  });
+
   it('rejects an empty prompt (VALIDATION)', async () => {
     await expect(new GenerateDrafts(ctx).execute({ userId, projectId, prompt: '   ' })).rejects.toMatchObject({
       code: 'VALIDATION',

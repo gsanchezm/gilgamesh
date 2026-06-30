@@ -174,6 +174,20 @@ Slice 1 merged to `main` (github.com/gsanchezm/gilgamesh). Starting slice 2 SDD�
 Spec authored at `specs/slices/02-test-lab-authoring/spec.md` (27 ACs: SLICE/FEAT/TC/GEN). Building on branch
 `slice-2-test-lab-authoring`.
 
+**Slice 2 adversarial review (2026-06-30) — fixed before merge.** A 24-agent review of the slice-2 diff found
+8 real defects the green suite missed (the in-memory wiring never fails mid-op nor interleaves concurrency).
+All fixed, TDD, re-verified green (typecheck · ~185 Docker-free · test:int 9 · BDD 69 · Playwright 2):
+- **[HIGH·sec]** trailing-slash bypassed `RateLimitGuard` (`/auth/login/` un-throttled) — also defeated AC-GEN-04;
+  guard now strips trailing slashes + keys on the full normalized path (generate buckets per project+IP).
+- **[HIGH·integrity]** feature+scenario writes were non-transactional — extended the UnitOfWork `Repositories`
+  bundle (features/scenarios/testCases) and wrapped Create/Update/DeleteFeature in `uow.transaction`.
+- **[MED]** empty-string FK ids ('' → 500 on Postgres) → `|| null` normalization; Prisma P2002→409 / P2025→404
+  mapping (key-gen race + save-after-delete no longer leak 500); `DeleteSlice` detaches dependents explicitly
+  (no in-memory-vs-Postgres divergence); gherkin parser is doc-string-aware; GenerateDrafts caps output to count.
+- **Deferred (follow-up):** generate throttle keyed post-auth per principal (current per-project key reduces the
+  blast radius); deterministic ORDER BY on the Prisma list queries; a Prisma-wired testlab int test; an
+  executable AC-GEN-04 429 assertion; `@IsUUID` DTO hardening for non-empty malformed ids.
+
 **Slice 2 status — DONE (2026-06-30).** Built SDD→BDD→TDD across domain (gherkin parser), application (15 use
 cases + 4 ports + DeterministicBrain stub), api (controllers + Prisma models/migration + both wirings), web
 (TestLabClient + TestLabScreen). Green end-to-end: typecheck · ~182 Docker-free unit/e2e · test:int 9

@@ -98,14 +98,18 @@ export class GenerateDrafts {
     const prompt = input.prompt.trim();
     if (!prompt) throw new ApplicationError('VALIDATION', 'A prompt is required.');
     const format = input.format ?? (project.format as ProjectFormat);
-    const count = Math.min(Math.max(Math.trunc(input.count ?? 3), 1), 10);
+    const n = Math.trunc(Number(input.count ?? 3));
+    const count = Number.isFinite(n) ? Math.min(Math.max(n, 1), 10) : 3;
 
     const res = await this.deps.brain.complete({
       tier: 'SONNET',
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: JSON.stringify({ prompt, format, count }) }],
     });
-    const drafts = parseDrafts(res.text);
+    const parsed = parseDrafts(res.text);
+    // Enforce the count cap at the use-case boundary so the invariant holds regardless of which
+    // AgentBrainPort adapter is plugged in (the real Claude one may not honor count).
+    const drafts = { features: parsed.features.slice(0, count), testCases: parsed.testCases.slice(0, count) };
 
     await this.deps.audit.append({
       id: this.deps.ids.next(),
