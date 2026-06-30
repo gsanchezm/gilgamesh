@@ -7,7 +7,8 @@ import { useClients } from './clients';
 import { useSession } from './session';
 
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { authed } = useSession();
+  const { authed, booting } = useSession();
+  if (booting) return <div className="gx-booting">Loading…</div>;
   return authed ? <>{children}</> : <Navigate to="/login" replace />;
 }
 

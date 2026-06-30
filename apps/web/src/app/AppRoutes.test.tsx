@@ -22,7 +22,11 @@ function room(): AgentRoomData {
 
 function makeClients(): Clients {
   return {
-    auth: { login: vi.fn(async () => ({ activeOrgId: 'org-1' })) },
+    auth: {
+      login: vi.fn(async () => ({ activeOrgId: 'org-1' })),
+      me: vi.fn(async () => null),
+      logout: vi.fn(async () => {}),
+    },
     onboarding: { createProject: vi.fn(async () => ({ projectId: 'p-1', slug: 'omnipizza' })) },
     agents: {
       getAgentRoom: vi.fn(async () => room()),
@@ -48,6 +52,20 @@ describe('AppRoutes', () => {
   it('redirects an unauthenticated user from a protected route to login', () => {
     renderApp(makeClients(), '/onboarding');
     expect(screen.getByPlaceholderText('name@company.com')).toBeTruthy();
+  });
+
+  it('shows a loader (not login) while the session restore is booting', () => {
+    render(
+      <SessionProvider bootstrap={() => new Promise(() => {})}>
+        <ClientsProvider clients={makeClients()}>
+          <MemoryRouter initialEntries={['/onboarding']}>
+            <AppRoutes />
+          </MemoryRouter>
+        </ClientsProvider>
+      </SessionProvider>,
+    );
+    expect(screen.queryByPlaceholderText('name@company.com')).toBeNull();
+    expect(screen.getByText('Loading…')).toBeTruthy();
   });
 
   it('flows login → onboarding → agent room', async () => {
