@@ -58,6 +58,9 @@ remaining re-skins → new views (Pricing, Reports, Orchestration, Chat, Session
 - ✅ Phase 2 — `ThemeProvider` + toggle, stroke `icons`, `Badge`, `Sidebar`/`Topbar`/`AppShell`
   (presentational, in `@gilgamesh/ui`), wired via `AppLayout` (web) around the authenticated routes
   (layout route). `ComingSoonScreen` placeholders for Orchestration/Reports so the nav is complete.
-- ⬜ Phase 3 — Dashboard re-skin (rich KPIs + agent cards using `AgentAvatar`).
+- ✅ Phase 3 — Dashboard (Agent room) re-skin: `Card` + `AgentCard` primitives, KPI row (Agents
+  awake / Runs today / Success rate / Scenarios), Agents legend, agent-card grid + "work together"
+  card; CTAs wired (Go to canvas / Open / Chat) to ComingSoon routes. Real EN copy from the prototype.
 - ⬜ Remaining views (Login hero, Pricing, Onboarding, Reports, Orchestration, Chat, Session, +
   re-skins of Test Lab / Knowledge / Integrations / Subscription).
+- ⬜ Playwright `.feature`-mapped scenarios per view + visual check (dark/light vs `capturas/`).

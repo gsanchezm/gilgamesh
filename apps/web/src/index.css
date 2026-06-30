@@ -115,3 +115,121 @@ body {
   display: flex;
   flex-direction: column;
 }
+
+/* ---- Dashboard / Agent room ------------------------------------------------ */
+.gx-room {
+  display: flex;
+  flex-direction: column;
+}
+.gx-room__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+.gx-room__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.gx-room__error {
+  margin: 0 0 16px;
+}
+.gx-room__kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 18px;
+  margin-bottom: 26px;
+}
+.gx-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gx-kpi__label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+.gx-kpi__value {
+  font-family: var(--font-display);
+  font-size: 40px;
+  line-height: 1;
+  color: var(--text);
+}
+.gx-kpi__bar {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--track);
+  overflow: hidden;
+}
+.gx-kpi__bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--green);
+}
+.gx-room__agentshead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.gx-room__agentstitle {
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--text);
+}
+.gx-room__legend {
+  display: flex;
+  gap: 16px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+.gx-room__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.gx-room__legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.gx-room__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(258px, 1fr));
+  gap: 18px;
+}
+.gx-together {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  border-radius: var(--radius-card);
+  border: 1px solid rgba(201, 161, 78, 0.35);
+  background: linear-gradient(160deg, #15294e, #0b1a37);
+}
+.gx-together__title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: #e7c877;
+}
+.gx-together__sub {
+  font-size: 12.5px;
+  color: #c4d0e4;
+  line-height: 1.5;
+}
+.gx-together .gx-btn {
+  align-self: flex-start;
+}

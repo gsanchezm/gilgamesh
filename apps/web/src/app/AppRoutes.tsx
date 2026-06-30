@@ -61,7 +61,17 @@ function OnboardingRoute() {
 function AgentRoomRoute() {
   const { agents } = useClients();
   const { projectId } = useParams();
-  return <AgentRoomScreen client={agents} projectId={projectId ?? ''} />;
+  const navigate = useNavigate();
+  const pid = projectId ?? '';
+  return (
+    <AgentRoomScreen
+      client={agents}
+      projectId={pid}
+      onGoToCanvas={() => navigate(`/projects/${pid}/orchestrate`)}
+      onOpenAgent={() => navigate(`/projects/${pid}/session`)}
+      onChatAgent={() => navigate(`/projects/${pid}/chat`)}
+    />
+  );
 }
 
 function TestLabRoute() {
@@ -115,6 +125,8 @@ export function AppRoutes() {
         <Route path="/projects/:projectId/lab" element={<TestLabRoute />} />
         <Route path="/projects/:projectId/orchestrate" element={<ComingSoonScreen title="Orchestration" />} />
         <Route path="/projects/:projectId/reports" element={<ComingSoonScreen title="Reports" />} />
+        <Route path="/projects/:projectId/chat" element={<ComingSoonScreen title="Chat" />} />
+        <Route path="/projects/:projectId/session" element={<ComingSoonScreen title="Session" />} />
         <Route path="/billing" element={<BillingRoute />} />
         <Route path="/knowledge" element={<KnowledgeRoute />} />
         <Route path="/integrations" element={<IntegrationsRoute />} />
