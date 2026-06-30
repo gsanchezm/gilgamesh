@@ -19,6 +19,7 @@ import {
   PrismaToolBindingRepository,
   PrismaUserRepository,
 } from './prisma-repositories';
+import { PrismaUnitOfWork } from './prisma-unit-of-work';
 
 /** Production persistence: Prisma-backed repositories (real Postgres) + security infra. */
 @Global()
@@ -35,6 +36,7 @@ import {
     { provide: TOKENS.ToolBindings, useFactory: (db: PrismaService) => new PrismaToolBindingRepository(db), inject: [PrismaService] },
     { provide: TOKENS.Subscriptions, useFactory: (db: PrismaService) => new PrismaSubscriptionRepository(db), inject: [PrismaService] },
     { provide: TOKENS.Audit, useFactory: (db: PrismaService) => new PrismaAuditLogRepository(db), inject: [PrismaService] },
+    { provide: TOKENS.UnitOfWork, useFactory: (db: PrismaService) => new PrismaUnitOfWork(db), inject: [PrismaService] },
     { provide: TOKENS.Hasher, useValue: new Argon2PasswordHasher() },
     { provide: TOKENS.Ids, useValue: new Uuid7IdGenerator() },
     { provide: TOKENS.Tokens, useValue: new CryptoSessionTokenGenerator() },
@@ -52,6 +54,7 @@ import {
     TOKENS.ToolBindings,
     TOKENS.Subscriptions,
     TOKENS.Audit,
+    TOKENS.UnitOfWork,
     TOKENS.Hasher,
     TOKENS.Ids,
     TOKENS.Tokens,

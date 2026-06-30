@@ -10,6 +10,7 @@ import type {
   ToolBindingRepository,
   UserRepository,
 } from '../ports/repositories';
+import type { Repositories, UnitOfWork } from '../ports/unit-of-work';
 import type {
   AgentRecord,
   AuditLogRecord,
@@ -164,6 +165,18 @@ export class InMemoryAuditLogRepository implements AuditLogRepository {
   }
 }
 
+/**
+ * Runs the work against the shared in-memory stores. There is no real isolation/rollback —
+ * it exists so use cases can depend on the UnitOfWork port in Docker-free unit tests
+ * (the actual rollback guarantee is exercised against Postgres by the integration suite).
+ */
+export class InMemoryUnitOfWork implements UnitOfWork {
+  constructor(private readonly repos: Repositories) {}
+  transaction<T>(work: (repos: Repositories) => Promise<T>): Promise<T> {
+    return work(this.repos);
+  }
+}
+
 export interface InMemoryContext {
   users: InMemoryUserRepository;
   orgs: InMemoryOrgRepository;
@@ -175,6 +188,7 @@ export interface InMemoryContext {
   toolBindings: InMemoryToolBindingRepository;
   subscriptions: InMemorySubscriptionRepository;
   audit: InMemoryAuditLogRepository;
+  uow: InMemoryUnitOfWork;
   clock: FakeClock;
   ids: SeqIdGenerator;
   hasher: FakePasswordHasher;
@@ -182,7 +196,9 @@ export interface InMemoryContext {
 }
 
 export function createInMemoryContext(): InMemoryContext {
-  return {
+  // Build the repos once; the UnitOfWork wraps the SAME instances so writes made inside a
+  // transaction are visible to readers that resolve the repos directly.
+  const repos = {
     users: new InMemoryUserRepository(),
     orgs: new InMemoryOrgRepository(),
     memberships: new InMemoryMembershipRepository(),
@@ -193,6 +209,10 @@ export function createInMemoryContext(): InMemoryContext {
     toolBindings: new InMemoryToolBindingRepository(),
     subscriptions: new InMemorySubscriptionRepository(),
     audit: new InMemoryAuditLogRepository(),
+  };
+  return {
+    ...repos,
+    uow: new InMemoryUnitOfWork(repos),
     clock: new FakeClock(),
     ids: new SeqIdGenerator(),
     hasher: new FakePasswordHasher(),

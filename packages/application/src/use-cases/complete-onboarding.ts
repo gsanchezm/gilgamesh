@@ -3,16 +3,7 @@ import { ApplicationError } from '../errors';
 import type { Clock } from '../ports/clock';
 import type { IdGenerator } from '../ports/id';
 import type { ProjectFormat } from '../ports/records';
-import type {
-  AgentRepository,
-  AuditLogRepository,
-  MembershipRepository,
-  OrgRepository,
-  ProjectRepository,
-  SliceRepository,
-  SubscriptionRepository,
-  ToolBindingRepository,
-} from '../ports/repositories';
+import type { Repositories, UnitOfWork } from '../ports/unit-of-work';
 
 const DEFAULT_SLICES = [
   { key: 'checkout', name: 'Checkout', order: 1 },
@@ -40,14 +31,7 @@ export interface CompleteOnboardingResult {
 }
 
 export interface CompleteOnboardingDeps {
-  orgs: OrgRepository;
-  memberships: MembershipRepository;
-  projects: ProjectRepository;
-  slices: SliceRepository;
-  agents: AgentRepository;
-  toolBindings: ToolBindingRepository;
-  subscriptions: SubscriptionRepository;
-  audit: AuditLogRepository;
+  uow: UnitOfWork;
   ids: IdGenerator;
   clock: Clock;
 }
@@ -68,86 +52,94 @@ export class CompleteOnboarding {
     }
 
     const now = this.deps.clock.now();
-    const existing = await this.deps.memberships.listForUser(input.userId);
-    const orgId = existing[0]?.orgId ?? (await this.bootstrapTenant(input, now));
+    // The whole bootstrap + project creation is one transaction: a partial failure rolls back
+    // entirely, so no corrupt half-provisioned tenant is ever left behind (spec AC-ONB-12).
+    return this.deps.uow.transaction(async (repos) => {
+      const existing = await repos.memberships.listForUser(input.userId);
+      const orgId = existing[0]?.orgId ?? (await this.bootstrapTenant(repos, input, now));
 
-    if (existing.length > 0) {
-      const role = existing[0]!.role;
-      if (role !== 'OWNER' && role !== 'ADMIN') {
-        throw new ApplicationError('FORBIDDEN', 'Only owners or admins can create projects.');
+      if (existing.length > 0) {
+        const role = existing[0]!.role;
+        if (role !== 'OWNER' && role !== 'ADMIN') {
+          throw new ApplicationError('FORBIDDEN', 'Only owners or admins can create projects.');
+        }
       }
-    }
 
-    const slug = await this.uniqueProjectSlug(orgId, Slug.fromName(input.projectName).value);
-    const projectId = this.deps.ids.next();
-    await this.deps.projects.create({
-      id: projectId,
-      orgId,
-      name: input.projectName.trim(),
-      slug,
-      format: input.format,
-      repoProvider: input.repoProvider ?? null,
-      repoFullName: input.repoFullName ?? null,
-      repoBranch: input.repoBranch ?? null,
-      repoCommit: null,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    await this.deps.slices.createMany(
-      DEFAULT_SLICES.map((s) => ({
-        id: this.deps.ids.next(),
+      const slug = await this.uniqueProjectSlug(repos, orgId, Slug.fromName(input.projectName).value);
+      const projectId = this.deps.ids.next();
+      await repos.projects.create({
+        id: projectId,
         orgId,
-        projectId,
-        key: s.key,
-        name: s.name,
-        order: s.order,
-      })),
-    );
-
-    const orgAgents = await this.deps.agents.listForOrg(orgId);
-    await this.deps.toolBindings.createMany(
-      orgAgents.map((a) => ({
-        id: this.deps.ids.next(),
-        orgId,
-        projectId,
-        agentId: a.id,
-        tool: a.defaultTool,
-        enabled: true,
+        name: input.projectName.trim(),
+        slug,
+        format: input.format,
+        repoProvider: input.repoProvider ?? null,
+        repoFullName: input.repoFullName ?? null,
+        repoBranch: input.repoBranch ?? null,
+        repoCommit: null,
+        createdAt: now,
         updatedAt: now,
-      })),
-    );
+      });
 
-    await this.deps.audit.append({
-      id: this.deps.ids.next(),
-      orgId,
-      actorUserId: input.userId,
-      action: 'project.created',
-      targetType: 'Project',
-      targetId: projectId,
-      metadata: { format: input.format },
-      ip: null,
-      createdAt: now,
+      await repos.slices.createMany(
+        DEFAULT_SLICES.map((s) => ({
+          id: this.deps.ids.next(),
+          orgId,
+          projectId,
+          key: s.key,
+          name: s.name,
+          order: s.order,
+        })),
+      );
+
+      const orgAgents = await repos.agents.listForOrg(orgId);
+      await repos.toolBindings.createMany(
+        orgAgents.map((a) => ({
+          id: this.deps.ids.next(),
+          orgId,
+          projectId,
+          agentId: a.id,
+          tool: a.defaultTool,
+          enabled: true,
+          updatedAt: now,
+        })),
+      );
+
+      await repos.audit.append({
+        id: this.deps.ids.next(),
+        orgId,
+        actorUserId: input.userId,
+        action: 'project.created',
+        targetType: 'Project',
+        targetId: projectId,
+        metadata: { format: input.format },
+        ip: null,
+        createdAt: now,
+      });
+
+      return { orgId, projectId, slug };
     });
-
-    return { orgId, projectId, slug };
   }
 
   /** Creates the Org, OWNER membership, agent catalog and trial subscription. Returns the orgId. */
-  private async bootstrapTenant(input: CompleteOnboardingInput, now: Date): Promise<string> {
+  private async bootstrapTenant(
+    repos: Repositories,
+    input: CompleteOnboardingInput,
+    now: Date,
+  ): Promise<string> {
     const orgId = this.deps.ids.next();
     const orgName = input.projectName.trim();
-    const slug = await this.uniqueOrgSlug(Slug.fromName(orgName).value);
+    const slug = await this.uniqueOrgSlug(repos, Slug.fromName(orgName).value);
 
-    await this.deps.orgs.create({ id: orgId, name: orgName, slug, createdAt: now, updatedAt: now });
-    await this.deps.memberships.create({
+    await repos.orgs.create({ id: orgId, name: orgName, slug, createdAt: now, updatedAt: now });
+    await repos.memberships.create({
       id: this.deps.ids.next(),
       orgId,
       userId: input.userId,
       role: 'OWNER',
       createdAt: now,
     });
-    await this.deps.agents.createMany(
+    await repos.agents.createMany(
       AGENT_ROSTER.map((r) => ({
         id: this.deps.ids.next(),
         orgId,
@@ -161,7 +153,7 @@ export class CompleteOnboarding {
         createdAt: now,
       })),
     );
-    await this.deps.subscriptions.create({
+    await repos.subscriptions.create({
       id: this.deps.ids.next(),
       orgId,
       plan: 'TEAM',
@@ -174,7 +166,7 @@ export class CompleteOnboarding {
       providerSubscriptionId: null,
       currentPeriodEnd: new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
     });
-    await this.deps.audit.append({
+    await repos.audit.append({
       id: this.deps.ids.next(),
       orgId,
       actorUserId: input.userId,
@@ -189,20 +181,20 @@ export class CompleteOnboarding {
     return orgId;
   }
 
-  private async uniqueOrgSlug(base: string): Promise<string> {
+  private async uniqueOrgSlug(repos: Repositories, base: string): Promise<string> {
     let candidate = base;
     let n = 1;
-    while (await this.deps.orgs.findBySlug(candidate)) {
+    while (await repos.orgs.findBySlug(candidate)) {
       n += 1;
       candidate = `${base}-${n}`.slice(0, 64);
     }
     return candidate;
   }
 
-  private async uniqueProjectSlug(orgId: string, base: string): Promise<string> {
+  private async uniqueProjectSlug(repos: Repositories, orgId: string, base: string): Promise<string> {
     let candidate = base;
     let n = 1;
-    while (await this.deps.projects.existsBySlug(orgId, candidate)) {
+    while (await repos.projects.existsBySlug(orgId, candidate)) {
       n += 1;
       candidate = `${base}-${n}`.slice(0, 64);
     }

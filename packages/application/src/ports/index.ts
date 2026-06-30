@@ -1,5 +1,6 @@
 export * from './records';
 export * from './repositories';
+export * from './unit-of-work';
 export * from './security';
 export * from './clock';
 export * from './id';

@@ -10,6 +10,7 @@ export const TOKENS = {
   ToolBindings: 'ToolBindingRepository',
   Subscriptions: 'SubscriptionRepository',
   Audit: 'AuditLogRepository',
+  UnitOfWork: 'UnitOfWork',
   Hasher: 'PasswordHasher',
   Ids: 'IdGenerator',
   Tokens: 'TokenGenerator',

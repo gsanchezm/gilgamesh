@@ -22,10 +22,9 @@ import type {
   UserRepository,
 } from '@gilgamesh/application';
 import { Prisma, type RepoProvider } from '@prisma/client';
-import type { PrismaService } from './prisma.service';
 
 export class PrismaUserRepository implements UserRepository {
-  constructor(private readonly db: PrismaService) {}
+  constructor(private readonly db: Prisma.TransactionClient) {}
   findByEmail(email: string): Promise<UserRecord | null> {
     return this.db.user.findUnique({ where: { email } });
   }
@@ -38,7 +37,7 @@ export class PrismaUserRepository implements UserRepository {
 }
 
 export class PrismaOrgRepository implements OrgRepository {
-  constructor(private readonly db: PrismaService) {}
+  constructor(private readonly db: Prisma.TransactionClient) {}
   findBySlug(slug: string): Promise<OrgRecord | null> {
     return this.db.org.findUnique({ where: { slug } });
   }
@@ -51,7 +50,7 @@ export class PrismaOrgRepository implements OrgRepository {
 }
 
 export class PrismaMembershipRepository implements MembershipRepository {
-  constructor(private readonly db: PrismaService) {}
+  constructor(private readonly db: Prisma.TransactionClient) {}
   async create(rec: MembershipRecord): Promise<void> {
     await this.db.membership.create({ data: rec });
   }
@@ -65,7 +64,7 @@ export class PrismaMembershipRepository implements MembershipRepository {
 }
 
 export class PrismaSessionRepository implements SessionRepository {
-  constructor(private readonly db: PrismaService) {}
+  constructor(private readonly db: Prisma.TransactionClient) {}
   async create(rec: SessionRecord): Promise<void> {
     await this.db.session.create({ data: rec });
   }
@@ -81,7 +80,7 @@ export class PrismaSessionRepository implements SessionRepository {
 }
 
 export class PrismaProjectRepository implements ProjectRepository {
-  constructor(private readonly db: PrismaService) {}
+  constructor(private readonly db: Prisma.TransactionClient) {}
   async create(rec: ProjectRecord): Promise<void> {
     await this.db.project.create({
       data: {
@@ -112,7 +111,7 @@ export class PrismaProjectRepository implements ProjectRepository {
 }
 
 export class PrismaSliceRepository implements SliceRepository {
-  constructor(private readonly db: PrismaService) {}
+  constructor(private readonly db: Prisma.TransactionClient) {}
   async createMany(recs: SliceRecord[]): Promise<void> {
     await this.db.slice.createMany({ data: recs });
   }
@@ -122,7 +121,7 @@ export class PrismaSliceRepository implements SliceRepository {
 }
 
 export class PrismaAgentRepository implements AgentRepository {
-  constructor(private readonly db: PrismaService) {}
+  constructor(private readonly db: Prisma.TransactionClient) {}
   async createMany(recs: AgentRecord[]): Promise<void> {
     await this.db.agent.createMany({ data: recs });
   }
@@ -132,7 +131,7 @@ export class PrismaAgentRepository implements AgentRepository {
 }
 
 export class PrismaToolBindingRepository implements ToolBindingRepository {
-  constructor(private readonly db: PrismaService) {}
+  constructor(private readonly db: Prisma.TransactionClient) {}
   async createMany(recs: ToolBindingRecord[]): Promise<void> {
     await this.db.toolBinding.createMany({ data: recs });
   }
@@ -154,7 +153,7 @@ export class PrismaToolBindingRepository implements ToolBindingRepository {
 }
 
 export class PrismaSubscriptionRepository implements SubscriptionRepository {
-  constructor(private readonly db: PrismaService) {}
+  constructor(private readonly db: Prisma.TransactionClient) {}
   async create(rec: SubscriptionRecord): Promise<void> {
     await this.db.subscription.create({ data: rec });
   }
@@ -164,7 +163,7 @@ export class PrismaSubscriptionRepository implements SubscriptionRepository {
 }
 
 export class PrismaAuditLogRepository implements AuditLogRepository {
-  constructor(private readonly db: PrismaService) {}
+  constructor(private readonly db: Prisma.TransactionClient) {}
   async append(rec: AuditLogRecord): Promise<void> {
     await this.db.auditLog.create({
       data: {

@@ -129,7 +129,9 @@ Feature: Onboarding and tenant bootstrap
     When I POST "/projects" in that Org
     Then the response status is 403
 
-  @wip @AC-ONB-12 @bootstrap @reliability @edge
+  # Not black-box testable over HTTP (needs a fault injected mid-transaction); the rollback
+  # guarantee is covered by apps/api/test/integration/onboarding-rollback.int.test.ts.
+  @manual @AC-ONB-12 @bootstrap @reliability @edge
   Scenario: Bootstrap is all-or-nothing
     Given finishing onboarding will fail partway through seeding
     When I finish onboarding
