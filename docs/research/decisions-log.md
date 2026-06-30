@@ -252,3 +252,14 @@ methodology mandates and closed the cheap review follow-ups:
   fresh).
 - **Remaining gates (follow-up):** lint/import-boundaries (ESLint), secret-scan (gitleaks), bundle-size, k6
   perf, contract tests.
+
+## Paso 7 — Slice 4 scope (Subscription & Billing) — owner decision S4 (2026-06-30)
+
+Owner picked **Subscription / billing** as slice 4. The keystone `PaymentProvider` port is "MOCK now; Stripe
+later — no UI/domain change". **Decision S4: wire a deterministic `MockPaymentProvider` stub now** (the
+Brain/Kernel-stub pattern), offline/no-network/no-Stripe. **In:** view subscription + usage · change
+plan/cycle (remaps `runMinutesQuota` + seat max per §9 pricing) · update seats · checkout (mock) + confirm ·
+cancel · **enforce `runMinutesQuota` on `TriggerRun`** (closes the slice-3 deferred follow-up; charge +
+run-write atomic). **Deferred:** real Stripe, `Invoice`/`listInvoices`, webhooks/`handleWebhook`, proration/
+payment-methods/dunning. Spec at `specs/slices/04-subscription-billing/spec.md` (12 ACs AC-SUB-01..12).
+Building on `slice-4-subscription-billing`.
