@@ -7,3 +7,4 @@ export * from './testlab/parse-gherkin';
 export * from './execution/summarize-run';
 export * from './billing/plans';
 export * from './knowledge/rag';
+export * from './integrations/integrations';
