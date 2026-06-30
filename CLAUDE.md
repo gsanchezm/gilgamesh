@@ -159,3 +159,28 @@ enforces `runMinutesQuota` on `TriggerRun`. Built SDD→BDD→TDD across all lay
   cancel; CSRF on mutations).
 - **Verified:** typecheck + lint clean · ~281 Docker-free unit/e2e · `test:int` 10 · **BDD 82 scenarios / 648
   steps** · **Playwright** smoke + Test Lab + run + billing.
+
+## Slice 5 status (Knowledge / RAG) — DoD COMPLETE
+
+`specs/slices/05-knowledge-rag/` — ingest the `rag/` QA corpus (full ISTQB syllabi + BDD books, pre-chunked
+into `rag/chunks/chunks.jsonl`, ~2,647 chunks) as a **GLOBAL shared** knowledge base (no `orgId`, owner
+decision S5-A — the one place tenant isolation is deliberately relaxed) that **grounds generation** for all
+orgs. Built SDD→BDD→TDD across all layers, green on branch `slice-5-knowledge-rag`:
+- **domain** — `scrubChunk` (strips PDF page-furniture + the ISTQB copyright line), `embedText` (deterministic
+  FNV-1a lexical-hash → 1536-dim L2-normalized; real lexical, not semantic — real embeddings land with the
+  Brain slice, S5-B), `cosineSimilarity` (pure).
+- **application** — `KnowledgeChunkRepository` + `KnowledgeRetrievalPort`; `IngestKnowledge` (scrub → drop
+  near-empty → embed → upsert), `SearchKnowledge` (embed query → cosine top-k + citations), `KnowledgeRetriever`;
+  `GenerateDrafts` now consults the retrieval port and attaches **source citations** to drafts (S5-C/D);
+  `DeterministicBrain.embed` returns lexical-hash vectors; in-memory cosine adapter.
+- **api** — Prisma `KnowledgeChunk` with `Unsupported("vector(1536)")` + migration (`CREATE EXTENSION vector`);
+  `PrismaKnowledgeChunkRepository` (raw-SQL upsert `::vector` + `<=>` cosine search, count via typed client);
+  both wirings bind `Knowledge` + `KnowledgeRetrieval`; `KnowledgeModule` (`GET /knowledge/search`, authed,
+  org-agnostic) + a `KnowledgeSeeder` (paraphrased `SAMPLE_CHUNKS` at startup if empty);
+  `scripts/ingest-corpus.mjs` (`pnpm --filter @gilgamesh/api ingest:corpus`) loads the full corpus.
+- **web** — `KnowledgeClient` + `KnowledgeScreen` at `/knowledge` (search → ranked snippets + source citations).
+- **Licensing (S5-D):** retrieval-grounding only; citations always carry source+section; the store is
+  private/non-redistributable; no verbatim re-publication without attribution.
+- **Verified:** typecheck + lint clean · ~304 Docker-free unit/e2e (domain 48 · application 120 · api 72 ·
+  web 55 · ui 9) · `test:int` 12 (pgvector against real Postgres) · **BDD 88 scenarios / 694 steps** ·
+  **Playwright** smoke + Test Lab + run + billing + knowledge.

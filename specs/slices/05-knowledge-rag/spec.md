@@ -4,7 +4,10 @@
 > Authority order: **Keystone** (`specs/_keystone/foundation-vocabulary.md`) for all names/enums/ports/paths
 > → **Decisions log** (`docs/research/decisions-log.md`) → **Prototype extract**.
 > All entity/field/enum/port/path names below are used **verbatim** from the keystone.
-> v0.1 — 2026-06-30. Status: DRAFT — building SDD→BDD→TDD on branch `slice-5-knowledge-rag`.
+> v0.1 — 2026-06-30. Status: DONE — built SDD→BDD→TDD, green end-to-end (typecheck + lint · ~304 Docker-free ·
+> test:int 12 with pgvector · BDD 88 scenarios · Playwright knowledge) on branch `slice-5-knowledge-rag`.
+> Scope: ingest the rag/ corpus as a GLOBAL shared KB, embed (deterministic lexical-hash stub), pgvector
+> cosine search with citations, and ground GenerateDrafts (owner decisions S5-A..D).
 
 ---
 

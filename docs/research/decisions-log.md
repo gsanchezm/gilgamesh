@@ -307,3 +307,13 @@ Owner answers:
   and **verbatim text is never re-published without attribution**.
 
 Spec at `specs/slices/05-knowledge-rag/spec.md` (AC-KB-01..10). Building on `slice-5-knowledge-rag`.
+
+**Slice 5 status — DONE (2026-06-30).** Built SDD→BDD→TDD across domain (scrubChunk/embedText/cosineSimilarity),
+application (KnowledgeChunkRepository + KnowledgeRetrievalPort + IngestKnowledge/SearchKnowledge/KnowledgeRetriever
++ GenerateDrafts grounding with citations), api (pgvector KnowledgeChunk + migration + raw-SQL adapter +
+KnowledgeModule + GET /knowledge/search + KnowledgeSeeder + scripts/ingest-corpus.mjs), web (KnowledgeClient +
+KnowledgeScreen at /knowledge). Green: typecheck + lint · ~304 Docker-free · test:int 12 (pgvector) · BDD 88
+scenarios/694 steps · Playwright (smoke + Test Lab + run + billing + knowledge). Full corpus (2,647 chunks)
+ingested into the demo KB. Deferred: per-org private KnowledgeDoc uploads + ArtifactStorage; real semantic
+embeddings (Brain slice); a document chunker; advanced retrieval (MMR/diversity, per-source caps). Awaiting
+owner review/merge.
