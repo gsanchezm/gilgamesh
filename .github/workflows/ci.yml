@@ -27,6 +27,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Prisma generate (api typecheck needs the client types)
         run: pnpm --filter @gilgamesh/api prisma:generate
+      - name: Lint (architecture boundaries + react-hooks)
+        run: pnpm lint
       - name: Typecheck
         run: pnpm -r typecheck
       - name: Unit + e2e (in-memory, Docker-free)
