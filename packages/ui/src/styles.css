@@ -227,6 +227,14 @@
   border-right: 1px solid var(--border);
   padding: 16px 12px;
   gap: 8px;
+  /* The sidebar stays dark (navy) in BOTH themes (handoff §6.4 / capture 05). Pin the token values
+     to their dark variants so child text, dividers and accents remain legible on it in light mode —
+     otherwise var(--text) flips to navy and the agent names vanish against the navy sidebar. */
+  --text: #eaf0fa;
+  --muted: #8597b4;
+  --border: rgba(255, 255, 255, 0.09);
+  --accent: #e7c877;
+  --accent-soft: rgba(201, 161, 78, 0.15);
 }
 .gx-sidebar[data-collapsed='true'] {
   width: 68px;
