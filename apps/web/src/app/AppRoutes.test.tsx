@@ -33,6 +33,18 @@ function makeClients(): Clients {
       setAgent: vi.fn(async () => room().agents[0]!),
       wakeAll: vi.fn(async () => ({ awake: 1, total: 1 })),
     },
+    testlab: {
+      listSlices: vi.fn(async () => []),
+      createSlice: vi.fn(async () => ({ id: 's1', key: 'k', name: 'K', order: 0 })),
+      listFeatures: vi.fn(async () => []),
+      getFeature: vi.fn(async () => ({ id: 'f1', name: 'F', path: 'f.feature', sliceId: null, content: '', scenarios: [] })),
+      createFeature: vi.fn(async () => ({ id: 'f1', name: 'F', path: 'f.feature', sliceId: null, content: '', scenarios: [] })),
+      listTestCases: vi.fn(async () => []),
+      createTestCase: vi.fn(async () => ({
+        id: 't1', key: 'TC_PRJ_001', title: 'T', steps: '', data: '', expected: '', priority: 'MEDIUM' as const, status: 'NOTRUN', sliceId: null, assignedAgentId: null,
+      })),
+      generate: vi.fn(async () => ({ features: [], testCases: [] })),
+    },
   };
 }
 

@@ -1,0 +1,107 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import type { TestLabClient } from '../lib/testlab-client';
+import { TestLabScreen } from './TestLabScreen';
+
+function fakeClient(overrides?: Partial<TestLabClient>): TestLabClient {
+  return {
+    listSlices: vi.fn(async () => [{ id: 's1', key: 'checkout', name: 'Checkout', order: 1 }]),
+    createSlice: vi.fn(async (_p, input) => ({ id: 's2', key: input.key, name: input.name, order: 2 })),
+    listFeatures: vi.fn(async () => []),
+    getFeature: vi.fn(async () => ({ id: 'f1', name: 'F', path: 'f.feature', sliceId: null, content: '', scenarios: [] })),
+    createFeature: vi.fn(async () => ({
+      id: 'f1',
+      name: 'Checkout',
+      path: 'checkout.feature',
+      sliceId: null,
+      content: 'Feature: Checkout',
+      scenarios: [
+        { name: 'Pay', order: 0, lastStatus: null },
+        { name: 'Refund', order: 1, lastStatus: null },
+      ],
+    })),
+    listTestCases: vi.fn(async () => []),
+    createTestCase: vi.fn(async (_p, input) => ({
+      id: 't1',
+      key: 'TC_PRJ_001',
+      title: input.title,
+      steps: '',
+      data: '',
+      expected: '',
+      priority: input.priority,
+      status: 'NOTRUN',
+      sliceId: null,
+      assignedAgentId: null,
+    })),
+    generate: vi.fn(async () => ({ features: [{ name: 'x', path: 'x', content: 'x' }], testCases: [] })),
+    ...overrides,
+  };
+}
+
+describe('TestLabScreen', () => {
+  it('loads and renders slices, features and test cases', async () => {
+    render(<TestLabScreen client={fakeClient()} projectId="p1" />);
+    expect(await screen.findByText('Checkout')).toBeTruthy();
+    expect(screen.getByText('1 slices · 0 features · 0 test cases')).toBeTruthy();
+  });
+
+  it('adds a slice', async () => {
+    const client = fakeClient();
+    render(<TestLabScreen client={client} projectId="p1" />);
+    await screen.findByText('Checkout');
+
+    fireEvent.change(screen.getByLabelText('Slice key'), { target: { value: 'regression' } });
+    fireEvent.change(screen.getByLabelText('Slice name'), { target: { value: 'Regression' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add slice' }));
+
+    await waitFor(() => expect(client.createSlice).toHaveBeenCalledWith('p1', { key: 'regression', name: 'Regression' }));
+    expect(await screen.findByText('Regression')).toBeTruthy();
+  });
+
+  it('adds a feature and shows its parsed scenario count', async () => {
+    render(<TestLabScreen client={fakeClient()} projectId="p1" />);
+    await screen.findByText('Checkout');
+
+    fireEvent.change(screen.getByLabelText('Feature path'), { target: { value: 'checkout.feature' } });
+    fireEvent.change(screen.getByLabelText('Feature content'), { target: { value: 'Feature: Checkout\n  Scenario: Pay' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add feature' }));
+
+    expect(await screen.findByText('Checkout · 2 scenarios')).toBeTruthy();
+  });
+
+  it('adds a test case', async () => {
+    render(<TestLabScreen client={fakeClient()} projectId="p1" />);
+    await screen.findByText('Checkout');
+
+    fireEvent.change(screen.getByLabelText('Test case title'), { target: { value: 'Pay with card' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add test case' }));
+
+    expect(await screen.findByText('TC_PRJ_001 · Pay with card · MEDIUM')).toBeTruthy();
+  });
+
+  it('generates drafts', async () => {
+    render(<TestLabScreen client={fakeClient()} projectId="p1" />);
+    await screen.findByText('Checkout');
+
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'a checkout flow' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    expect(await screen.findByText(/Generated 1 feature draft/)).toBeTruthy();
+  });
+
+  it('surfaces a creation error without crashing', async () => {
+    const client = fakeClient({
+      createSlice: vi.fn(async () => {
+        throw new Error('A slice with key "checkout" already exists in this project.');
+      }),
+    });
+    render(<TestLabScreen client={client} projectId="p1" />);
+    await screen.findByText('Checkout');
+
+    fireEvent.change(screen.getByLabelText('Slice key'), { target: { value: 'checkout' } });
+    fireEvent.change(screen.getByLabelText('Slice name'), { target: { value: 'Dup' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add slice' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('already exists');
+  });
+});

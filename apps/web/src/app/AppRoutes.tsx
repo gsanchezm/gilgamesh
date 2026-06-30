@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-do
 import { AgentRoomScreen } from '../screens/AgentRoomScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { OnboardingWizard } from '../screens/OnboardingWizard';
+import { TestLabScreen } from '../screens/TestLabScreen';
 import { useClients } from './clients';
 import { useSession } from './session';
 
@@ -58,6 +59,12 @@ function AgentRoomRoute() {
   return <AgentRoomScreen client={agents} projectId={projectId ?? ''} />;
 }
 
+function TestLabRoute() {
+  const { testlab } = useClients();
+  const { projectId } = useParams();
+  return <TestLabScreen client={testlab} projectId={projectId ?? ''} />;
+}
+
 export function AppRoutes() {
   return (
     <Routes>
@@ -76,6 +83,14 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <AgentRoomRoute />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/projects/:projectId/lab"
+        element={
+          <RequireAuth>
+            <TestLabRoute />
           </RequireAuth>
         }
       />

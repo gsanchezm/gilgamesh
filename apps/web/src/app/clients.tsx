@@ -2,17 +2,20 @@ import { createContext, useContext, type ReactNode } from 'react';
 import { httpAgentsClient, type AgentsClient } from '../lib/agents-client';
 import { httpAuthClient, type AuthClient } from '../lib/auth-client';
 import { httpOnboardingClient, type OnboardingClient } from '../lib/onboarding-client';
+import { httpTestLabClient, type TestLabClient } from '../lib/testlab-client';
 
 export interface Clients {
   auth: AuthClient;
   onboarding: OnboardingClient;
   agents: AgentsClient;
+  testlab: TestLabClient;
 }
 
 const defaultClients: Clients = {
   auth: httpAuthClient,
   onboarding: httpOnboardingClient,
   agents: httpAgentsClient,
+  testlab: httpTestLabClient,
 };
 
 const ClientsContext = createContext<Clients>(defaultClients);
