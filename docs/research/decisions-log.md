@@ -233,3 +233,22 @@ application 71 · api 62 · test:int 10 · BDD 75):
 - **[nit]** deterministic newest-first run order (`id desc` tiebreaker) + a real 2-run e2e assertion (was a
   single-run false-green).
 - **Deferred (follow-up):** rate-limit/quota on the run trigger (`runMinutesQuota` enforcement → billing slice).
+
+## Paso 6 — Quality consolidation (post-slice-3, 2026-06-30)
+
+After the 3 slices landed on `main`, a consolidation pass (no new product scope) wired the CI/quality gates the
+methodology mandates and closed the cheap review follow-ups:
+- **Architecture fitness tests** (domain + application): dependency-free SAST-style guards that fail if either
+  layer imports a framework/outer ring (Clean Architecture's dependency rule).
+- **Deterministic ORDER BY** on the Prisma list queries (runs, features, test-cases) — closed an in-memory↔Prisma
+  parity gap + a false-green.
+- **CI pipeline** (`.github/workflows/ci.yml`, green): typecheck + Docker-free tests · integration + BDD on
+  Postgres/Redis services · Playwright.
+- **SAST** (`.github/workflows/codeql.yml`, CodeQL security-extended, green) — immediately caught **2 HIGH
+  `js/polynomial-redos`** in the gherkin parser (regex over ≤256 KB user input → DoS); rewritten to linear
+  string ops. Also caught + fixed CI workflow hardening (least-privilege `permissions`, pinned 3rd-party action).
+  **0 open code-scanning alerts.**
+- **Dependabot** (`.github/dependabot.yml`): weekly npm + github-actions update PRs (keeps deps + pinned actions
+  fresh).
+- **Remaining gates (follow-up):** lint/import-boundaries (ESLint), secret-scan (gitleaks), bundle-size, k6
+  perf, contract tests.

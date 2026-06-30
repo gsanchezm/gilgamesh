@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # Dependency security/freshness for the pnpm workspace (Dependabot reads pnpm-lock.yaml).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: development
+  # Keeps the pinned GitHub Actions (e.g. pnpm/action-setup@<sha>) updated to fresh commits.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
