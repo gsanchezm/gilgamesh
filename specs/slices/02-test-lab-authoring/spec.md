@@ -5,7 +5,9 @@
 > → **Decisions log** (`docs/research/decisions-log.md`) over the prototype where they conflict
 > → **Prototype extract** (`docs/research/gilgamesh-prototype-extract.md`) for screen behavior.
 > All entity/field/enum/path names below are used **verbatim** from the keystone.
-> v0.1 — 2026-06-30. Status: DRAFT (owner-scoped: Núcleo CRUD + gherkin parsing + AI generate behind a stub brain).
+> v0.1 — 2026-06-30. Status: DONE — built SDD→BDD→TDD, green end-to-end (unit/e2e + test:int + BDD 69
+> scenarios + Playwright) on branch `slice-2-test-lab-authoring`. Scope: Núcleo CRUD + gherkin parsing +
+> AI generate behind a deterministic stub brain (owner decision S2-A/B).
 
 ---
 

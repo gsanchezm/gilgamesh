@@ -173,3 +173,10 @@ Slice 1 merged to `main` (github.com/gsanchezm/gilgamesh). Starting slice 2 SDD�
   (tiering, prompt caching, BYOK, token metering) is its own later **Brain slice** — not slice 2.
 Spec authored at `specs/slices/02-test-lab-authoring/spec.md` (27 ACs: SLICE/FEAT/TC/GEN). Building on branch
 `slice-2-test-lab-authoring`.
+
+**Slice 2 status — DONE (2026-06-30).** Built SDD→BDD→TDD across domain (gherkin parser), application (15 use
+cases + 4 ports + DeterministicBrain stub), api (controllers + Prisma models/migration + both wirings), web
+(TestLabClient + TestLabScreen). Green end-to-end: typecheck · ~182 Docker-free unit/e2e · test:int 9
+(Postgres+Redis) · BDD 69 scenarios/539 steps · Playwright (smoke + Test Lab). Deferred per S2: bulk import,
+the real Claude brain adapter (Brain slice), `__Host-csrf` + the CI quality-gate workflows (shared with the
+slice-1 follow-ups). Awaiting owner review/merge of `slice-2-test-lab-authoring`.

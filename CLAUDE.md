@@ -100,3 +100,21 @@ All Definition-of-Done blockers are met and verified green:
 EmailPort (AC-AUTH-10/11/12 → slice 7); disabled Google/SSO login controls (AC-AUTH-15 → follow-up); the
 logout UI control and the CI quality-gate workflows (lint/boundaries, SAST, deps/secret scan, bundle-size,
 k6, contract) are follow-ups.
+
+## Slice 2 status (Test Lab authoring) — DoD COMPLETE
+
+`specs/slices/02-test-lab-authoring/` — authoring of `Slice` + `Feature` (Gherkin parsed into `Scenario`) +
+`TestCase`, plus AI `generate` behind a **deterministic stub** `AgentBrainPort` (the real Claude adapter is a
+later Brain slice; owner decision S2-A/B). No execution; no bulk import. Built SDD→BDD→TDD across all layers,
+green end-to-end on branch `slice-2-test-lab-authoring`:
+- **domain** — `parseFeature` Gherkin parser (pure, `packages/domain/src/testlab/`).
+- **application** — 15 use cases (Slice/Feature/TestCase CRUD + GenerateDrafts), 4 new ports
+  (Feature/Scenario/TestCase repos + the §5 `AgentBrainPort`), `DeterministicBrain` stub, in-memory adapters.
+- **api** — controllers + DTOs + `TestLabModule` on the keystone §6 paths; both persistence wirings (Prisma
+  models `Feature`/`Scenario`/`TestCase` + migration + adapters); `generate` joins `RateLimitGuard`.
+- **web** — `TestLabClient` + `TestLabScreen` at `/projects/:id/lab` (CSRF on mutations).
+- **Verified:** typecheck clean · ~182 Docker-free unit/e2e · `test:int` 9 (Postgres + Redis) · **BDD 69
+  scenarios / 539 steps** (`specs/slices/*/*.feature`) · **Playwright** smoke + Test Lab e2e.
+
+`docker-compose.yml` runs Postgres + Redis; the BDD harness (`apps/api/acceptance`) and the Playwright config
+(`apps/web/playwright.config.ts`) both boot the real stack.
