@@ -47,11 +47,13 @@ export class BillingController {
   }
 
   @Post('checkout/confirm')
+  @HttpCode(200)
   confirm(@CurrentUser() userId: string, @Param('orgId') orgId: string): Promise<SubscriptionView> {
     return this.confirmCheckout.execute({ userId, orgId });
   }
 
   @Post('cancel')
+  @HttpCode(200)
   cancel(@CurrentUser() userId: string, @Param('orgId') orgId: string): Promise<SubscriptionView> {
     return this.cancelSubscription.execute({ userId, orgId });
   }

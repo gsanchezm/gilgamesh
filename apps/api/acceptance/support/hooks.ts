@@ -8,6 +8,7 @@ import { SecurityModule } from '../../src/auth/security.module';
 import { OrgsModule } from '../../src/orgs/orgs.module';
 import { PrismaPersistenceModule } from '../../src/persistence/prisma/prisma-persistence.module';
 import { PrismaService } from '../../src/persistence/prisma/prisma.service';
+import { BillingModule } from '../../src/billing/billing.module';
 import { ProjectsModule } from '../../src/projects/projects.module';
 import { RunsModule } from '../../src/runs/runs.module';
 import { TestLabModule } from '../../src/testlab/testlab.module';
@@ -32,6 +33,7 @@ BeforeAll(async () => {
       OrgsModule,
       TestLabModule,
       RunsModule,
+      BillingModule,
     ],
     providers: APP_PROVIDERS,
   }).compile();
