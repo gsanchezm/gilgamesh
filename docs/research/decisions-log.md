@@ -162,3 +162,14 @@ and re-verified green (140 Docker-free + test:int 9 + BDD 49 + Playwright):
 CSRF cookie (touches BDD/e2e harness; mitigates sibling-subdomain cookie injection); in-memory store
 TTL eviction sweep (dev/test-only — prod uses Redis); deriving `RATE_LIMIT_STORE` from validated config; the
 §10.2 per-IP-only bound + account-lockout (already deferred). Forgot/reset (slice 7) and AC-AUTH-15 (S1-B).
+
+## Paso 4 — Slice 2 (Test Lab authoring) scope — DECIDED by owner (2026-06-30)
+
+Slice 1 merged to `main` (github.com/gsanchezm/gilgamesh). Starting slice 2 SDD→BDD→TDD.
+- **S2-A scope = Núcleo:** `Slice` + `Feature` (with **gherkin scenario parsing**) + `TestCase` CRUD, all
+  tenant-scoped, RBAC, audited. **No bulk import**, **no execution**.
+- **S2-B brain = now, behind a stub:** define/consume the keystone `AgentBrainPort` via a **deterministic
+  stub** adapter to power `POST …/test-cases/generate` (offline, reproducible). The **real Claude adapter**
+  (tiering, prompt caching, BYOK, token metering) is its own later **Brain slice** — not slice 2.
+Spec authored at `specs/slices/02-test-lab-authoring/spec.md` (27 ACs: SLICE/FEAT/TC/GEN). Building on branch
+`slice-2-test-lab-authoring`.
