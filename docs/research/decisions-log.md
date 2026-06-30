@@ -285,3 +285,25 @@ concurrency defect + 2 HIGH + 3 nits. Fixed, re-verified green (domain 43 · app
   false-green that the green suite missed.
 - **Deferred (follow-up):** optimistic-lock/version column for concurrent admin-vs-admin subscription
   mutations (run-vs-admin is fixed); CANCELED-status run gating (cancellation policy is an owner call).
+
+## Paso 8 — Slice 5 scope (Knowledge / RAG) — owner decisions S5 (2026-06-30)
+
+Owner picked **Knowledge / RAG** as slice 5. Provided a `rag/` corpus (24 QA docs — full ISTQB syllabi +
+BDD books, pre-chunked into `rag/chunks/chunks.jsonl`, 2,647 chunks). A 25-agent corpus analysis mapped it
+(BDD methodology · ISTQB foundation/advanced/management/specialist/AI · Principles&Patterns) and flagged:
+43% of chunks carry page-furniture boilerplate (mandatory scrub), Gherkin/code corrupted by PDF conversion,
+images lost, governance-prose over-representation, and **this is GLOBAL shared knowledge, not per-tenant**.
+Owner answers:
+- **S5-A — Global shared KB:** ingest the corpus as a GLOBAL collection (no `orgId`) grounding all orgs;
+  per-org private `KnowledgeDoc` uploads are a fast-follow.
+- **S5-B — Deterministic stub embeddings:** a lexical-hash embedder (bag-of-words → 1536-dim L2-norm) behind
+  `AgentBrainPort.embed` (distinct texts → distinct vectors → lexical similarity); real semantic embeddings
+  land with the Brain slice.
+- **S5-C — Wire the grounding seam now:** a `KnowledgeRetrievalPort` that `GenerateDrafts` consults (top-k →
+  brain prompt + citations on the output).
+- **S5-D — Licensing sign-off (owner-approved):** internal **retrieval-grounding** of the copyrighted corpus
+  (ISTQB syllabi + commercial BDD books) is acceptable — the model reads chunks to reason, every chunk carries
+  source+section **citations** that flow to the output, the embedding store is **private/non-redistributable**,
+  and **verbatim text is never re-published without attribution**.
+
+Spec at `specs/slices/05-knowledge-rag/spec.md` (AC-KB-01..10). Building on `slice-5-knowledge-rag`.
