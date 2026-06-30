@@ -14,9 +14,20 @@ export interface ParsedFeature {
  * Parses the slice-2 Gherkin subset (`Feature:`, `Scenario:`/`Scenario Outline:`, `Background:`, tags,
  * comments) into the feature name and its ordered scenarios. Background is not a scenario. Throws
  * {@link DomainError} when there is no `Feature:` declaration or no scenarios. Pure — no framework imports.
+ *
+ * Keyword detection is done with linear string operations on the trimmed line (NOT regexes with `\s*`
+ * over user input — those are polynomial-ReDoS prone, flagged by SAST: `Feature.content` is up to 256 KB
+ * of untrusted text).
  */
-const FEATURE_RE = /^\s*Feature:\s*(.*)$/;
-const SCENARIO_RE = /^\s*Scenario(?: Outline| Template)?:\s*(.*)$/;
+const SCENARIO_PREFIXES = ['Scenario Outline:', 'Scenario Template:', 'Scenario:'] as const;
+
+/** Returns the scenario name if the trimmed line opens a scenario, else null. */
+function scenarioName(trimmed: string): string | null {
+  for (const prefix of SCENARIO_PREFIXES) {
+    if (trimmed.startsWith(prefix)) return trimmed.slice(prefix.length).trim();
+  }
+  return null;
+}
 
 export function parseFeature(content: string): ParsedFeature {
   let name: string | null = null;
@@ -35,9 +46,8 @@ export function parseFeature(content: string): ParsedFeature {
     if (trimmed === '' || trimmed.startsWith('#')) continue;
 
     if (name === null) {
-      const fm = FEATURE_RE.exec(line);
-      if (fm) {
-        name = fm[1]!.trim();
+      if (trimmed.startsWith('Feature:')) {
+        name = trimmed.slice('Feature:'.length).trim();
         continue;
       }
       // Only tags may precede the Feature: declaration; anything else is malformed.
@@ -45,8 +55,8 @@ export function parseFeature(content: string): ParsedFeature {
       throw new DomainError('Gherkin must start with a "Feature:" declaration.');
     }
 
-    const sm = SCENARIO_RE.exec(line);
-    if (sm) scenarios.push({ name: sm[1]!.trim(), order: scenarios.length });
+    const sn = scenarioName(trimmed);
+    if (sn !== null) scenarios.push({ name: sn, order: scenarios.length });
   }
 
   if (name === null) throw new DomainError('Gherkin must start with a "Feature:" declaration.');

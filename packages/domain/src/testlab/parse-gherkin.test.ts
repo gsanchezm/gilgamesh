@@ -51,6 +51,14 @@ describe('parseFeature (gherkin)', () => {
     expect(f.scenarios[0]?.name).toBe('Trimmed');
   });
 
+  it('recognizes Scenario Outline/Template with surrounding/inner whitespace (ReDoS-safe parsing)', () => {
+    const f = parseFeature(
+      '   Feature:   Checkout   \n   Scenario Outline:   Pay <method>   \n     Then ok\n  Scenario Template: Refund\n    Then ok',
+    );
+    expect(f.name).toBe('Checkout');
+    expect(f.scenarios.map((s) => s.name)).toEqual(['Pay <method>', 'Refund']);
+  });
+
   it('does not count "Scenario:" lines inside a doc string', () => {
     const f = parseFeature(
       'Feature: F\n  Scenario: Real\n    Given a payload\n      """\n      Scenario: not a real one\n      """\n    Then ok\n',
