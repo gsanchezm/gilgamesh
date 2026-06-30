@@ -263,3 +263,10 @@ cancel · **enforce `runMinutesQuota` on `TriggerRun`** (closes the slice-3 defe
 run-write atomic). **Deferred:** real Stripe, `Invoice`/`listInvoices`, webhooks/`handleWebhook`, proration/
 payment-methods/dunning. Spec at `specs/slices/04-subscription-billing/spec.md` (12 ACs AC-SUB-01..12).
 Building on `slice-4-subscription-billing`.
+
+**Slice 4 status — DONE (2026-06-30).** Built SDD→BDD→TDD across domain (planLimits/priceCents), application
+(PaymentProvider port + MockPaymentProvider + 5 use cases + run-minute quota enforcement on TriggerRun), api
+(BillingModule + both wirings + QUOTA_EXCEEDED→402; no migration — Subscription exists), web (BillingClient +
+BillingScreen at /billing). Green: typecheck + lint · ~281 Docker-free · test:int 10 · BDD 82 scenarios/648
+steps · Playwright (smoke + Test Lab + run + billing). Closed the slice-3 deferred run-minute quota. Deferred
+per S4: real Stripe, Invoice/listInvoices, webhooks/handleWebhook. Awaiting owner review/merge.

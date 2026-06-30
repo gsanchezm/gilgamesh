@@ -5,7 +5,9 @@
 > → **Decisions log** (`docs/research/decisions-log.md`) over the prototype where they conflict
 > → **Prototype extract** (`docs/research/gilgamesh-prototype-extract.md`) for screen behavior.
 > All entity/field/enum/port/path names below are used **verbatim** from the keystone.
-> v0.1 — 2026-06-30. Status: DRAFT — building SDD→BDD→TDD on branch `slice-4-subscription-billing`.
+> v0.1 — 2026-06-30. Status: DONE — built SDD→BDD→TDD, green end-to-end (typecheck + lint · ~281 Docker-free ·
+> test:int 10 · BDD 82 scenarios · Playwright billing) on branch `slice-4-subscription-billing`. Scope:
+> subscription management + run-minute quota behind a mock PaymentProvider (owner decision S4).
 
 ---
 

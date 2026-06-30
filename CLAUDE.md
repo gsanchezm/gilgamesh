@@ -140,3 +140,22 @@ the real `chaos-proxy`/TOM adapter + SSE streaming + DAG + workers are the Orche
   panel (CSRF on the trigger).
 - **Verified:** typecheck clean · ~216 Docker-free unit/e2e · `test:int` 10 · **BDD 75 scenarios / 592 steps** ·
   **Playwright** smoke + Test Lab + run flow.
+
+## Slice 4 status (Subscription & Billing) — DoD COMPLETE
+
+`specs/slices/04-subscription-billing/` — manage `plan`/`seats`/`billingCycle`, **mock checkout**, and
+**cancel**, behind the keystone **`PaymentProvider`** port wired to a deterministic `MockPaymentProvider` stub
+(owner decision S4; real Stripe + `Invoice`/webhooks deferred). Also **closes the slice-3 deferred follow-up**:
+enforces `runMinutesQuota` on `TriggerRun`. Built SDD→BDD→TDD across all layers, green on branch
+`slice-4-subscription-billing`:
+- **domain** — `planLimits` + `priceCents` (keystone §9 pricing; pure).
+- **application** — `PaymentProvider` port + `MockPaymentProvider`; `ChangeSubscription`/`UpdateSeats`/
+  `StartCheckout`/`ConfirmCheckout`/`CancelSubscription` (OWNER/ADMIN; member view; non-member NOT_FOUND);
+  extended `SubscriptionView`; `TriggerRun` charges run-minutes + blocks with `QUOTA_EXCEEDED` (atomic).
+- **api** — `BillingModule` (`PATCH /orgs/:id/subscription`, `/seats`, `POST .../checkout[/confirm]`,
+  `/cancel`); `MockPaymentProvider` bound in both wirings; `PrismaSubscriptionRepository.save`;
+  `QUOTA_EXCEEDED`→402. No migration (the `Subscription` model exists since slice 1).
+- **web** — `BillingClient` + `BillingScreen` at `/billing` (plan + usage meter, change-plan/seats, checkout,
+  cancel; CSRF on mutations).
+- **Verified:** typecheck + lint clean · ~281 Docker-free unit/e2e · `test:int` 10 · **BDD 82 scenarios / 648
+  steps** · **Playwright** smoke + Test Lab + run + billing.
