@@ -22,4 +22,5 @@ export const TOKENS = {
   Clock: 'Clock',
   Brain: 'AgentBrainPort',
   Kernel: 'TestKernel',
+  Payment: 'PaymentProvider',
 } as const;

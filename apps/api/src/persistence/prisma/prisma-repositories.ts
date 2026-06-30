@@ -269,6 +269,9 @@ export class PrismaSubscriptionRepository implements SubscriptionRepository {
   findByOrg(orgId: string): Promise<SubscriptionRecord | null> {
     return this.db.subscription.findUnique({ where: { orgId } });
   }
+  async save(rec: SubscriptionRecord): Promise<void> {
+    await this.db.subscription.update({ where: { id: rec.id }, data: rec });
+  }
 }
 
 export class PrismaAuditLogRepository implements AuditLogRepository {

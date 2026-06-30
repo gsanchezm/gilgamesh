@@ -67,6 +67,7 @@ describe('Onboarding bootstrap rollback (Prisma · real Postgres)', () => {
               throw new Error('boom: subscription write failed');
             },
             findByOrg: (orgId) => repos.subscriptions.findByOrg(orgId),
+            save: (rec) => repos.subscriptions.save(rec),
           };
           return work({ ...repos, subscriptions } as Repositories);
         }),

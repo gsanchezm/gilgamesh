@@ -16,6 +16,7 @@ const STATUS: Record<AppErrorCode, number> = {
   CSRF_FAILED: 403,
   RATE_LIMITED: 429,
   CONFLICT: 409,
+  QUOTA_EXCEEDED: 402,
 };
 
 /**

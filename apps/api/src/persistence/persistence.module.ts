@@ -3,6 +3,7 @@ import {
   type AuditLogRepository,
   DeterministicBrain,
   DeterministicKernel,
+  MockPaymentProvider,
   InMemoryAgentRepository,
   InMemoryAuditLogRepository,
   InMemoryFeatureRepository,
@@ -127,6 +128,7 @@ import { TOKENS } from './tokens';
     { provide: TOKENS.Clock, useValue: new SystemClock() },
     { provide: TOKENS.Brain, useValue: new DeterministicBrain() },
     { provide: TOKENS.Kernel, useValue: new DeterministicKernel() },
+    { provide: TOKENS.Payment, useValue: new MockPaymentProvider() },
   ],
   exports: [
     TOKENS.Users,
@@ -151,6 +153,7 @@ import { TOKENS } from './tokens';
     TOKENS.Clock,
     TOKENS.Brain,
     TOKENS.Kernel,
+    TOKENS.Payment,
   ],
 })
 export class PersistenceModule {}

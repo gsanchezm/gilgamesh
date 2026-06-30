@@ -1,4 +1,4 @@
-import { DeterministicBrain, DeterministicKernel } from '@gilgamesh/application';
+import { DeterministicBrain, DeterministicKernel, MockPaymentProvider } from '@gilgamesh/application';
 import { Global, Module } from '@nestjs/common';
 import {
   Argon2PasswordHasher,
@@ -54,6 +54,7 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     { provide: TOKENS.Clock, useValue: new SystemClock() },
     { provide: TOKENS.Brain, useValue: new DeterministicBrain() },
     { provide: TOKENS.Kernel, useValue: new DeterministicKernel() },
+    { provide: TOKENS.Payment, useValue: new MockPaymentProvider() },
   ],
   exports: [
     PrismaService,
@@ -79,6 +80,7 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     TOKENS.Clock,
     TOKENS.Brain,
     TOKENS.Kernel,
+    TOKENS.Payment,
   ],
 })
 export class PrismaPersistenceModule {}
