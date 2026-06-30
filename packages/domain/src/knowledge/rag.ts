@@ -29,10 +29,15 @@ export function scrubChunk(text: string): string {
     .trim();
 }
 
-/** FNV-1a 32-bit hash — deterministic, no Date/Math.random. */
+/** Max chars hashed per token — real tokens are < ~100 chars; bounds the loop so a pathologically long
+ *  token can't drive unbounded iteration (CodeQL js/loop-bound-injection). */
+const FNV_MAX_CHARS = 4096;
+
+/** FNV-1a 32-bit hash — deterministic, no Date/Math.random; iteration bounded by FNV_MAX_CHARS. */
 function fnv1a(s: string): number {
   let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
+  const len = s.length < FNV_MAX_CHARS ? s.length : FNV_MAX_CHARS;
+  for (let i = 0; i < len; i++) {
     h ^= s.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
