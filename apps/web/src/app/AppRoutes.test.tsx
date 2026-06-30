@@ -58,6 +58,21 @@ function makeClients(): Clients {
         createdAt: '2026-06-30T00:00:00.000Z', results: [],
       })),
     },
+    billing: (() => {
+      const sub = {
+        plan: 'TEAM' as const, status: 'TRIALING', billingCycle: 'MONTHLY' as const, seats: 1, maxSeats: 5,
+        unlimited: false, runMinutesQuota: 1000, runMinutesUsed: 0, priceCents: 19900,
+        providerCustomerId: null, currentPeriodEnd: null,
+      };
+      return {
+        getSubscription: vi.fn(async () => sub),
+        changePlan: vi.fn(async () => sub),
+        updateSeats: vi.fn(async () => sub),
+        checkout: vi.fn(async () => ({ checkoutUrl: 'https://mock.pay/checkout/o' })),
+        confirmCheckout: vi.fn(async () => ({ ...sub, status: 'ACTIVE' })),
+        cancel: vi.fn(async () => ({ ...sub, status: 'CANCELED' })),
+      };
+    })(),
   };
 }
 

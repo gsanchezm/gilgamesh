@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { AgentRoomScreen } from '../screens/AgentRoomScreen';
+import { BillingScreen } from '../screens/BillingScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { OnboardingWizard } from '../screens/OnboardingWizard';
 import { TestLabScreen } from '../screens/TestLabScreen';
@@ -65,6 +66,12 @@ function TestLabRoute() {
   return <TestLabScreen client={testlab} runsClient={runs} projectId={projectId ?? ''} />;
 }
 
+function BillingRoute() {
+  const { billing } = useClients();
+  const { activeOrgId } = useSession();
+  return <BillingScreen client={billing} orgId={activeOrgId ?? ''} />;
+}
+
 export function AppRoutes() {
   return (
     <Routes>
@@ -91,6 +98,14 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <TestLabRoute />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/billing"
+        element={
+          <RequireAuth>
+            <BillingRoute />
           </RequireAuth>
         }
       />
