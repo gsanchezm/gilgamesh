@@ -1,44 +1,60 @@
-# Repository Guidelines
+# Repository Guidelines (for AI coding agents)
 
-## Project Structure & Module Organization
+Gilgamesh is a multi-tenant QA platform (TypeScript monorepo: pnpm + Turborepo). Start with
+[`README.md`](README.md) and [`CONTRIBUTING.md`](CONTRIBUTING.md) — they are authoritative for humans and
+agents alike. This file is the quick brief.
 
-This repository is currently a blank project root. As source is added, keep the layout predictable and shallow:
+## Project structure
 
-- `src/` for application or library code.
-- `tests/` for automated tests that mirror `src/` structure.
-- `assets/` for static files such as images, fixtures, and sample data.
-- `docs/` for design notes, architecture decisions, and user-facing documentation.
-- `scripts/` for repeatable maintenance or development commands.
+- `packages/domain` — pure business logic, **zero framework imports** (enforced by lint + a fitness test).
+- `packages/application` — use cases + **ports** (interfaces) + in-memory adapters/test doubles.
+- `packages/ui` — React design-system components.
+- `apps/api` — NestJS controllers + Prisma/Postgres adapters + deterministic stubs (`prisma/` = schema).
+- `apps/web` — Vite + React screens calling the API through typed client ports.
+- `specs/_keystone/foundation-vocabulary.md` — the **frozen** source of truth for names/enums/ports/paths.
+- `specs/slices/<NN>/` — one folder per feature: the SDD `spec.md` + Gherkin `.feature` acceptance files.
+- `docs/conventions/` + `docs/research/decisions-log.md` — methodology, gates, and every owner decision.
 
-Avoid placing implementation files directly in the repository root unless they are standard project entry points or configuration files.
+## Build, test & dev commands
 
-## Build, Test, and Development Commands
+```bash
+pnpm install                                   # bootstrap
+docker compose up -d postgres redis            # local Postgres 16 (pgvector) + Redis
+pnpm --filter @gilgamesh/api db:deploy         # apply migrations
+pnpm -r typecheck && pnpm lint && pnpm -r test # type-check, lint (incl. boundaries), unit tests (no Docker)
+pnpm --filter @gilgamesh/api test:int          # integration vs real Postgres + Redis
+pnpm --filter @gilgamesh/api test:bdd          # BDD acceptance (Cucumber) vs the real API + DB
+pnpm --filter @gilgamesh/web test:e2e          # Playwright browser tests
+pnpm --filter @gilgamesh/api start:dev         # run the API (needs DATABASE_URL, REDIS_URL — see README)
+pnpm --filter @gilgamesh/web dev               # run the web dev server
+```
 
-No build system or package manager files are present yet. Add commands here when tooling is introduced, and prefer checked-in scripts over one-off shell commands. Common examples:
+## Non-negotiable conventions
 
-- `npm install` / `npm test` for a Node.js project.
-- `python -m pytest` for a Python project.
-- `cargo test` for a Rust project.
-- `make build` when a `Makefile` becomes the project command surface.
+- **Methodology:** every feature is **SDD → BDD → TDD** (spec → Gherkin → failing test → green → refactor).
+  Never write production code without a failing test first.
+- **Clean Architecture:** dependencies point inward only; the domain imports no framework. Business logic lives
+  in `application` use cases that depend only on ports.
+- **Names are frozen:** use entity/enum/port/path names verbatim from the keystone. New names = a recorded
+  decision in `docs/research/decisions-log.md`.
+- **Tenant isolation:** every query is `orgId`-scoped; a non-member gets `NOT_FOUND` (never `403`).
+- **Secrets:** stored as vault references, never raw. External/AI services (Brain, TestKernel, PaymentProvider,
+  RepoProvider) are **ports with deterministic stubs** today — always call through the port, never the network.
 
-Document required environment variables and local setup steps near the command that needs them.
+## Coding style
 
-## Coding Style & Naming Conventions
+TypeScript throughout. Prettier + ESLint are configured and enforced (`pnpm lint`, `pnpm format`). Match the
+surrounding code's idiom, comment density and naming. Keep generated files (Prisma client, build output) out of
+source.
 
-Follow the formatter and linter configured for the language in use. If no formatter exists yet, add one before the codebase grows. Use descriptive filenames and keep naming consistent with the chosen ecosystem: `snake_case` for Python modules, `kebab-case` for CLI scripts, and `PascalCase` for exported UI components or classes where applicable.
+## Commits & PRs
 
-Prefer small modules with clear ownership. Keep generated files out of source directories unless they are intentionally committed.
+Branch per feature (`slice-N-...`, `fix/...`); never commit to `main` directly. Small, green commits with
+conventional prefixes (`feat(api): …`, `fix(domain): …`, `test(web): …`, `docs: …`). Before "done":
+typecheck + lint + tests green, plus the Docker suites for API changes. CI (lint/typecheck/test +
+integration/BDD + Playwright + CodeQL + secret-scan) must be green to merge.
 
-## Testing Guidelines
+## Agent-specific
 
-Place tests under `tests/` and name them so their target is obvious, such as `tests/test_parser.py` or `tests/parser.test.ts`. Add regression tests for bug fixes and cover public behavior before internal implementation details. If coverage tooling is added, document the minimum threshold and the command used to verify it.
-
-## Commit & Pull Request Guidelines
-
-This directory does not currently contain Git history, so no existing commit convention can be inferred. Use concise, imperative commit messages, for example `Add parser validation` or `Fix config loading`.
-
-Pull requests should include a short description, verification steps, and linked issues when relevant. Include screenshots or recordings for UI changes, and call out migrations, configuration changes, or compatibility risks.
-
-## Agent-Specific Instructions
-
-Before making changes, inspect the repository for newly added tooling or conventions. Do not assume the placeholder structure above is authoritative once real project files exist.
+There is detailed Claude-specific guidance in [`CLAUDE.md`](CLAUDE.md) (per-slice status, env quirks). Verify
+file/symbol/command references against the current tree before acting — the codebase evolves.

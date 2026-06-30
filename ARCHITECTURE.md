@@ -1,6 +1,11 @@
 # Gilgamesh — Architecture (Foundation Index)
 
-> **Status:** Foundation design (spec only — nothing here is runnable yet).
+> **Status:** Foundation **built** — slices 1–6 (Auth/Onboarding/Agent room · Test Lab authoring · Test
+> Execution · Subscription & Billing · Knowledge/RAG · Integrations) are implemented, tested and shipped on
+> `main`. This document describes the *design*; for a runnable quick start see [`README.md`](README.md), and
+> for how to build a slice see [`CONTRIBUTING.md`](CONTRIBUTING.md). The 4 external/AI ports (Brain,
+> TestKernel, PaymentProvider, RepoProvider) currently run deterministic offline **stubs** — the real
+> adapters drop in behind the same interfaces later.
 > **Authority:** This document is an INDEX. The single source of truth for names, enums, the agent
 > roster, port signatures and the OpenAPI/schema skeleton is the **FROZEN keystone**
 > ([`specs/_keystone/foundation-vocabulary.md`](specs/_keystone/foundation-vocabulary.md)). Where this
@@ -8,7 +13,8 @@
 > [`docs/research/decisions-log.md`](docs/research/decisions-log.md) and have authority over the
 > prototype extract ([`docs/research/gilgamesh-prototype-extract.md`](docs/research/gilgamesh-prototype-extract.md)).
 > **Read next:** monorepo conventions → [`docs/conventions/monorepo.md`](docs/conventions/monorepo.md).
-> v0.1 — 2026-06-29.
+> v0.2 — 2026-06-30 (foundation built; slices 1–6 shipped). The design below is unchanged; only the status
+> header above was updated.
 
 ---
 
