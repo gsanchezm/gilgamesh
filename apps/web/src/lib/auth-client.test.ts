@@ -13,13 +13,18 @@ afterEach(() => {
 });
 
 describe('httpAuthClient.me', () => {
-  it('returns the active org when authenticated (200)', async () => {
+  it('returns the active org and sends credentials to /auth/me (200)', async () => {
     mockFetch(async () => ({
       ok: true,
       status: 200,
       json: async () => ({ user: {}, memberships: [], activeOrgId: 'org-5' }),
     }));
     expect(await httpAuthClient.me()).toEqual({ activeOrgId: 'org-5' });
+
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    const [url, init] = fetchMock.mock.calls[0] as [string, { credentials?: string }];
+    expect(String(url)).toMatch(/\/auth\/me$/);
+    expect(init.credentials).toBe('include');
   });
 
   it('returns null when unauthenticated (401)', async () => {

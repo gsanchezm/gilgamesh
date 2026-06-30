@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentRoomData } from '../lib/agents-client';
@@ -66,6 +66,20 @@ describe('AppRoutes', () => {
     );
     expect(screen.queryByPlaceholderText('name@company.com')).toBeNull();
     expect(screen.getByText('Loading…')).toBeTruthy();
+  });
+
+  it('routes a restored-authenticated user landing on / into the app, not the login form', async () => {
+    render(
+      <SessionProvider bootstrap={async () => ({ activeOrgId: 'org-1' })}>
+        <ClientsProvider clients={makeClients()}>
+          <MemoryRouter initialEntries={['/']}>
+            <AppRoutes />
+          </MemoryRouter>
+        </ClientsProvider>
+      </SessionProvider>,
+    );
+    expect(await screen.findByText('Name your project')).toBeTruthy();
+    expect(screen.queryByPlaceholderText('name@company.com')).toBeNull();
   });
 
   it('flows login → onboarding → agent room', async () => {

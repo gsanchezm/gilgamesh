@@ -39,8 +39,11 @@ export function SessionProvider({
   useEffect(() => {
     if (!bootstrap) return;
     let active = true;
+    // Apply the restore result only while still booting: if the user completed a sign-in (or
+    // sign-out) before a slow /auth/me resolved, that explicit action wins — a late null restore
+    // must not clobber it and bounce a just-authenticated user back to /login.
     const settle = (next: SessionState) => {
-      if (active) setState(next);
+      if (active) setState((prev) => (prev.booting ? next : prev));
     };
     bootstrap()
       .then((me) =>

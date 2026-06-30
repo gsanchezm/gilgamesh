@@ -6,16 +6,30 @@ import { OnboardingWizard } from '../screens/OnboardingWizard';
 import { useClients } from './clients';
 import { useSession } from './session';
 
+function Booting() {
+  return <div className="gx-booting">Loading…</div>;
+}
+
 function RequireAuth({ children }: { children: ReactNode }) {
   const { authed, booting } = useSession();
-  if (booting) return <div className="gx-booting">Loading…</div>;
+  if (booting) return <Booting />;
   return authed ? <>{children}</> : <Navigate to="/login" replace />;
+}
+
+/** `/` and unknown paths: wait out the session restore, then route by auth state. */
+function Landing() {
+  const { authed, booting } = useSession();
+  if (booting) return <Booting />;
+  return <Navigate to={authed ? '/onboarding' : '/login'} replace />;
 }
 
 function LoginRoute() {
   const { auth } = useClients();
-  const { signIn } = useSession();
+  const { signIn, authed, booting } = useSession();
   const navigate = useNavigate();
+  if (booting) return <Booting />;
+  // An already-authenticated user (e.g. session restored on reload) shouldn't see the login form.
+  if (authed) return <Navigate to="/onboarding" replace />;
   return (
     <LoginScreen
       authClient={auth}
@@ -47,6 +61,7 @@ function AgentRoomRoute() {
 export function AppRoutes() {
   return (
     <Routes>
+      <Route path="/" element={<Landing />} />
       <Route path="/login" element={<LoginRoute />} />
       <Route
         path="/onboarding"
@@ -64,7 +79,7 @@ export function AppRoutes() {
           </RequireAuth>
         }
       />
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      <Route path="*" element={<Landing />} />
     </Routes>
   );
 }
