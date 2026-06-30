@@ -29,9 +29,11 @@ pnpm -r typecheck                              # type-check every package
 pnpm --filter @gilgamesh/<pkg> test            # one package, e.g. @gilgamesh/domain | application | ui | web | api
 pnpm --filter @gilgamesh/api test -- <file>    # a single test file (Vitest filter)
 pnpm --filter @gilgamesh/web dev               # Vite dev server (web)
-docker compose up -d postgres                  # local Postgres 16 + pgvector (needs Docker Desktop running)
+docker compose up -d postgres redis            # local Postgres 16 + pgvector AND Redis (needs Docker Desktop)
 pnpm --filter @gilgamesh/api prisma:migrate    # apply Prisma migrations to the DB
-pnpm --filter @gilgamesh/api test:int          # integration tests against real Postgres
+pnpm --filter @gilgamesh/api test:int          # integration tests against real Postgres + Redis
+pnpm --filter @gilgamesh/api test:bdd          # Cucumber-js BDD acceptance vs API+Postgres (49 scenarios)
+pnpm --filter @gilgamesh/web test:e2e          # Playwright browser smoke vs the running web+api+db stack
 ```
 
 If a fresh Docker Desktop install isn't on the shell PATH yet, invoke it by full path and add its bin dir
@@ -69,17 +71,32 @@ Key seams:
 - Cross-package imports resolve to source via tsconfig `paths` + Vitest `resolve.alias` (no build step for
   dev/test). Production builds use `tsup`/`vite`/Nest.
 
-## Slice 1 status (Auth + Onboarding + Agent room)
+## Slice 1 status (Auth + Onboarding + Agent room) — DoD COMPLETE
 
-Built and green (80 tests): domain, application (all use cases), ui, web (3 screens + React Router flow
-login→onboarding→agent room), the full API surface (`/auth/{register,login}`, `POST /projects`,
-`GET|PATCH /projects/:id/agents`, `POST .../wake-all`) with auth guard, validation, error mapping, real
-Argon2id, AND **Prisma persistence against real Postgres** — schema + migration applied (slice-1 subset of
-`specs/data-model/schema.prisma`; `apps/api/prisma/`), Prisma repository adapters, and a real-DB integration
-suite (`pnpm --filter @gilgamesh/api test:int`, 3 tests). The default `pnpm --filter @gilgamesh/api test`
-stays in-memory (Docker-free); `*.int.test.ts` runs only via `test:int`.
+Built and green (~128 Docker-free unit/e2e tests): domain, application (all use cases + the authz gate and
+org-queries now directly tested), ui, web (3 screens + React Router flow login→onboarding→agent room), the
+full API surface (`/auth/{register,login,me,logout}`, `POST /projects`, `GET|PATCH /projects/:id/agents`,
+`POST .../wake-all`, `GET /orgs/:id/{agents,subscription}`) with session guard, CSRF double-submit,
+**auth rate-limiting**, validation, RFC9457 error mapping, real Argon2id, AND **Prisma persistence against
+real Postgres** (schema + migration in `apps/api/prisma/`, Prisma adapters). The default
+`pnpm --filter @gilgamesh/api test` stays in-memory (Docker-free); `*.int.test.ts` runs only via `test:int`.
 
-**Remaining for slice-1 Definition of Done:** BDD acceptance (Cucumber-js running `specs/slices/01-*/*.feature`
-against the API+DB) · Playwright e2e against the running web+api+db stack · wire the production bootstrap
-(`apps/api` `main.ts`) to `PrismaPersistenceModule`. (Web auth is client-side state only for now; a `/auth/me`
-bootstrap to restore the session on reload is a small later refinement.)
+All Definition-of-Done blockers are met and verified green:
+- **BDD acceptance** — `pnpm --filter @gilgamesh/api test:bdd` (Cucumber-js over `specs/slices/01-*/*.feature`
+  against API+Postgres): **49 scenarios / 384 steps**.
+- **Integration** — `pnpm --filter @gilgamesh/api test:int` (real Postgres **+ Redis**): 9 tests, incl. the
+  Redis rate-limit store and transactional onboarding rollback.
+- **Playwright e2e** — `pnpm --filter @gilgamesh/web test:e2e`: a browser smoke (login → onboarding → agent
+  room toggle + wake-all) against `main.ts` (ProdAppModule) behind the vite same-origin proxy; the only layer
+  that exercises real Secure/`__Host-`/SameSite cookie semantics + the client CSRF double-submit.
+- **Production bootstrap** — `main.ts` → `ProdAppModule` (`PrismaPersistenceModule`, `/api/v1`, helmet, CORS
+  allowlist, `trust proxy`, shutdown hooks).
+- **Rate limit (AC-AUTH-13)** — fixed-window behind a `RateLimitStore` port: in-memory (Docker-free) and
+  **Redis** with native TTL (prod, selected by `REDIS_URL`). `docker-compose.yml` now runs Postgres **+ Redis**.
+- **Web session** — `GET /auth/me` restore on load (the SPA can't read the httpOnly cookie) + client CSRF
+  double-submit on every mutation; `logout()` client method in place.
+
+**Deferred (owner decision S1-B, see `docs/research/decisions-log.md`):** forgot/reset-password +
+EmailPort (AC-AUTH-10/11/12 → slice 7); disabled Google/SSO login controls (AC-AUTH-15 → follow-up); the
+logout UI control and the CI quality-gate workflows (lint/boundaries, SAST, deps/secret scan, bundle-size,
+k6, contract) are follow-ups.
