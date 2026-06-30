@@ -1,4 +1,5 @@
 import type { AgentRuntimeStatus, AgentSlot } from '@gilgamesh/domain';
+import { readCsrfToken } from './csrf';
 
 export interface AgentRoomAgent {
   slot: AgentSlot;
@@ -55,7 +56,7 @@ export const httpAgentsClient: AgentsClient = {
   async setAgent(projectId, slot, patch) {
     const res = await fetch(`${API_BASE}/projects/${projectId}/agents/${slot}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': readCsrfToken() },
       credentials: 'include',
       body: JSON.stringify(patch),
     });
@@ -64,6 +65,7 @@ export const httpAgentsClient: AgentsClient = {
   async wakeAll(projectId) {
     const res = await fetch(`${API_BASE}/projects/${projectId}/agents/wake-all`, {
       method: 'POST',
+      headers: { 'X-CSRF-Token': readCsrfToken() },
       credentials: 'include',
     });
     return ok<{ awake: number; total: number }>(res, 'Could not awaken the team.');

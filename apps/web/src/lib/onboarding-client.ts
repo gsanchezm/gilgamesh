@@ -1,3 +1,5 @@
+import { readCsrfToken } from './csrf';
+
 export type ProjectFormat = 'BDD' | 'TRADITIONAL';
 export type RepoProvider = 'github' | 'bitbucket' | 'ado';
 
@@ -22,7 +24,7 @@ export const httpOnboardingClient: OnboardingClient = {
   async createProject(input) {
     const res = await fetch(`${API_BASE}/projects`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': readCsrfToken() },
       credentials: 'include',
       body: JSON.stringify(input),
     });
