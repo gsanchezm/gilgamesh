@@ -193,4 +193,24 @@ cases + 4 ports + DeterministicBrain stub), api (controllers + Prisma models/mig
 (TestLabClient + TestLabScreen). Green end-to-end: typecheck · ~182 Docker-free unit/e2e · test:int 9
 (Postgres+Redis) · BDD 69 scenarios/539 steps · Playwright (smoke + Test Lab). Deferred per S2: bulk import,
 the real Claude brain adapter (Brain slice), `__Host-csrf` + the CI quality-gate workflows (shared with the
-slice-1 follow-ups). Awaiting owner review/merge of `slice-2-test-lab-authoring`.
+slice-1 follow-ups). **Merged to `main` (FF, e22fad0) after the review fixes; slice-2 review follow-ups landed
+on main: a Prisma-wired testlab int test + a domain architecture fitness function.**
+
+## Paso 5 — Slice 3 scope (Test Execution + Results) — owner decision S3 (2026-06-30)
+
+Owner picked the **Test execution + results** vertical for slice 3. **Keystone §7 caveat surfaced:** the
+Orchestration/Reports-from-real-runs slice is `BLOCKED-UNTIL-DELIVERED` (real runs need the owner's
+chaos-proxy/TOM kernel, decision #5), and the full keystone execution model is async (enqueue → BullMQ
+workers → `TestKernel.run` streaming `RunEvent` → `RunNode` DAG → `Artifact` → SSE).
+
+**Decision S3 — build the execution shell behind a deterministic `TestKernel` stub now** (the Brain-stub
+pattern of slice 2), taking §7's *"everything else proceeds NOW behind the `TestKernel` port"* path, as a
+**synchronous núcleo**:
+- **In:** `Run` + `RunStatus` (keystone verbatim) · `TestKernel` port + `DeterministicKernel` stub (offline,
+  reproducible) · `TriggerRun` (sync execute of a Feature/TestCase) → `Run` + per-scenario `RunResult`s +
+  counts/`durationMs` · `POST /projects/{id}/runs` + `GET /projects/{id}/runs` + `GET /runs/{id}` · results UI ·
+  reflect latest result onto `Scenario.lastStatus`/`TestCase.status` · UoW-atomic · tenant isolation + RBAC.
+- **Deferred (Orchestration slice, when chaos-proxy lands):** real `chaos-proxy`/`AgentPlugin` execution, SSE
+  `/runs/{id}/events`, BullMQ workers, `RunNode`/DAG canvas, `Artifact`/reports, `/cancel`, `RunMode`/stages.
+
+Spec at `specs/slices/03-test-execution/spec.md` (12 ACs: AC-RUN-01..12). Building on `slice-3-test-execution`.
