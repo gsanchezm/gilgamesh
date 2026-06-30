@@ -7,9 +7,12 @@ import {
   type KnowledgeChunkRepository,
   KnowledgeRetriever,
   MockPaymentProvider,
+  MockRepoProvider,
+  StubSecretVault,
   InMemoryAgentRepository,
   InMemoryAuditLogRepository,
   InMemoryFeatureRepository,
+  InMemoryIntegrationRepository,
   InMemoryKnowledgeChunkRepository,
   InMemoryMembershipRepository,
   InMemoryOrgRepository,
@@ -140,6 +143,9 @@ import { TOKENS } from './tokens';
         new KnowledgeRetriever({ brain, knowledge }),
       inject: [TOKENS.Brain, TOKENS.Knowledge],
     },
+    { provide: TOKENS.Integrations, useValue: new InMemoryIntegrationRepository() },
+    { provide: TOKENS.RepoProvider, useValue: new MockRepoProvider() },
+    { provide: TOKENS.SecretVault, useValue: new StubSecretVault() },
   ],
   exports: [
     TOKENS.Users,
@@ -167,6 +173,9 @@ import { TOKENS } from './tokens';
     TOKENS.Payment,
     TOKENS.Knowledge,
     TOKENS.KnowledgeRetrieval,
+    TOKENS.Integrations,
+    TOKENS.RepoProvider,
+    TOKENS.SecretVault,
   ],
 })
 export class PersistenceModule {}

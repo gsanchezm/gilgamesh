@@ -5,6 +5,8 @@ import {
   type KnowledgeChunkRepository,
   KnowledgeRetriever,
   MockPaymentProvider,
+  MockRepoProvider,
+  StubSecretVault,
 } from '@gilgamesh/application';
 import { Global, Module } from '@nestjs/common';
 import {
@@ -19,6 +21,7 @@ import {
   PrismaAgentRepository,
   PrismaAuditLogRepository,
   PrismaFeatureRepository,
+  PrismaIntegrationRepository,
   PrismaKnowledgeChunkRepository,
   PrismaMembershipRepository,
   PrismaOrgRepository,
@@ -74,6 +77,13 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
         new KnowledgeRetriever({ brain, knowledge }),
       inject: [TOKENS.Brain, TOKENS.Knowledge],
     },
+    {
+      provide: TOKENS.Integrations,
+      useFactory: (db: PrismaService) => new PrismaIntegrationRepository(db),
+      inject: [PrismaService],
+    },
+    { provide: TOKENS.RepoProvider, useValue: new MockRepoProvider() },
+    { provide: TOKENS.SecretVault, useValue: new StubSecretVault() },
   ],
   exports: [
     PrismaService,
@@ -102,6 +112,9 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     TOKENS.Payment,
     TOKENS.Knowledge,
     TOKENS.KnowledgeRetrieval,
+    TOKENS.Integrations,
+    TOKENS.RepoProvider,
+    TOKENS.SecretVault,
   ],
 })
 export class PrismaPersistenceModule {}

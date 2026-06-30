@@ -5,6 +5,9 @@ import type {
   AuditLogRepository,
   FeatureRecord,
   FeatureRepository,
+  IntegrationGroup,
+  IntegrationRecord,
+  IntegrationRepository,
   KnowledgeChunkRecord,
   KnowledgeChunkRepository,
   MembershipRecord,
@@ -108,6 +111,7 @@ export class PrismaProjectRepository implements ProjectRepository {
         repoFullName: rec.repoFullName,
         repoBranch: rec.repoBranch,
         repoCommit: rec.repoCommit,
+        repoLastSyncAt: rec.repoLastSyncAt,
         createdAt: rec.createdAt,
         updatedAt: rec.updatedAt,
       },
@@ -122,6 +126,22 @@ export class PrismaProjectRepository implements ProjectRepository {
   }
   listForOrg(orgId: string): Promise<ProjectRecord[]> {
     return this.db.project.findMany({ where: { orgId } });
+  }
+  async save(rec: ProjectRecord): Promise<void> {
+    await this.db.project.update({
+      where: { id: rec.id },
+      data: {
+        name: rec.name,
+        slug: rec.slug,
+        format: rec.format,
+        repoProvider: rec.repoProvider as RepoProvider | null,
+        repoFullName: rec.repoFullName,
+        repoBranch: rec.repoBranch,
+        repoCommit: rec.repoCommit,
+        repoLastSyncAt: rec.repoLastSyncAt,
+        updatedAt: rec.updatedAt,
+      },
+    });
   }
 }
 
@@ -365,5 +385,58 @@ export class PrismaKnowledgeChunkRepository implements KnowledgeChunkRepository 
 
   async count(): Promise<number> {
     return this.db.knowledgeChunk.count();
+  }
+}
+
+function toIntegrationRecord(row: {
+  id: string;
+  orgId: string;
+  key: string;
+  group: string;
+  connected: boolean;
+  secretRef: string | null;
+  config: Prisma.JsonValue;
+  connectedById: string | null;
+  connectedAt: Date | null;
+}): IntegrationRecord {
+  return {
+    id: row.id,
+    orgId: row.orgId,
+    key: row.key,
+    group: row.group as IntegrationGroup,
+    connected: row.connected,
+    secretRef: row.secretRef,
+    config: (row.config ?? {}) as Record<string, unknown>,
+    connectedById: row.connectedById,
+    connectedAt: row.connectedAt,
+  };
+}
+
+export class PrismaIntegrationRepository implements IntegrationRepository {
+  constructor(private readonly db: Prisma.TransactionClient) {}
+  async listForOrg(orgId: string): Promise<IntegrationRecord[]> {
+    const rows = await this.db.integration.findMany({ where: { orgId } });
+    return rows.map(toIntegrationRecord);
+  }
+  async findByKey(orgId: string, key: string): Promise<IntegrationRecord | null> {
+    const row = await this.db.integration.findUnique({ where: { orgId_key: { orgId, key } } });
+    return row ? toIntegrationRecord(row) : null;
+  }
+  async upsert(rec: IntegrationRecord): Promise<void> {
+    const data = {
+      orgId: rec.orgId,
+      key: rec.key,
+      group: rec.group,
+      connected: rec.connected,
+      secretRef: rec.secretRef,
+      config: rec.config as Prisma.InputJsonValue,
+      connectedById: rec.connectedById,
+      connectedAt: rec.connectedAt,
+    };
+    await this.db.integration.upsert({
+      where: { orgId_key: { orgId: rec.orgId, key: rec.key } },
+      create: { id: rec.id, ...data },
+      update: data,
+    });
   }
 }

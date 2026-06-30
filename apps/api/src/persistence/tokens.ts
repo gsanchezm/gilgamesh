@@ -25,4 +25,7 @@ export const TOKENS = {
   Payment: 'PaymentProvider',
   Knowledge: 'KnowledgeChunkRepository',
   KnowledgeRetrieval: 'KnowledgeRetrievalPort',
+  Integrations: 'IntegrationRepository',
+  RepoProvider: 'RepoProvider',
+  SecretVault: 'SecretVault',
 } as const;
