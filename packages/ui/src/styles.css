@@ -21,6 +21,11 @@
   --font-display: 'Marcellus', Georgia, serif;
   --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  /* Radii (handoff §4.6) — theme-independent; light inherits these. */
+  --radius-control: 10px; /* inputs, buttons */
+  --radius-card: 14px; /* cards */
+  --radius-panel: 5px; /* large cards / panels */
+  --radius-pill: 20px; /* chips, badges, pills */
 }
 
 [data-theme='light'] {
@@ -48,6 +53,100 @@
     transform: scale(1.5);
     opacity: 0.25;
   }
+}
+
+/* Voice bars (push-to-talk). */
+@keyframes gxwave {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+/* Message / node entry. */
+@keyframes gxin {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Typing cursor. */
+@keyframes gxblink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Canvas connection flow. */
+@keyframes gxdash {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+
+/* Loading spinner. */
+@keyframes gxspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Soft green halo of the active state. */
+@keyframes gxbreathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(47, 143, 91, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(47, 143, 91, 0.12);
+  }
+}
+
+/* Agent avatar (handoff §5 anatomy): family-colored frame → inset portrait → status dot. */
+.gx-avatar {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 24%;
+  flex: none;
+}
+.gx-avatar__portrait {
+  position: absolute;
+  inset: 2.5px;
+  border-radius: 22%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background-image: linear-gradient(160deg, #16294e, #0b1a36);
+  background-size: cover;
+  background-position: center top;
+}
+.gx-avatar__glyph {
+  font-family: var(--font-display);
+  color: #e7c877;
+  line-height: 1;
+}
+.gx-avatar__dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  padding: 2px;
+  border-radius: 50%;
+  background: var(--surface);
 }
 
 /* Buttons */

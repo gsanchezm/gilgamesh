@@ -16,3 +16,5 @@ test-results/
 # private/non-redistributable). Kept OUT of this public repo; ingested locally via `pnpm ingest:corpus`.
 # When the repo is made private, this line can be removed to commit the corpus.
 rag/
+
+design_handoff_gilgamesh/
