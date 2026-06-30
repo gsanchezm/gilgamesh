@@ -6,3 +6,4 @@ export * from './clock';
 export * from './id';
 export * from './brain';
 export * from './kernel';
+export * from './payment';

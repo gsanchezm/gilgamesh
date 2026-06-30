@@ -1,4 +1,4 @@
-import { summarizeRun } from '@gilgamesh/domain';
+import { planLimits, summarizeRun } from '@gilgamesh/domain';
 import { ApplicationError } from '../errors';
 import type { Clock } from '../ports/clock';
 import type { IdGenerator } from '../ports/id';
@@ -20,6 +20,7 @@ import type {
   RunRepository,
   RunResultRepository,
   ScenarioRepository,
+  SubscriptionRepository,
   TestCaseRepository,
 } from '../ports/repositories';
 import type { UnitOfWork } from '../ports/unit-of-work';
@@ -119,6 +120,7 @@ interface RunDeps extends ReadRunDeps {
   features: FeatureRepository;
   scenarios: ScenarioRepository;
   testCases: TestCaseRepository;
+  subscriptions: SubscriptionRepository;
   audit: AuditLogRepository;
   ids: IdGenerator;
   clock: Clock;
@@ -158,6 +160,14 @@ export class TriggerRun {
       if (!tc || tc.projectId !== project.id) throw new ApplicationError('NOT_FOUND', 'Test case not found.');
       testCaseId = tc.id;
       plan = { runId, target: { kind: 'TESTCASE', testCaseId: tc.id, name: tc.title } };
+    }
+
+    // Run-minute quota (slice 4): charge max(1, scenarioCount) minutes; block early if it would exceed
+    // the org's quota on a metered (non-unlimited) plan.
+    const cost = input.targetKind === 'FEATURE' ? Math.max(1, scenarios.length) : 1;
+    const sub = await this.deps.subscriptions.findByOrg(project.orgId);
+    if (sub && !planLimits(sub.plan).unlimited && sub.runMinutesUsed + cost > sub.runMinutesQuota) {
+      throw new ApplicationError('QUOTA_EXCEEDED', 'Run-minute quota exhausted. Upgrade your plan to run more.');
     }
 
     // Execute synchronously through the (stub) kernel, folding the event stream into results.
@@ -211,6 +221,8 @@ export class TriggerRun {
         const tc = await repos.testCases.findById(testCaseId);
         if (tc) await repos.testCases.save({ ...tc, status: REFLECT[results[0]!.status], updatedAt: now });
       }
+      // Charge the run-minute cost atomically with the run write (slice 4).
+      if (sub) await repos.subscriptions.save({ ...sub, runMinutesUsed: sub.runMinutesUsed + cost });
     });
 
     await this.deps.audit.append({

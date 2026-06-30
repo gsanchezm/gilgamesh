@@ -37,6 +37,7 @@ import type {
 } from '../ports/records';
 import { DeterministicBrain } from '../brain/stub-brain';
 import { DeterministicKernel } from '../kernel/deterministic-kernel';
+import { MockPaymentProvider } from '../payment/mock-payment-provider';
 import { FakeClock, FakePasswordHasher, FakeTokenGenerator, SeqIdGenerator } from './fakes';
 
 export class InMemoryUserRepository implements UserRepository {
@@ -265,6 +266,9 @@ export class InMemorySubscriptionRepository implements SubscriptionRepository {
   async findByOrg(orgId: string): Promise<SubscriptionRecord | null> {
     return this.byOrg.get(orgId) ?? null;
   }
+  async save(rec: SubscriptionRecord): Promise<void> {
+    this.byOrg.set(rec.orgId, rec);
+  }
 }
 
 export class InMemoryAuditLogRepository implements AuditLogRepository {
@@ -309,6 +313,7 @@ export interface InMemoryContext {
   tokens: FakeTokenGenerator;
   brain: DeterministicBrain;
   kernel: DeterministicKernel;
+  payment: MockPaymentProvider;
 }
 
 export function createInMemoryContext(): InMemoryContext {
@@ -340,5 +345,6 @@ export function createInMemoryContext(): InMemoryContext {
     tokens: new FakeTokenGenerator(),
     brain: new DeterministicBrain(),
     kernel: new DeterministicKernel(),
+    payment: new MockPaymentProvider(),
   };
 }

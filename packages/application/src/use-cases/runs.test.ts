@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createInMemoryContext, type InMemoryContext } from '../testing/in-memory';
 import { CompleteOnboarding } from './complete-onboarding';
+import { GetOrgSubscription } from './org-queries';
 import { RegisterUser } from './register-user';
 import { GetRun, ListRuns, TriggerRun } from './runs';
 import { CreateFeature } from './testlab-features';
@@ -61,6 +62,19 @@ describe('Test Execution — runs', () => {
     const list = await new ListRuns(ctx).execute({ userId, projectId });
     expect(list).toHaveLength(2);
     expect(list[0]!.id).toBe(r2.id);
+  });
+
+  it('charges run minutes and blocks when the quota is exhausted (AC-SUB-07)', async () => {
+    const f = await makeFeature(); // 3 scenarios -> cost 3
+    await new TriggerRun(ctx).execute({ userId, projectId, targetKind: 'FEATURE', targetId: f.id });
+    expect((await new GetOrgSubscription(ctx).execute({ userId, orgId })).runMinutesUsed).toBe(3);
+
+    // Exhaust the quota, then the next run is blocked.
+    const sub = (await ctx.subscriptions.findByOrg(orgId))!;
+    await ctx.subscriptions.save({ ...sub, runMinutesUsed: sub.runMinutesQuota });
+    await expect(
+      new TriggerRun(ctx).execute({ userId, projectId, targetKind: 'FEATURE', targetId: f.id }),
+    ).rejects.toMatchObject({ code: 'QUOTA_EXCEEDED' });
   });
 
   it('rejects a missing / foreign target (AC-RUN-12)', async () => {

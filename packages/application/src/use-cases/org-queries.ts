@@ -1,11 +1,13 @@
 import { AGENT_ROSTER, type AgentFamily, type AgentSlot } from '@gilgamesh/domain';
 import { ApplicationError } from '../errors';
-import type { BillingCycle, Plan, SubscriptionStatus } from '../ports/records';
 import type {
   AgentRepository,
   MembershipRepository,
   SubscriptionRepository,
 } from '../ports/repositories';
+import { type SubscriptionView, subscriptionView } from './subscription';
+
+export type { SubscriptionView };
 
 export interface OrgAgentView {
   slot: AgentSlot;
@@ -16,15 +18,6 @@ export interface OrgAgentView {
   culture: string;
   defaultTool: string;
   toolOptions: string[];
-}
-
-export interface SubscriptionView {
-  plan: Plan;
-  status: SubscriptionStatus;
-  billingCycle: BillingCycle;
-  seats: number;
-  runMinutesQuota: number;
-  runMinutesUsed: number;
 }
 
 async function requireOrgMember(
@@ -72,13 +65,6 @@ export class GetOrgSubscription {
     await requireOrgMember(this.deps.memberships, input.userId, input.orgId);
     const sub = await this.deps.subscriptions.findByOrg(input.orgId);
     if (!sub) throw new ApplicationError('NOT_FOUND', 'Subscription not found.');
-    return {
-      plan: sub.plan,
-      status: sub.status,
-      billingCycle: sub.billingCycle,
-      seats: sub.seats,
-      runMinutesQuota: sub.runMinutesQuota,
-      runMinutesUsed: sub.runMinutesUsed,
-    };
+    return subscriptionView(sub);
   }
 }

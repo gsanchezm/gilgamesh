@@ -111,6 +111,7 @@ export interface ToolBindingRepository {
 export interface SubscriptionRepository {
   create(rec: SubscriptionRecord): Promise<void>;
   findByOrg(orgId: string): Promise<SubscriptionRecord | null>;
+  save(rec: SubscriptionRecord): Promise<void>;
 }
 
 export interface AuditLogRepository {

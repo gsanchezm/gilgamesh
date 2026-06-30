@@ -9,7 +9,8 @@ export type AppErrorCode =
   | 'VALIDATION'
   | 'CSRF_FAILED'
   | 'RATE_LIMITED'
-  | 'CONFLICT';
+  | 'CONFLICT'
+  | 'QUOTA_EXCEEDED';
 
 /** A use-case-level failure with a stable code that adapters map to a transport status. */
 export class ApplicationError extends Error {
