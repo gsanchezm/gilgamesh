@@ -115,3 +115,29 @@ Decisions that still need the owner (do NOT block slice 1; needed for orchestrat
 - **D-C (tenancy hardening):** adopt composite FKs `@@unique([orgId,id])` + `(orgId,parentId)` now
   (heavier Prisma remodel) vs Layer-1 same-org validation + CI `child.orgId==parent.orgId` test until GA.
   Recommendation: ship the CI-test guard now, schedule composite FKs before GA.
+
+## Paso 3 — Slice 1 close-out plan (2026-06-30) — DECIDED by owner
+
+State at decision time (verified): typecheck clean (5 packages) + 93/93 unit/e2e green; 36/41 ACs
+implemented; prod `main.ts`→Prisma DONE (`206ff25`); AC-AUTH-14 CSRF DONE (`16a8629`). In flight,
+**uncommitted + unproven**: AC-AUTH-13 rate-limit guard (wired global APP_GUARD but no test exercises
+the 429 branch — green only because tests set `AUTH_RATE_LIMIT=1000000`).
+
+### S1-A. Close-out order — DECIDED: **AC-AUTH-13 (with test) first, then the client prod-breakers**
+1. Finish AC-AUTH-13 the TDD way and commit it. 2. Fix the two client prod-breakers (CSRF
+`X-CSRF-Token` double-submit in `onboarding-client`/`agents-client`; `GET /auth/me` session-restore on
+mount). Then BDD-green vs Postgres → Playwright e2e → coverage backfill → PR.
+
+### S1-B. Slice-1 scope — DECIDED: **close the built surface; defer forgot/reset + AC-AUTH-15**
+Slice 1 = AUTH-01..09/14 + ONB-01..13 + ROOM-01..13 green in BDD + Playwright, with rate-limit proven
+by a dedicated e2e. **AC-AUTH-10/11/12** (forgot/reset-password + EmailPort + reset-token store) →
+**slice 7**. **AC-AUTH-15** (disabled Google/SSO UI controls) → follow-up (not green-blocking).
+
+### S1-C. Rate-limit infrastructure — DECIDED: **Redis + native TTL now** (deviates from my "in-memory now" rec)
+The slice-1 rate limiter moves to a **Redis-backed fixed-window store with native TTL eviction**, not the
+in-memory `Map`. Consistent with existing infra (#11 local docker-compose Redis + D-B Redis Streams).
+> IMPLICATION: introduce a `RateLimitStore` PORT (Clean Arch) with two adapters — **Redis** (prod +
+> `test:int`/BDD against the compose Redis) and **in-memory** (Docker-free default unit/e2e, so the 429
+> e2e and the rest of the suite stay runnable without Docker). The guard depends on the port, not on Redis
+> directly. Also fixes the no-eviction leak; still need `trust proxy` set in `main.ts` so `req.ip` is the
+> real client behind a balancer. Multi-replica correctness now follows from the shared Redis store.
