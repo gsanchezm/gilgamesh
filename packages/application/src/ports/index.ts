@@ -4,3 +4,4 @@ export * from './unit-of-work';
 export * from './security';
 export * from './clock';
 export * from './id';
+export * from './brain';

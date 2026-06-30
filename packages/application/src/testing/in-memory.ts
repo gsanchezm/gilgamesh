@@ -30,6 +30,7 @@ import type {
   ToolBindingRecord,
   UserRecord,
 } from '../ports/records';
+import { DeterministicBrain } from '../brain/stub-brain';
 import { FakeClock, FakePasswordHasher, FakeTokenGenerator, SeqIdGenerator } from './fakes';
 
 export class InMemoryUserRepository implements UserRepository {
@@ -270,6 +271,7 @@ export interface InMemoryContext {
   ids: SeqIdGenerator;
   hasher: FakePasswordHasher;
   tokens: FakeTokenGenerator;
+  brain: DeterministicBrain;
 }
 
 export function createInMemoryContext(): InMemoryContext {
@@ -297,5 +299,6 @@ export function createInMemoryContext(): InMemoryContext {
     ids: new SeqIdGenerator(),
     hasher: new FakePasswordHasher(),
     tokens: new FakeTokenGenerator(),
+    brain: new DeterministicBrain(),
   };
 }
