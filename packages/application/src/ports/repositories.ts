@@ -6,6 +6,8 @@ import type {
   OrgRecord,
   ProjectRecord,
   Role,
+  RunRecord,
+  RunResultRecord,
   ScenarioRecord,
   SessionRecord,
   SliceRecord,
@@ -76,6 +78,18 @@ export interface TestCaseRepository {
   listForProject(projectId: string, sliceId?: string): Promise<TestCaseRecord[]>;
   save(rec: TestCaseRecord): Promise<void>;
   delete(id: string): Promise<void>;
+}
+
+export interface RunRepository {
+  create(rec: RunRecord): Promise<void>;
+  findById(id: string): Promise<RunRecord | null>;
+  /** Newest-first run history for a project. */
+  listForProject(projectId: string): Promise<RunRecord[]>;
+}
+
+export interface RunResultRepository {
+  createMany(recs: RunResultRecord[]): Promise<void>;
+  listForRun(runId: string): Promise<RunResultRecord[]>;
 }
 
 export interface AgentRepository {
