@@ -10,6 +10,7 @@ import type {
   SessionRecord,
   SliceRecord,
   SubscriptionRecord,
+  TestCaseRecord,
   ToolBindingRecord,
   UserRecord,
 } from './records';
@@ -67,6 +68,14 @@ export interface ScenarioRepository {
   replaceForFeature(featureId: string, recs: ScenarioRecord[]): Promise<void>;
   listForFeature(featureId: string): Promise<ScenarioRecord[]>;
   deleteForFeature(featureId: string): Promise<void>;
+}
+
+export interface TestCaseRepository {
+  create(rec: TestCaseRecord): Promise<void>;
+  findById(id: string): Promise<TestCaseRecord | null>;
+  listForProject(projectId: string, sliceId?: string): Promise<TestCaseRecord[]>;
+  save(rec: TestCaseRecord): Promise<void>;
+  delete(id: string): Promise<void>;
 }
 
 export interface AgentRepository {

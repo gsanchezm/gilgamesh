@@ -94,6 +94,23 @@ export interface ScenarioRecord {
   lastStatus: TestCaseStatus | null;
 }
 
+export interface TestCaseRecord {
+  id: string;
+  orgId: string;
+  projectId: string;
+  sliceId: string | null;
+  key: string;
+  title: string;
+  steps: string;
+  data: string;
+  expected: string;
+  priority: TestCasePriority;
+  status: TestCaseStatus;
+  assignedAgentId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface AgentRecord {
   id: string;
   orgId: string;

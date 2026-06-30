@@ -9,6 +9,7 @@ import type {
   SessionRepository,
   SliceRepository,
   SubscriptionRepository,
+  TestCaseRepository,
   ToolBindingRepository,
   UserRepository,
 } from '../ports/repositories';
@@ -25,6 +26,7 @@ import type {
   SessionRecord,
   SliceRecord,
   SubscriptionRecord,
+  TestCaseRecord,
   ToolBindingRecord,
   UserRecord,
 } from '../ports/records';
@@ -163,6 +165,27 @@ export class InMemoryScenarioRepository implements ScenarioRepository {
   }
 }
 
+export class InMemoryTestCaseRepository implements TestCaseRepository {
+  private readonly byId = new Map<string, TestCaseRecord>();
+  async create(rec: TestCaseRecord): Promise<void> {
+    this.byId.set(rec.id, rec);
+  }
+  async findById(id: string): Promise<TestCaseRecord | null> {
+    return this.byId.get(id) ?? null;
+  }
+  async listForProject(projectId: string, sliceId?: string): Promise<TestCaseRecord[]> {
+    return [...this.byId.values()].filter(
+      (t) => t.projectId === projectId && (sliceId === undefined || t.sliceId === sliceId),
+    );
+  }
+  async save(rec: TestCaseRecord): Promise<void> {
+    this.byId.set(rec.id, rec);
+  }
+  async delete(id: string): Promise<void> {
+    this.byId.delete(id);
+  }
+}
+
 export class InMemoryAgentRepository implements AgentRepository {
   private readonly rows: AgentRecord[] = [];
   async createMany(recs: AgentRecord[]): Promise<void> {
@@ -237,6 +260,7 @@ export interface InMemoryContext {
   slices: InMemorySliceRepository;
   features: InMemoryFeatureRepository;
   scenarios: InMemoryScenarioRepository;
+  testCases: InMemoryTestCaseRepository;
   agents: InMemoryAgentRepository;
   toolBindings: InMemoryToolBindingRepository;
   subscriptions: InMemorySubscriptionRepository;
@@ -260,6 +284,7 @@ export function createInMemoryContext(): InMemoryContext {
     slices: new InMemorySliceRepository(),
     features: new InMemoryFeatureRepository(),
     scenarios: new InMemoryScenarioRepository(),
+    testCases: new InMemoryTestCaseRepository(),
     agents: new InMemoryAgentRepository(),
     toolBindings: new InMemoryToolBindingRepository(),
     subscriptions: new InMemorySubscriptionRepository(),
