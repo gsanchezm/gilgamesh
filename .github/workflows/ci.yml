@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Typecheck + Docker-free tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4 # version comes from package.json "packageManager"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Prisma generate (api typecheck needs the client types)
+        run: pnpm --filter @gilgamesh/api prisma:generate
+      - name: Typecheck
+        run: pnpm -r typecheck
+      - name: Unit + e2e (in-memory, Docker-free)
+        run: pnpm -r test
+
+  database:
+    name: Integration + BDD (Postgres + Redis)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: gilgamesh
+          POSTGRES_PASSWORD: gilgamesh
+          POSTGRES_DB: gilgamesh
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U gilgamesh -d gilgamesh"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://gilgamesh:gilgamesh@localhost:5432/gilgamesh?schema=public
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Prisma generate
+        run: pnpm --filter @gilgamesh/api prisma:generate
+      - name: Enable Postgres extensions (mirrors docker/postgres/init.sql)
+        run: PGPASSWORD=gilgamesh psql -h localhost -U gilgamesh -d gilgamesh -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS citext;"
+      - name: Apply migrations
+        run: pnpm --filter @gilgamesh/api db:deploy
+      - name: Integration tests (real Postgres + Redis)
+        run: pnpm --filter @gilgamesh/api test:int
+      - name: BDD acceptance
+        run: pnpm --filter @gilgamesh/api test:bdd
+
+  e2e:
+    name: Playwright (browser e2e)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: gilgamesh
+          POSTGRES_PASSWORD: gilgamesh
+          POSTGRES_DB: gilgamesh
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U gilgamesh -d gilgamesh"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://gilgamesh:gilgamesh@localhost:5432/gilgamesh?schema=public
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Prisma generate
+        run: pnpm --filter @gilgamesh/api prisma:generate
+      - name: Enable Postgres extensions
+        run: PGPASSWORD=gilgamesh psql -h localhost -U gilgamesh -d gilgamesh -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS citext;"
+      - name: Apply migrations
+        run: pnpm --filter @gilgamesh/api db:deploy
+      - name: Install Playwright chromium
+        run: pnpm --filter @gilgamesh/web exec playwright install --with-deps chromium
+      - name: Browser e2e (boots the real web+api stack)
+        run: pnpm --filter @gilgamesh/web test:e2e
