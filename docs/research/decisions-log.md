@@ -214,3 +214,10 @@ pattern of slice 2), taking §7's *"everything else proceeds NOW behind the `Tes
   `/runs/{id}/events`, BullMQ workers, `RunNode`/DAG canvas, `Artifact`/reports, `/cancel`, `RunMode`/stages.
 
 Spec at `specs/slices/03-test-execution/spec.md` (12 ACs: AC-RUN-01..12). Building on `slice-3-test-execution`.
+
+**Slice 3 status — DONE (2026-06-30).** Built SDD→BDD→TDD across domain (`summarizeRun`), application
+(`TestKernel` port + `DeterministicKernel` stub + `TriggerRun`/`ListRuns`/`GetRun`, UoW-atomic), api (`RunsModule`
++ Prisma `Run`/`RunResult` models/migration + both wirings), web (`RunsClient` + Run button + results panel).
+Green end-to-end: typecheck · ~216 Docker-free unit/e2e · test:int 10 · BDD 75 scenarios/592 steps · Playwright
+(smoke + Test Lab + run flow). Deferred per S3 (Orchestration slice, when chaos-proxy lands): real execution,
+SSE `/events`, BullMQ workers, `RunNode`/DAG canvas, `Artifact`/reports, `/cancel`. Awaiting owner review/merge.

@@ -5,7 +5,9 @@
 > → **Decisions log** (`docs/research/decisions-log.md`) over the prototype where they conflict
 > → **Prototype extract** (`docs/research/gilgamesh-prototype-extract.md`) for screen behavior.
 > All entity/field/enum/port/path names below are used **verbatim** from the keystone.
-> v0.1 — 2026-06-30. Status: DRAFT — building SDD→BDD→TDD on branch `slice-3-test-execution`.
+> v0.1 — 2026-06-30. Status: DONE — built SDD→BDD→TDD, green end-to-end (typecheck · ~216 Docker-free · test:int
+> 10 · BDD 75 scenarios · Playwright run flow) on branch `slice-3-test-execution`. Scope: synchronous execution
+> núcleo behind a deterministic stub `TestKernel` (owner decision S3).
 
 ---
 
