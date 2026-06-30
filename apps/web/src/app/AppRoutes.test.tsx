@@ -45,6 +45,19 @@ function makeClients(): Clients {
       })),
       generate: vi.fn(async () => ({ features: [], testCases: [] })),
     },
+    runs: {
+      triggerRun: vi.fn(async () => ({
+        id: 'r1', projectId: 'p-1', status: 'DONE' as const, targetKind: 'FEATURE' as const, targetId: 'f1',
+        runLabel: null, passed: 1, failed: 0, skipped: 0, total: 1, ratePct: 100, durationMs: 5,
+        createdAt: '2026-06-30T00:00:00.000Z', results: [],
+      })),
+      listRuns: vi.fn(async () => []),
+      getRun: vi.fn(async () => ({
+        id: 'r1', projectId: 'p-1', status: 'DONE' as const, targetKind: 'FEATURE' as const, targetId: 'f1',
+        runLabel: null, passed: 1, failed: 0, skipped: 0, total: 1, ratePct: 100, durationMs: 5,
+        createdAt: '2026-06-30T00:00:00.000Z', results: [],
+      })),
+    },
   };
 }
 

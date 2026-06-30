@@ -60,9 +60,9 @@ function AgentRoomRoute() {
 }
 
 function TestLabRoute() {
-  const { testlab } = useClients();
+  const { testlab, runs } = useClients();
   const { projectId } = useParams();
-  return <TestLabScreen client={testlab} projectId={projectId ?? ''} />;
+  return <TestLabScreen client={testlab} runsClient={runs} projectId={projectId ?? ''} />;
 }
 
 export function AppRoutes() {
