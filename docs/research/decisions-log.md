@@ -221,3 +221,15 @@ Spec at `specs/slices/03-test-execution/spec.md` (12 ACs: AC-RUN-01..12). Buildi
 Green end-to-end: typecheck · ~216 Docker-free unit/e2e · test:int 10 · BDD 75 scenarios/592 steps · Playwright
 (smoke + Test Lab + run flow). Deferred per S3 (Orchestration slice, when chaos-proxy lands): real execution,
 SSE `/events`, BullMQ workers, `RunNode`/DAG canvas, `Artifact`/reports, `/cancel`. Awaiting owner review/merge.
+
+**Slice 3 adversarial review (2026-06-30) — fixed before merge.** A 20-agent review found 2 real defects + 2
+nits the green suite missed (the in-memory wiring is single-threaded). Fixed, re-verified green (typecheck ·
+application 71 · api 62 · test:int 10 · BDD 75):
+- **[HIGH]** TriggerRun's FEATURE reflection rewrote the scenario set from a pre-kernel snapshot via
+  `replaceForFeature` (delete-all+insert) inside the tx → a feature edit committing during the run's I/O window
+  was clobbered (lost update). Now reflects via `ScenarioRepository.setLastStatus` (in-place per-row update by
+  id inside the tx, no-op if concurrently deleted).
+- **[MED]** malformed `targetId`/`runId` (non-UUID) → Prisma P2023 → generic 500; now mapped to 404 in the filter.
+- **[nit]** deterministic newest-first run order (`id desc` tiebreaker) + a real 2-run e2e assertion (was a
+  single-run false-green).
+- **Deferred (follow-up):** rate-limit/quota on the run trigger (`runMinutesQuota` enforcement → billing slice).
