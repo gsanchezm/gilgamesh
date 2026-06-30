@@ -124,6 +124,13 @@ export class InMemoryProjectRepository implements ProjectRepository {
   async save(rec: ProjectRecord): Promise<void> {
     this.byId.set(rec.id, rec);
   }
+  async linkRepo(
+    id: string,
+    repo: { repoProvider: string | null; repoFullName: string | null; repoBranch: string | null; repoLastSyncAt: Date | null; updatedAt: Date },
+  ): Promise<void> {
+    const existing = this.byId.get(id);
+    if (existing) this.byId.set(id, { ...existing, ...repo });
+  }
 }
 
 export class InMemoryIntegrationRepository implements IntegrationRepository {
@@ -132,7 +139,7 @@ export class InMemoryIntegrationRepository implements IntegrationRepository {
     return `${orgId}::${key}`;
   }
   async listForOrg(orgId: string): Promise<IntegrationRecord[]> {
-    return [...this.byOrgKey.values()].filter((r) => r.orgId === orgId);
+    return [...this.byOrgKey.values()].filter((r) => r.orgId === orgId).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   }
   async findByKey(orgId: string, key: string): Promise<IntegrationRecord | null> {
     return this.byOrgKey.get(this.k(orgId, key)) ?? null;
@@ -182,6 +189,16 @@ export class InMemoryFeatureRepository implements FeatureRepository {
   }
   async delete(id: string): Promise<void> {
     this.byId.delete(id);
+  }
+  async upsertByPath(rec: FeatureRecord): Promise<FeatureRecord> {
+    const existing = [...this.byId.values()].find((f) => f.projectId === rec.projectId && f.path === rec.path);
+    if (existing) {
+      const merged = { ...existing, name: rec.name, content: rec.content, updatedAt: rec.updatedAt };
+      this.byId.set(existing.id, merged);
+      return merged;
+    }
+    this.byId.set(rec.id, rec);
+    return rec;
   }
 }
 

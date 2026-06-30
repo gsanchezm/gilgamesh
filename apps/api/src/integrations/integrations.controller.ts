@@ -33,7 +33,7 @@ export class OrgIntegrationsController {
     @Body() dto: PatchIntegrationDto,
   ): Promise<IntegrationView> {
     if (dto.action === 'disconnect') return this.disconnect.execute({ userId, orgId, key });
-    return this.connect.execute({ userId, orgId, key, token: dto.token ?? '', config: dto.config });
+    return this.connect.execute({ userId, orgId, key, token: dto.token ?? '' });
   }
 }
 

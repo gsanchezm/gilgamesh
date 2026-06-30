@@ -1,4 +1,4 @@
-import { IsIn, IsObject, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class PatchIntegrationDto {
   @IsIn(['connect', 'disconnect'])
@@ -9,10 +9,6 @@ export class PatchIntegrationDto {
   @IsString()
   @MaxLength(500)
   token?: string;
-
-  @IsOptional()
-  @IsObject()
-  config?: Record<string, unknown>;
 }
 
 export class ImportRepoDto {

@@ -18,6 +18,7 @@ Feature: Integrations — connect a source repo
     Then the response status is 200
     And the response does not contain the token
     And the "github" integration is connected
+    And no integration row or audit event contains the token
 
   @AC-INT-03
   Scenario: Connecting with an empty token is rejected

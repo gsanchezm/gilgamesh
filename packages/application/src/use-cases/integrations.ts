@@ -216,40 +216,37 @@ export class ImportRepoFeatures {
     ).filter((f) => f.path.endsWith('.feature'));
 
     const now = this.deps.clock.now();
-    const existing = await this.deps.features.listForProject(project.id);
-    const byPath = new Map(existing.map((f) => [f.path, f]));
     const summaries: ImportedFeatureView[] = [];
 
     await this.deps.uow.transaction(async (repos) => {
       for (const file of files) {
         const parsed = parseOrReject(file.content);
-        const prior = byPath.get(file.path);
-        const feature: FeatureRecord = {
-          id: prior?.id ?? this.deps.ids.next(),
+        // Atomic create-or-update by (projectId, path) — concurrency-safe idempotent re-import (the DB unique
+        // constraint serializes concurrent inserts). The returned record's id is authoritative for scenarios.
+        const persisted = await repos.features.upsertByPath({
+          id: this.deps.ids.next(),
           orgId: project.orgId,
           projectId: project.id,
-          sliceId: prior?.sliceId ?? null,
+          sliceId: null,
           name: parsed.name,
           path: file.path,
           content: file.content,
-          createdAt: prior?.createdAt ?? now,
+          createdAt: now,
           updatedAt: now,
-        };
-        if (prior) await repos.features.save(feature);
-        else await repos.features.create(feature);
+        });
         const scenarios: ScenarioRecord[] = parsed.scenarios.map((s) => ({
           id: this.deps.ids.next(),
           orgId: project.orgId,
-          featureId: feature.id,
+          featureId: persisted.id,
           name: s.name,
           order: s.order,
           lastStatus: null,
         }));
-        await repos.scenarios.replaceForFeature(feature.id, scenarios);
-        summaries.push({ id: feature.id, name: feature.name, path: feature.path, scenarioCount: scenarios.length });
+        await repos.scenarios.replaceForFeature(persisted.id, scenarios);
+        summaries.push({ id: persisted.id, name: persisted.name, path: persisted.path, scenarioCount: scenarios.length });
       }
-      await repos.projects.save({
-        ...project,
+      // Targeted repo-link update (never a full-row write from the stale pre-tx snapshot).
+      await repos.projects.linkRepo(project.id, {
         repoProvider: repoProviderForKey(connected.key as SourceRepoKey),
         repoFullName: fullName,
         repoBranch: branch,

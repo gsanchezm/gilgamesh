@@ -50,6 +50,17 @@ export interface ProjectRepository {
   existsBySlug(orgId: string, slug: string): Promise<boolean>;
   listForOrg(orgId: string): Promise<ProjectRecord[]>;
   save(rec: ProjectRecord): Promise<void>;
+  /** Targeted update of ONLY the repo-link columns — never clobbers name/slug/format from a stale snapshot. */
+  linkRepo(
+    id: string,
+    repo: {
+      repoProvider: string | null;
+      repoFullName: string | null;
+      repoBranch: string | null;
+      repoLastSyncAt: Date | null;
+      updatedAt: Date;
+    },
+  ): Promise<void>;
 }
 
 export interface SliceRepository {
@@ -66,6 +77,12 @@ export interface FeatureRepository {
   listForProject(projectId: string, sliceId?: string): Promise<FeatureRecord[]>;
   save(rec: FeatureRecord): Promise<void>;
   delete(id: string): Promise<void>;
+  /**
+   * Atomic create-or-update keyed on (projectId, path) — concurrency-safe idempotent repo import. On an
+   * existing path, only name/content/updatedAt change (id/sliceId/createdAt are preserved). Returns the
+   * persisted record (its id is authoritative for scenario writes, even when a concurrent insert won).
+   */
+  upsertByPath(rec: FeatureRecord): Promise<FeatureRecord>;
 }
 
 export interface ScenarioRepository {

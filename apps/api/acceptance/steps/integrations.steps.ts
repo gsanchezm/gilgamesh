@@ -48,6 +48,16 @@ Then('the response does not contain the token', function (this: GilgameshWorld) 
   assert.ok(!JSON.stringify(this.response?.body ?? {}).includes(token), 'the token leaked in the response body');
 });
 
+// Fail-closed guard on the REAL persistence path (S6-B): the token is never in the row or audit; only a vault ref.
+Then('no integration row or audit event contains the token', async function (this: GilgameshWorld) {
+  const token = this.notes.get('lastToken') as string;
+  const rows = await this.db.integration.findMany({ where: { orgId: this.lastOrgId! } });
+  const audits = await this.db.auditLog.findMany({ where: { orgId: this.lastOrgId! } });
+  assert.ok(!JSON.stringify([rows, audits]).includes(token), 'the token leaked into the DB row or an audit event');
+  const github = rows.find((r) => r.key === 'github');
+  assert.equal(github?.secretRef, `vault://${this.lastOrgId}/github`);
+});
+
 Then('{int} features were imported', function (this: GilgameshWorld, n: number) {
   assert.equal((this.response?.body as { imported: number }).imported, n);
 });

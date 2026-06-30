@@ -143,6 +143,21 @@ export class PrismaProjectRepository implements ProjectRepository {
       },
     });
   }
+  async linkRepo(
+    id: string,
+    repo: { repoProvider: string | null; repoFullName: string | null; repoBranch: string | null; repoLastSyncAt: Date | null; updatedAt: Date },
+  ): Promise<void> {
+    await this.db.project.update({
+      where: { id },
+      data: {
+        repoProvider: repo.repoProvider as RepoProvider | null,
+        repoFullName: repo.repoFullName,
+        repoBranch: repo.repoBranch,
+        repoLastSyncAt: repo.repoLastSyncAt,
+        updatedAt: repo.updatedAt,
+      },
+    });
+  }
 }
 
 export class PrismaSliceRepository implements SliceRepository {
@@ -184,6 +199,13 @@ export class PrismaFeatureRepository implements FeatureRepository {
   }
   async delete(id: string): Promise<void> {
     await this.db.feature.delete({ where: { id } });
+  }
+  async upsertByPath(rec: FeatureRecord): Promise<FeatureRecord> {
+    return this.db.feature.upsert({
+      where: { projectId_path: { projectId: rec.projectId, path: rec.path } },
+      create: rec,
+      update: { name: rec.name, content: rec.content, updatedAt: rec.updatedAt },
+    });
   }
 }
 
@@ -415,7 +437,8 @@ function toIntegrationRecord(row: {
 export class PrismaIntegrationRepository implements IntegrationRepository {
   constructor(private readonly db: Prisma.TransactionClient) {}
   async listForOrg(orgId: string): Promise<IntegrationRecord[]> {
-    const rows = await this.db.integration.findMany({ where: { orgId } });
+    // Stable order so "first connected" selection is deterministic + matches the in-memory wiring.
+    const rows = await this.db.integration.findMany({ where: { orgId }, orderBy: { key: 'asc' } });
     return rows.map(toIntegrationRecord);
   }
   async findByKey(orgId: string, key: string): Promise<IntegrationRecord | null> {

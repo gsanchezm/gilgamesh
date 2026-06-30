@@ -92,6 +92,15 @@ describe('Integrations — connect a source repo (stub provider)', () => {
     expect(await ctx.features.listForProject(projectId)).toHaveLength(2);
   });
 
+  it('re-import upserts by path, preserving feature ids (AC-INT-07)', async () => {
+    await new ConnectIntegration(ctx).execute({ userId, orgId, key: 'github', token: TOKEN });
+    await new ImportRepoFeatures(ctx).execute({ userId, projectId, fullName: 'acme/web-app', branch: 'main' });
+    const before = (await ctx.features.listForProject(projectId)).map((f) => f.id).sort();
+    await new ImportRepoFeatures(ctx).execute({ userId, projectId, fullName: 'acme/web-app', branch: 'main' });
+    const after = (await ctx.features.listForProject(projectId)).map((f) => f.id).sort();
+    expect(after).toEqual(before); // same ids -> upserted in place, not recreated
+  });
+
   it('rejects import without a connected source repo (AC-INT-08)', async () => {
     await expect(new ImportRepoFeatures(ctx).execute({ userId, projectId, fullName: 'acme/web-app', branch: 'main' })).rejects.toMatchObject({ code: 'VALIDATION' });
   });

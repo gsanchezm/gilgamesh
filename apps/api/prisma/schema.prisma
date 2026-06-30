@@ -312,6 +312,7 @@ model Feature {
   slice     Slice?     @relation(fields: [sliceId], references: [id], onDelete: SetNull)
   scenarios Scenario[]
 
+  @@unique([projectId, path])
   @@index([projectId])
   @@index([orgId])
   @@map("features")
