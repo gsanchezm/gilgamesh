@@ -18,7 +18,7 @@ jobs:
     name: Typecheck + Docker-free tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4 (pinned; version from package.json)
       - uses: actions/setup-node@v4
         with:
@@ -58,7 +58,7 @@ jobs:
       DATABASE_URL: postgresql://gilgamesh:gilgamesh@localhost:5432/gilgamesh?schema=public
       REDIS_URL: redis://localhost:6379
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
       - uses: actions/setup-node@v4
         with:
@@ -100,7 +100,7 @@ jobs:
       DATABASE_URL: postgresql://gilgamesh:gilgamesh@localhost:5432/gilgamesh?schema=public
       REDIS_URL: redis://localhost:6379
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
       - uses: actions/setup-node@v4
         with:
