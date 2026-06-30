@@ -141,3 +141,24 @@ in-memory `Map`. Consistent with existing infra (#11 local docker-compose Redis 
 > e2e and the rest of the suite stay runnable without Docker). The guard depends on the port, not on Redis
 > directly. Also fixes the no-eviction leak; still need `trust proxy` set in `main.ts` so `req.ip` is the
 > real client behind a balancer. Multi-replica correctness now follows from the shared Redis store.
+
+## Paso 3 — Adversarial review of the close-out (2026-06-30) — fixed before PR
+
+A multi-agent adversarial review (4 dimensions → verify → synthesize) of the close-out diff found real
+defects the green suite missed. All confirmed must-fix items were fixed (TDD, regressions verified RED first)
+and re-verified green (140 Docker-free + test:int 9 + BDD 49 + Playwright):
+- **[HIGH] Rate-limit bypass via whitespace-padded email** — guard keyed on un-trimmed email while the auth
+  use case trims; padded variants minted fresh buckets for one account. Guard now trims identically.
+- **[HIGH] CSRF cookie session-scoped vs persistent session** — after a browser restart, `/auth/me` restored
+  the session but the csrf cookie was gone → every mutation + logout 403. `/auth/me` now re-mints csrf; login
+  gives csrf the session's maxAge.
+- **[MED] Redis outage → generic 500** — guard now fails open on store error; `DomainExceptionFilter` is a
+  catch-all so no unmapped error leaks Nest's default 500 (all responses stay problem+json).
+- **[MED] In-flight `/auth/me` clobbered a completed sign-in** — `settle()` now applies only while booting.
+- **[MED] `trust proxy` hardcoded** — now validated `TRUST_PROXY` config (default 1).
+- Plus low nits: auth-aware `/`+`*` routing, hermetic rate-limit e2e, me() test assertions, resetAt slack.
+
+**Deferred to follow-ups (low / out-of-scope, surfaced for owner decision):** `__Host-csrf` prefix on the
+CSRF cookie (touches BDD/e2e harness; mitigates sibling-subdomain cookie injection); in-memory store
+TTL eviction sweep (dev/test-only — prod uses Redis); deriving `RATE_LIMIT_STORE` from validated config; the
+§10.2 per-IP-only bound + account-lockout (already deferred). Forgot/reset (slice 7) and AC-AUTH-15 (S1-B).
