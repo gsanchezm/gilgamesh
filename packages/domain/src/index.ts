@@ -6,3 +6,4 @@ export * from './agents/runtime-status';
 export * from './testlab/parse-gherkin';
 export * from './execution/summarize-run';
 export * from './billing/plans';
+export * from './knowledge/rag';
