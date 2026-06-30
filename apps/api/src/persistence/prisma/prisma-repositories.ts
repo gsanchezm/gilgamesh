@@ -272,6 +272,18 @@ export class PrismaSubscriptionRepository implements SubscriptionRepository {
   async save(rec: SubscriptionRecord): Promise<void> {
     await this.db.subscription.update({ where: { id: rec.id }, data: rec });
   }
+  async chargeRunMinutes(orgId: string, minutes: number): Promise<boolean> {
+    // Atomic conditional increment: the DB checks the quota and bumps the counter in one statement,
+    // so concurrent runs can't both pass a stale check (no TOCTOU, no lost update).
+    const affected = await this.db.$executeRaw`
+      UPDATE subscriptions
+      SET run_minutes_used = run_minutes_used + ${minutes}
+      WHERE org_id = ${orgId}::uuid AND run_minutes_used + ${minutes} <= run_minutes_quota`;
+    if (affected > 0) return true;
+    // 0 rows: either no subscription (don't block) or the quota guard rejected it (block).
+    const exists = await this.db.subscription.count({ where: { orgId } });
+    return exists === 0;
+  }
 }
 
 export class PrismaAuditLogRepository implements AuditLogRepository {

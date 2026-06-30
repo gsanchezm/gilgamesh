@@ -221,8 +221,14 @@ export class TriggerRun {
         const tc = await repos.testCases.findById(testCaseId);
         if (tc) await repos.testCases.save({ ...tc, status: REFLECT[results[0]!.status], updatedAt: now });
       }
-      // Charge the run-minute cost atomically with the run write (slice 4).
-      if (sub) await repos.subscriptions.save({ ...sub, runMinutesUsed: sub.runMinutesUsed + cost });
+      // Authoritative atomic charge: increments only runMinutesUsed iff within quota (re-checked in
+      // the DB, not from the pre-kernel snapshot). A concurrent run that would exceed the quota gets
+      // `false` here -> throw -> the whole run rolls back. Never writes the snapshot's other columns,
+      // so a concurrent plan/checkout/cancel can't be reverted (slice-4 review fix).
+      const charged = await repos.subscriptions.chargeRunMinutes(project.orgId, cost);
+      if (!charged) {
+        throw new ApplicationError('QUOTA_EXCEEDED', 'Run-minute quota exhausted. Upgrade your plan to run more.');
+      }
     });
 
     await this.deps.audit.append({

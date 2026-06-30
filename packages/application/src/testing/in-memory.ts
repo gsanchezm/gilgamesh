@@ -269,6 +269,13 @@ export class InMemorySubscriptionRepository implements SubscriptionRepository {
   async save(rec: SubscriptionRecord): Promise<void> {
     this.byOrg.set(rec.orgId, rec);
   }
+  async chargeRunMinutes(orgId: string, minutes: number): Promise<boolean> {
+    const sub = this.byOrg.get(orgId);
+    if (!sub) return true; // no subscription -> no metering, don't block
+    if (sub.runMinutesUsed + minutes > sub.runMinutesQuota) return false;
+    sub.runMinutesUsed += minutes;
+    return true;
+  }
 }
 
 export class InMemoryAuditLogRepository implements AuditLogRepository {

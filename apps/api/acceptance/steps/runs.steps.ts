@@ -91,3 +91,16 @@ Then('the runs list has {int} runs', function (this: GilgameshWorld, n: number) 
   const list = (this.response?.body ?? []) as unknown[];
   assert.equal(list.length, n);
 });
+
+// Slice-4 quota coverage: drive the org's run-minute usage directly via the DB.
+When('the org has exhausted its run minutes', async function (this: GilgameshWorld) {
+  await this.db.subscription.updateMany({
+    where: { orgId: this.lastOrgId! },
+    data: { runMinutesUsed: 1_000_000 },
+  });
+});
+
+Then('the org has used at least {int} run minutes', async function (this: GilgameshWorld, n: number) {
+  const sub = await this.db.subscription.findUnique({ where: { orgId: this.lastOrgId! } });
+  assert.ok((sub?.runMinutesUsed ?? 0) >= n, `expected runMinutesUsed >= ${n}, got ${sub?.runMinutesUsed}`);
+});

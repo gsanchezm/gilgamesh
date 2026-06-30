@@ -15,7 +15,8 @@ export interface PlanLimits {
 const LIMITS: Record<Plan, PlanLimits> = {
   TEAM: { runMinutesQuota: 1000, maxSeats: 5, unlimited: false },
   PRO: { runMinutesQuota: 10000, maxSeats: 11, unlimited: false },
-  ENTERPRISE: { runMinutesQuota: Number.MAX_SAFE_INTEGER, maxSeats: 1000, unlimited: true },
+  // 1e9 (not MAX_SAFE_INTEGER) so the quota fits Postgres int4; `unlimited` is the real signal.
+  ENTERPRISE: { runMinutesQuota: 1_000_000_000, maxSeats: 1000, unlimited: true },
 };
 
 export function planLimits(plan: Plan): PlanLimits {

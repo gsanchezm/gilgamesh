@@ -112,6 +112,12 @@ export interface SubscriptionRepository {
   create(rec: SubscriptionRecord): Promise<void>;
   findByOrg(orgId: string): Promise<SubscriptionRecord | null>;
   save(rec: SubscriptionRecord): Promise<void>;
+  /**
+   * Atomically adds `minutes` to runMinutesUsed IFF it stays within runMinutesQuota; returns false
+   * (no write) if it would exceed. Touches only the counter — never the snapshot's other columns —
+   * so a concurrent plan/checkout/cancel can't be clobbered (slice-4 review fix).
+   */
+  chargeRunMinutes(orgId: string, minutes: number): Promise<boolean>;
 }
 
 export interface AuditLogRepository {

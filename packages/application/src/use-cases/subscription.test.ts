@@ -57,6 +57,12 @@ describe('Subscription & Billing', () => {
     expect(ctx.audit.rows.some((r) => r.action === 'subscription.activated')).toBe(true);
   });
 
+  it('rejects a self-service upgrade to ENTERPRISE (contact sales)', async () => {
+    await expect(new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'ENTERPRISE' })).rejects.toMatchObject({
+      code: 'VALIDATION',
+    });
+  });
+
   it('cancels the subscription (AC-SUB-06)', async () => {
     expect((await new CancelSubscription(ctx).execute({ userId, orgId })).status).toBe('CANCELED');
   });

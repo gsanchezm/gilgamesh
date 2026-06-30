@@ -84,6 +84,10 @@ export class ChangeSubscription {
     billingCycle?: BillingCycle;
   }): Promise<SubscriptionView> {
     await requireOrgAdmin(this.deps, input.userId, input.orgId);
+    // ENTERPRISE is custom/contact-sales — not a free self-service upgrade to unlimited run minutes.
+    if (input.plan === 'ENTERPRISE') {
+      throw new ApplicationError('VALIDATION', 'ENTERPRISE is custom — contact sales to upgrade.');
+    }
     const sub = await requireSub(this.deps, input.orgId);
     const limits = planLimits(input.plan);
     if (sub.seats > limits.maxSeats) {
@@ -141,7 +145,8 @@ export class ConfirmCheckout {
     const sub = await requireSub(this.deps, input.orgId);
     const ids = await this.deps.payment.confirmCheckout(input.orgId);
     const now = this.deps.clock.now();
-    const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const days = sub.billingCycle === 'ANNUAL' ? 365 : 30;
+    const periodEnd = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
     const updated: SubscriptionRecord = {
       ...sub,
       status: 'ACTIVE',

@@ -34,6 +34,21 @@ Feature: Test Lab — test execution (deterministic stub kernel)
     Then the response status is 200
     And the runs list has 2 runs
 
+  @AC-SUB-07
+  Scenario: A run charges run minutes against the quota
+    Given a feature "charge.feature" with scenarios that pass, fail and skip
+    When I trigger a run of that feature
+    Then the response status is 201
+    And the org has used at least 3 run minutes
+
+  @AC-SUB-07
+  Scenario: A run is blocked when the run-minute quota is exhausted (402)
+    Given a feature "blocked.feature" with scenarios that pass, fail and skip
+    And the org has exhausted its run minutes
+    When I trigger a run of that feature
+    Then the response status is 402
+    And the response body is a "Problem" document
+
   @AC-RUN-12
   Scenario: Triggering a run for a missing target is rejected
     When I trigger a run of feature "00000000-0000-0000-0000-000000000000"
