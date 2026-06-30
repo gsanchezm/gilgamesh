@@ -163,7 +163,7 @@ Feature: Local authentication
       | /auth/register        |
       | /auth/forgot-password |
 
-  @wip @AC-AUTH-14 @security @session
+  @AC-AUTH-14 @security @session
   Scenario: Session cookie is hardened
     Given I have just signed in
     Then the session cookie is "httpOnly"

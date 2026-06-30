@@ -13,8 +13,10 @@ export class GilgameshWorld extends World {
   db!: PrismaService;
   /** Spec base path; the API is mounted under this global prefix in the harness. */
   basePath = '/api/v1';
-  /** Current session cookie as "name=value" (no attributes), or null when signed out. */
+  /** Current cookies as "name=value; name=value" (session + csrf), or null when signed out. */
   cookie: string | null = null;
+  /** The csrf token (= the `csrf` cookie value), sent as X-CSRF-Token on mutations. */
+  csrf: string | null = null;
   /** Last HTTP response for the When step. */
   response: Response | null = null;
   /** Named scratch values referenced across steps (e.g. PRE, SHORT, LONG, lastPassword). */
@@ -41,13 +43,28 @@ export class GilgameshWorld extends World {
     return `${this.basePath}${mapped}`;
   }
 
-  /** Capture the __Host- session cookie from a response's Set-Cookie, if present. */
+  /** Capture the session + csrf cookies from a response's Set-Cookie, if present. */
   captureCookie(res: Response): void {
     const raw = res.headers['set-cookie'];
     if (!raw) return;
     const cookies = Array.isArray(raw) ? raw : [String(raw)];
-    const session = cookies.find((c) => c.startsWith('__Host-gg_session'));
-    if (session) this.cookie = session.split(';')[0];
+    const pairs: string[] = [];
+    for (const c of cookies) {
+      const pair = c.split(';')[0];
+      if (c.startsWith('__Host-gg_session')) pairs.push(pair);
+      if (c.startsWith('csrf=')) {
+        pairs.push(pair);
+        this.csrf = pair.slice('csrf='.length);
+      }
+    }
+    if (pairs.length) this.cookie = pairs.join('; ');
+  }
+
+  /** Apply the current session+csrf cookies and the CSRF header to a supertest request. */
+  applyAuth<T extends { set(field: string, value: string): T }>(req: T): T {
+    if (this.cookie) req.set('Cookie', this.cookie);
+    if (this.csrf) req.set('X-CSRF-Token', this.csrf);
+    return req;
   }
 }
 

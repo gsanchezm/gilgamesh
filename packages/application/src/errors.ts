@@ -6,7 +6,8 @@ export type AppErrorCode =
   | 'NOT_FOUND'
   | 'FORBIDDEN'
   | 'INVALID_TOOL'
-  | 'VALIDATION';
+  | 'VALIDATION'
+  | 'CSRF_FAILED';
 
 /** A use-case-level failure with a stable code that adapters map to a transport status. */
 export class ApplicationError extends Error {

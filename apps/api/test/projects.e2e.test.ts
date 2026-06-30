@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
+import { type Auth, authFrom } from './support/auth';
 
 let app: INestApplication;
 
@@ -16,13 +17,12 @@ afterAll(async () => {
   await app.close();
 });
 
-async function authedCookie(email: string): Promise<string> {
-  // Registration auto-signs-in and sets the session cookie.
+async function signIn(email: string): Promise<Auth> {
+  // Registration auto-signs-in and sets the session + csrf cookies.
   const res = await request(app.getHttpServer())
     .post('/auth/register')
     .send({ firstName: 'Ishtar', lastName: 'Uruk', email, password: 'C0rrect-Horse!' });
-  const sc = res.headers['set-cookie'];
-  return (Array.isArray(sc) ? sc : [String(sc)]).map((c) => String(c).split(';')[0]).join('; ');
+  return authFrom(res);
 }
 
 describe('Projects (onboarding)', () => {
@@ -34,10 +34,11 @@ describe('Projects (onboarding)', () => {
   });
 
   it('bootstraps the tenant for the authenticated user (201)', async () => {
-    const cookie = await authedCookie('owner1@example.com');
+    const auth = await signIn('owner1@example.com');
     const res = await request(app.getHttpServer())
       .post('/projects')
-      .set('Cookie', cookie)
+      .set('Cookie', auth.cookie)
+      .set('X-CSRF-Token', auth.csrf)
       .send({ projectName: 'OmniPizza Web', format: 'BDD', repoProvider: 'github' });
     expect(res.status).toBe(201);
     expect(res.body.slug).toBe('omnipizza-web');
@@ -46,11 +47,22 @@ describe('Projects (onboarding)', () => {
   });
 
   it('rejects an invalid format (422)', async () => {
-    const cookie = await authedCookie('owner2@example.com');
+    const auth = await signIn('owner2@example.com');
     const res = await request(app.getHttpServer())
       .post('/projects')
-      .set('Cookie', cookie)
+      .set('Cookie', auth.cookie)
+      .set('X-CSRF-Token', auth.csrf)
       .send({ projectName: 'X', format: 'NOPE' });
     expect(res.status).toBe(422);
+  });
+
+  it('rejects a mutation without the CSRF token (403)', async () => {
+    const auth = await signIn('owner3@example.com');
+    const res = await request(app.getHttpServer())
+      .post('/projects')
+      .set('Cookie', auth.cookie) // session cookie present, but no X-CSRF-Token header
+      .send({ projectName: 'OmniPizza Web', format: 'BDD' });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('CSRF_FAILED');
   });
 });

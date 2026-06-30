@@ -2,6 +2,7 @@ import { DataTable, Given, Then, When } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
+import { authOf } from '../support/auth';
 import type { GilgameshWorld } from '../support/world';
 
 const DEFAULT_PASSWORD = 'C0rrect-Horse!';
@@ -27,9 +28,9 @@ async function finishOnboarding(
     if (opts.repoFullName) body.repoFullName = opts.repoFullName;
     if (opts.repoBranch) body.repoBranch = opts.repoBranch;
   }
-  const req = request(world.app.getHttpServer()).post(world.url('/projects'));
-  if (world.cookie) req.set('Cookie', world.cookie);
-  const res = await req.send(body);
+  const res = await world
+    .applyAuth(request(world.app.getHttpServer()).post(world.url('/projects')))
+    .send(body);
   world.response = res;
   if (res.status === 201 && res.body?.projectId) {
     world.lastOrgId = res.body.orgId;
@@ -40,20 +41,16 @@ async function finishOnboarding(
   return res;
 }
 
-function cookieOf(res: request.Response): string {
-  const raw = res.headers['set-cookie'];
-  const cookies = Array.isArray(raw) ? raw : raw ? [String(raw)] : [];
-  return (cookies.find((c) => c.startsWith('__Host-gg_session')) ?? '').split(';')[0];
-}
-
 /** Onboard a brand-new (separate) user, without touching the acting cookie. Returns {orgId,projectId,slug}. */
 async function onboardAsNewUser(world: GilgameshWorld, email: string, projectName: string) {
   const reg = await request(world.app.getHttpServer())
     .post(world.url('/auth/register'))
     .send({ firstName: 'X', lastName: 'Y', email, password: DEFAULT_PASSWORD });
+  const auth = authOf(reg);
   const proj = await request(world.app.getHttpServer())
     .post(world.url('/projects'))
-    .set('Cookie', cookieOf(reg))
+    .set('Cookie', auth.cookie)
+    .set('X-CSRF-Token', auth.csrf)
     .send({ projectName, format: 'BDD' });
   return proj.body as { orgId: string; projectId: string; slug: string };
 }
@@ -379,7 +376,7 @@ Given('I am signed in as a {string} of an existing Org', async function (this: G
 });
 
 When('I POST {string} in that Org', async function (this: GilgameshWorld, path: string) {
-  const req = request(this.app.getHttpServer()).post(this.url(path));
-  if (this.cookie) req.set('Cookie', this.cookie);
-  this.response = await req.send({ projectName: 'Nope', format: 'BDD' });
+  this.response = await this.applyAuth(
+    request(this.app.getHttpServer()).post(this.url(path)),
+  ).send({ projectName: 'Nope', format: 'BDD' });
 });

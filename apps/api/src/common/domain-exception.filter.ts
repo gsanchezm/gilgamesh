@@ -12,6 +12,7 @@ const STATUS: Record<AppErrorCode, number> = {
   FORBIDDEN: 403,
   INVALID_TOOL: 422,
   VALIDATION: 422,
+  CSRF_FAILED: 403,
 };
 
 /** Maps domain/application errors to RFC9457-shaped responses with stable titles. */
@@ -20,11 +21,12 @@ export class DomainExceptionFilter implements ExceptionFilter {
   catch(exception: ApplicationError | DomainError, host: ArgumentsHost): void {
     const res = host.switchToHttp().getResponse<Response>();
     const status = exception instanceof ApplicationError ? STATUS[exception.code] : 422;
-    const title = exception instanceof ApplicationError ? exception.code : 'DOMAIN_ERROR';
+    const code = exception instanceof ApplicationError ? exception.code : 'DOMAIN_ERROR';
     res.status(status).type('application/problem+json').json({
       type: 'about:blank',
-      title,
+      title: code,
       status,
+      code,
       detail: exception.message,
     });
   }

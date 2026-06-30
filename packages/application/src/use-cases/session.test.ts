@@ -23,7 +23,7 @@ describe('GetMe', () => {
   it('returns the user (no passwordHash), empty memberships and null activeOrgId before onboarding', async () => {
     const me = await new GetMe(ctx).execute({ userId });
     expect(me.user.email).toBe('ishtar@uruk.io');
-    expect((me.user as Record<string, unknown>).passwordHash).toBeUndefined();
+    expect((me.user as unknown as Record<string, unknown>).passwordHash).toBeUndefined();
     expect(me.memberships).toEqual([]);
     expect(me.activeOrgId).toBeNull();
   });

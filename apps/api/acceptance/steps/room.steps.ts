@@ -2,22 +2,17 @@ import { DataTable, Given, Then, When } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
+import { authOf } from '../support/auth';
 import type { GilgameshWorld } from '../support/world';
 
 const DEFAULT_PASSWORD = 'C0rrect-Horse!';
 
 // ---- helpers ------------------------------------------------------------------------
 
-function cookieOf(res: request.Response): string {
-  const raw = res.headers['set-cookie'];
-  const cookies = Array.isArray(raw) ? raw : raw ? [String(raw)] : [];
-  return (cookies.find((c) => c.startsWith('__Host-gg_session')) ?? '').split(';')[0];
-}
-
 async function onboard(world: GilgameshWorld, projectName: string) {
-  const req = request(world.app.getHttpServer()).post(world.url('/projects'));
-  if (world.cookie) req.set('Cookie', world.cookie);
-  const res = await req.send({ projectName, format: 'BDD' });
+  const res = await world
+    .applyAuth(request(world.app.getHttpServer()).post(world.url('/projects')))
+    .send({ projectName, format: 'BDD' });
   if (res.status === 201 && res.body?.projectId) {
     world.lastOrgId = res.body.orgId;
     world.lastProjectId = res.body.projectId;
@@ -28,9 +23,9 @@ async function onboard(world: GilgameshWorld, projectName: string) {
 }
 
 async function patchPath(world: GilgameshWorld, path: string, body: Record<string, unknown>) {
-  const req = request(world.app.getHttpServer()).patch(world.url(path));
-  if (world.cookie) req.set('Cookie', world.cookie);
-  world.response = await req.send(body);
+  world.response = await world
+    .applyAuth(request(world.app.getHttpServer()).patch(world.url(path)))
+    .send(body);
   return world.response;
 }
 
@@ -197,9 +192,7 @@ Then(
 // ---- Wake-all (AC-ROOM-08/09) ------------------------------------------------------
 
 When('I POST {string}', async function (this: GilgameshWorld, path: string) {
-  const req = request(this.app.getHttpServer()).post(this.url(path));
-  if (this.cookie) req.set('Cookie', this.cookie);
-  this.response = await req.send();
+  this.response = await this.applyAuth(request(this.app.getHttpServer()).post(this.url(path))).send();
 });
 
 Given('{int} of the {int} agents are asleep', async function (this: GilgameshWorld, asleep: number, _total: number) {
@@ -229,10 +222,9 @@ Then('no duplicate ToolBinding row is created for any agent', async function (th
 });
 
 Then('invoking {string} a second time produces the same result', async function (this: GilgameshWorld, _what: string) {
-  const res = await request(this.app.getHttpServer())
-    .post(this.url('/projects/{id}/agents/wake-all'))
-    .set('Cookie', this.cookie ?? '')
-    .send();
+  const res = await this.applyAuth(
+    request(this.app.getHttpServer()).post(this.url('/projects/{id}/agents/wake-all')),
+  ).send();
   assert.equal(res.status, 200);
   assert.equal(await this.db.toolBinding.count({ where: { projectId: this.lastProjectId!, enabled: true } }), 11);
 });
@@ -273,9 +265,11 @@ Given(
     const reg = await request(this.app.getHttpServer())
       .post(this.url('/auth/register'))
       .send({ firstName: 'F', lastName: 'O', email: 'foreigner@uruk.io', password: DEFAULT_PASSWORD });
+    const auth = authOf(reg);
     const proj = await request(this.app.getHttpServer())
       .post(this.url('/projects'))
-      .set('Cookie', cookieOf(reg))
+      .set('Cookie', auth.cookie)
+      .set('X-CSRF-Token', auth.csrf)
       .send({ projectName: name, format: 'BDD' });
     this.projectsByName.set(name, proj.body.projectId);
   },
@@ -295,7 +289,9 @@ Given(
     await this.db.membership.create({
       data: { id: randomUUID(), orgId, userId: reg.body.userId, role: role as never, createdAt: new Date() },
     });
-    this.cookie = cookieOf(reg);
+    const auth = authOf(reg);
+    this.cookie = auth.cookie;
+    this.csrf = auth.csrf;
   },
 );
 

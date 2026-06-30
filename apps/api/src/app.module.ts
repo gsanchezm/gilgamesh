@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER, APP_PIPE } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { AgentsModule } from './agents/agents.module';
 import { AuthModule } from './auth/auth.module';
+import { CsrfGuard } from './auth/csrf.guard';
 import { SecurityModule } from './auth/security.module';
 import { DomainExceptionFilter } from './common/domain-exception.filter';
 import { buildValidationPipe } from './common/validation.pipe';
@@ -14,8 +15,12 @@ import { ProjectsModule } from './projects/projects.module';
 // The two compositions differ ONLY in the persistence wiring; controllers, guards, the
 // validation pipe and the domain->Problem filter are identical across both.
 const FEATURE_MODULES = [SecurityModule, AuthModule, ProjectsModule, AgentsModule, OrgsModule];
-const APP_PROVIDERS = [
+
+/** Shared global providers — reused by the BDD/int harnesses so they enforce the same pipe,
+ *  CSRF guard and exception filter as production. */
+export const APP_PROVIDERS = [
   { provide: APP_PIPE, useValue: buildValidationPipe() },
+  { provide: APP_GUARD, useClass: CsrfGuard },
   { provide: APP_FILTER, useClass: DomainExceptionFilter },
 ];
 

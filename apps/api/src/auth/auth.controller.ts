@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { GetMe, LoginUser, LogoutUser, type MeView, RegisterUser } from '@gilgamesh/application';
 import { Body, Controller, Get, HttpCode, Post, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
@@ -7,6 +8,7 @@ import { RegisterDto } from './dto/register.dto';
 import { SessionAuthGuard } from './session-auth.guard';
 
 const SESSION_COOKIE = '__Host-gg_session';
+const CSRF_COOKIE = 'csrf';
 
 function setSessionCookie(res: Response, token: string, maxAgeMs?: number): void {
   res.cookie(SESSION_COOKIE, token, {
@@ -18,9 +20,20 @@ function setSessionCookie(res: Response, token: string, maxAgeMs?: number): void
   });
 }
 
-// Must match the set-cookie attributes (Secure + Path=/, no Domain) so the __Host- cookie clears.
+// Non-HttpOnly companion cookie for the double-submit CSRF check (must be readable by the SPA).
+function setCsrfCookie(res: Response): void {
+  res.cookie(CSRF_COOKIE, randomBytes(32).toString('base64url'), {
+    httpOnly: false,
+    secure: true,
+    sameSite: 'lax',
+    path: '/',
+  });
+}
+
+// Cleared with matching attributes so the __Host- session + csrf cookies both clear.
 function clearSessionCookie(res: Response): void {
   res.clearCookie(SESSION_COOKIE, { httpOnly: true, secure: true, sameSite: 'lax', path: '/' });
+  res.clearCookie(CSRF_COOKIE, { httpOnly: false, secure: true, sameSite: 'lax', path: '/' });
 }
 
 @Controller('auth')
@@ -40,6 +53,7 @@ export class AuthController {
   ): Promise<{ userId: string }> {
     const { userId, sessionToken } = await this.registerUser.execute(dto);
     setSessionCookie(res, sessionToken);
+    setCsrfCookie(res);
     return { userId };
   }
 
@@ -55,6 +69,7 @@ export class AuthController {
       rememberMe: dto.rememberMe,
     });
     setSessionCookie(res, result.sessionToken, result.expiresAt.getTime() - Date.now());
+    setCsrfCookie(res);
     return { userId: result.userId, activeOrgId: result.activeOrgId };
   }
 

@@ -1,12 +1,10 @@
 import { AfterAll, Before, BeforeAll, setDefaultTimeout } from '@cucumber/cucumber';
 import { type INestApplication } from '@nestjs/common';
-import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { AgentsModule } from '../../src/agents/agents.module';
+import { APP_PROVIDERS } from '../../src/app.module';
 import { AuthModule } from '../../src/auth/auth.module';
 import { SecurityModule } from '../../src/auth/security.module';
-import { DomainExceptionFilter } from '../../src/common/domain-exception.filter';
-import { buildValidationPipe } from '../../src/common/validation.pipe';
 import { OrgsModule } from '../../src/orgs/orgs.module';
 import { PrismaPersistenceModule } from '../../src/persistence/prisma/prisma-persistence.module';
 import { PrismaService } from '../../src/persistence/prisma/prisma.service';
@@ -24,10 +22,7 @@ let db: PrismaService;
 BeforeAll(async () => {
   const moduleRef = await Test.createTestingModule({
     imports: [PrismaPersistenceModule, SecurityModule, AuthModule, ProjectsModule, AgentsModule, OrgsModule],
-    providers: [
-      { provide: APP_PIPE, useValue: buildValidationPipe() },
-      { provide: APP_FILTER, useClass: DomainExceptionFilter },
-    ],
+    providers: APP_PROVIDERS,
   }).compile();
   app = moduleRef.createNestApplication();
   app.setGlobalPrefix('api/v1');
@@ -45,6 +40,7 @@ Before(async function (this: GilgameshWorld) {
   this.app = app;
   this.db = db;
   this.cookie = null;
+  this.csrf = null;
   this.response = null;
   this.notes = new Map();
   this.lastOrgId = null;

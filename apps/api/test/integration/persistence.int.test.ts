@@ -1,16 +1,16 @@
-import { HttpStatus, ValidationPipe, type INestApplication } from '@nestjs/common';
-import { APP_FILTER, APP_PIPE } from '@nestjs/core';
+import { type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { AgentsModule } from '../../src/agents/agents.module';
+import { APP_PROVIDERS } from '../../src/app.module';
 import { AuthModule } from '../../src/auth/auth.module';
 import { SecurityModule } from '../../src/auth/security.module';
-import { DomainExceptionFilter } from '../../src/common/domain-exception.filter';
 import { OrgsModule } from '../../src/orgs/orgs.module';
 import { PrismaPersistenceModule } from '../../src/persistence/prisma/prisma-persistence.module';
 import { PrismaService } from '../../src/persistence/prisma/prisma.service';
 import { ProjectsModule } from '../../src/projects/projects.module';
+import { type Auth, authFrom } from '../support/auth';
 
 let app: INestApplication;
 let db: PrismaService;
@@ -18,18 +18,7 @@ let db: PrismaService;
 beforeAll(async () => {
   const moduleRef = await Test.createTestingModule({
     imports: [PrismaPersistenceModule, SecurityModule, AuthModule, ProjectsModule, AgentsModule, OrgsModule],
-    providers: [
-      {
-        provide: APP_PIPE,
-        useValue: new ValidationPipe({
-          whitelist: true,
-          forbidNonWhitelisted: true,
-          transform: true,
-          errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
-        }),
-      },
-      { provide: APP_FILTER, useClass: DomainExceptionFilter },
-    ],
+    providers: APP_PROVIDERS,
   }).compile();
   app = moduleRef.createNestApplication();
   await app.init();
@@ -46,29 +35,29 @@ beforeEach(async () => {
   );
 });
 
-async function authedCookie(email: string): Promise<string> {
+async function signIn(email: string): Promise<Auth> {
   const reg = await request(app.getHttpServer())
     .post('/auth/register')
     .send({ firstName: 'Ishtar', lastName: 'Uruk', email, password: 'C0rrect-Horse!' });
-  const sc = reg.headers['set-cookie'];
-  return (Array.isArray(sc) ? sc : [String(sc)]).map((c) => String(c).split(';')[0]).join('; ');
+  return authFrom(reg);
 }
 
 describe('Persistence (Prisma · real Postgres)', () => {
   it('persists the full register → onboarding → agent room flow', async () => {
     const server = app.getHttpServer();
-    const cookie = await authedCookie('ishtar@uruk.io');
+    const auth = await signIn('ishtar@uruk.io');
 
     const proj = await request(server)
       .post('/projects')
-      .set('Cookie', cookie)
+      .set('Cookie', auth.cookie)
+      .set('X-CSRF-Token', auth.csrf)
       .send({ projectName: 'OmniPizza Web', format: 'BDD', repoProvider: 'github' });
     expect(proj.status).toBe(201);
     expect(proj.body.slug).toBe('omnipizza-web');
 
     const room = await request(server)
       .get(`/projects/${proj.body.projectId}/agents`)
-      .set('Cookie', cookie);
+      .set('Cookie', auth.cookie);
     expect(room.status).toBe(200);
     expect(room.body.agents).toHaveLength(11);
     expect(room.body.kpis.awake).toBe(11);
@@ -86,15 +75,17 @@ describe('Persistence (Prisma · real Postgres)', () => {
 
   it('persists wake-all (every binding enabled)', async () => {
     const server = app.getHttpServer();
-    const cookie = await authedCookie('ishtar@uruk.io');
+    const auth = await signIn('ishtar@uruk.io');
     const proj = await request(server)
       .post('/projects')
-      .set('Cookie', cookie)
+      .set('Cookie', auth.cookie)
+      .set('X-CSRF-Token', auth.csrf)
       .send({ projectName: 'OmniPizza Web', format: 'BDD' });
 
     const res = await request(server)
       .post(`/projects/${proj.body.projectId}/agents/wake-all`)
-      .set('Cookie', cookie);
+      .set('Cookie', auth.cookie)
+      .set('X-CSRF-Token', auth.csrf);
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ awake: 11, total: 11 });
     expect(await db.toolBinding.count({ where: { enabled: true } })).toBe(11);
@@ -102,16 +93,17 @@ describe('Persistence (Prisma · real Postgres)', () => {
 
   it('enforces tenant isolation across orgs (404)', async () => {
     const server = app.getHttpServer();
-    const ownerCookie = await authedCookie('owner@example.com');
+    const owner = await signIn('owner@example.com');
     const proj = await request(server)
       .post('/projects')
-      .set('Cookie', ownerCookie)
+      .set('Cookie', owner.cookie)
+      .set('X-CSRF-Token', owner.csrf)
       .send({ projectName: 'OmniPizza Web', format: 'BDD' });
 
-    const intruderCookie = await authedCookie('intruder@example.com');
+    const intruder = await signIn('intruder@example.com');
     const res = await request(server)
       .get(`/projects/${proj.body.projectId}/agents`)
-      .set('Cookie', intruderCookie);
+      .set('Cookie', intruder.cookie);
     expect(res.status).toBe(404);
   });
 });

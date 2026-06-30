@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Given, Then, When } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
 import request from 'supertest';
@@ -286,4 +287,51 @@ Then(
 
 When('I GET {string} without a session cookie', async function (this: GilgameshWorld, path: string) {
   this.response = await request(this.app.getHttpServer()).get(this.url(path)).send();
+});
+
+// ---- Cookie hardening + CSRF (AC-AUTH-14) ------------------------------------------
+
+Given('I have just signed in', async function (this: GilgameshWorld) {
+  const res = await postRegister(this, validRegister('ishtar@uruk.io'));
+  const raw = res.headers['set-cookie'];
+  const cookies = Array.isArray(raw) ? raw : raw ? [String(raw)] : [];
+  const session = cookies.find((c) => c.startsWith('__Host-gg_session')) ?? '';
+  this.notes.set('sessionSetCookie', session);
+  this.notes.set('sessionToken', session.split(';')[0].slice('__Host-gg_session='.length));
+});
+
+Then('the session cookie is {string}', function (this: GilgameshWorld, attr: string) {
+  const c = this.notes.get('sessionSetCookie') as string;
+  assert.match(c, new RegExp(attr, 'i'), `session cookie missing "${attr}"`);
+});
+
+Then('the session cookie has a {string} attribute', function (this: GilgameshWorld, attr: string) {
+  const c = this.notes.get('sessionSetCookie') as string;
+  assert.match(c, new RegExp(attr, 'i'), `session cookie missing "${attr}"`);
+});
+
+Then('the session cookie name carries the {string} prefix', function (this: GilgameshWorld, prefix: string) {
+  const c = this.notes.get('sessionSetCookie') as string;
+  assert.ok(c.startsWith(prefix), `session cookie name does not carry "${prefix}"`);
+});
+
+Then('only the token hash is persisted in the Session row', async function (this: GilgameshWorld) {
+  const token = this.notes.get('sessionToken') as string;
+  const session = await this.db.session.findFirst({ orderBy: { createdAt: 'desc' } });
+  assert.ok(session, 'no session persisted');
+  assert.equal(session.tokenHash, createHash('sha256').update(token).digest('hex'));
+  assert.notEqual(session.tokenHash, token, 'the raw token must not be stored');
+});
+
+Then('state-changing requests require a valid CSRF token', async function (this: GilgameshWorld) {
+  const without = await request(this.app.getHttpServer())
+    .post(this.url('/projects'))
+    .set('Cookie', this.cookie ?? '') // session cookie present, no X-CSRF-Token
+    .send({ projectName: 'OmniPizza', format: 'BDD' });
+  assert.equal(without.status, 403, 'a mutation without the CSRF token should be rejected');
+
+  const withToken = await this.applyAuth(
+    request(this.app.getHttpServer()).post(this.url('/projects')),
+  ).send({ projectName: 'OmniPizza', format: 'BDD' });
+  assert.notEqual(withToken.status, 403, 'a mutation with a valid CSRF token should not be a CSRF failure');
 });
