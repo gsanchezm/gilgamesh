@@ -317,3 +317,17 @@ scenarios/694 steps · Playwright (smoke + Test Lab + run + billing + knowledge)
 ingested into the demo KB. Deferred: per-org private KnowledgeDoc uploads + ArtifactStorage; real semantic
 embeddings (Brain slice); a document chunker; advanced retrieval (MMR/diversity, per-source caps). Awaiting
 owner review/merge.
+
+**Slice 5 adversarial review (2026-06-30) — fixed before merge.** A 16-agent review found 1 HIGH + 1 MEDIUM +
+1 LOW, all at the in-memory-fake-vs-pgvector boundary (which the green suite structurally couldn't see).
+Fixed, re-verified green (domain 49 · application 122 · api 72 · web 55 · int 14 · BDD 88 · Playwright 5):
+- **[HIGH]** a tokenless query ("!!!", punctuation/CJK-only) embeds to an all-zero vector → in-memory cosine
+  returns 0 but pgvector's `<=>` returns NaN → `score:null` over the wire → `KnowledgeScreen`'s `toFixed`
+  crashed. SearchKnowledge + KnowledgeRetriever now short-circuit a zero-norm query embedding to empty results
+  (both wirings agree); KnowledgeScreen guards with `Number.isFinite`.
+- **[MEDIUM]** `search()` had no `ORDER BY` tiebreak → tied cosine distances made top-k non-deterministic +
+  divergent from the stable in-memory adapter (AC-KB-05/09/10). Added `, id` to the Prisma `ORDER BY` + an id
+  tiebreak to the in-memory sort.
+- **[LOW]** `scrubChunk` ran the `[^\n]*`-anchored copyright regex before `<br>`→newline (latent over-reach,
+  0 impact on the shipped corpus); reordered. Correctly excluded as non-findings: the missing `orgId` (intended
+  global KB) and the lexical-hash stub (intended until the Brain slice).
