@@ -21,6 +21,7 @@ function Kpi({ label, value }: { label: string; value: string }) {
 export function AgentRoomScreen({ client, projectId, onOpenAgent }: AgentRoomScreenProps) {
   const [data, setData] = useState<AgentRoomData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -36,15 +37,21 @@ export function AgentRoomScreen({ client, projectId, onOpenAgent }: AgentRoomScr
   }, [load]);
 
   async function toggle(slot: AgentSlot, nextEnabled: boolean) {
-    const updated = await client.setAgent(projectId, slot, { enabled: nextEnabled });
-    setData((d) => {
-      if (!d) return d;
-      const agents = d.agents.map((a) => (a.slot === slot ? updated : a));
-      return { ...d, agents, kpis: { ...d.kpis, awake: agents.filter((a) => a.enabled).length } };
-    });
+    setActionError(null);
+    try {
+      const updated = await client.setAgent(projectId, slot, { enabled: nextEnabled });
+      setData((d) => {
+        if (!d) return d;
+        const agents = d.agents.map((a) => (a.slot === slot ? updated : a));
+        return { ...d, agents, kpis: { ...d.kpis, awake: agents.filter((a) => a.enabled).length } };
+      });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not update the agent.');
+    }
   }
 
   async function wakeAll() {
+    setActionError(null);
     setBusy(true);
     try {
       await client.wakeAll(projectId);
@@ -61,6 +68,8 @@ export function AgentRoomScreen({ client, projectId, onOpenAgent }: AgentRoomScr
             }
           : d,
       );
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not awaken the team.');
     } finally {
       setBusy(false);
     }
@@ -96,6 +105,12 @@ export function AgentRoomScreen({ client, projectId, onOpenAgent }: AgentRoomScr
           {busy ? 'Awakening…' : 'Awaken team'}
         </Button>
       </header>
+
+      {actionError && (
+        <p role="alert" className="gx-room__error gx-login__error">
+          {actionError}
+        </p>
+      )}
 
       <div className="gx-room__kpis">
         <Kpi label="Awake" value={`${data.kpis.awake} / ${data.kpis.total}`} />

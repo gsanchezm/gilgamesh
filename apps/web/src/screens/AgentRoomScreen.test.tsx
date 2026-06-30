@@ -59,6 +59,21 @@ describe('AgentRoomScreen', () => {
     expect(await screen.findByText('2 / 2')).toBeTruthy();
   });
 
+  it('surfaces an error when a toggle fails and leaves the awake KPI unchanged', async () => {
+    const client = fakeClient({
+      setAgent: vi.fn(async () => {
+        throw new Error('Could not update the agent.');
+      }),
+    });
+    render(<AgentRoomScreen client={client} projectId="p-1" />);
+    await screen.findByText('Iris');
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Toggle Iris' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not update the agent.');
+    expect(screen.getByText('1 / 2')).toBeTruthy(); // KPI not optimistically changed
+  });
+
   it('awakens the whole team', async () => {
     const client = fakeClient();
     render(<AgentRoomScreen client={client} projectId="p-1" />);
