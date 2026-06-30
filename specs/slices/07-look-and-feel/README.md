@@ -55,5 +55,9 @@ remaining re-skins → new views (Pricing, Reports, Orchestration, Chat, Session
 ## Status
 - ✅ Phase 1 — tokens/keyframes, `AgentAvatar` (+ `portraitFor`), assets copied to
   `apps/web/public/assets/`. Spec authored.
-- ⬜ Phase 2 — Theme provider + AppShell (sidebar + topbar).
-- ⬜ Phase 3 — Dashboard re-skin. … (remaining views)
+- ✅ Phase 2 — `ThemeProvider` + toggle, stroke `icons`, `Badge`, `Sidebar`/`Topbar`/`AppShell`
+  (presentational, in `@gilgamesh/ui`), wired via `AppLayout` (web) around the authenticated routes
+  (layout route). `ComingSoonScreen` placeholders for Orchestration/Reports so the nav is complete.
+- ⬜ Phase 3 — Dashboard re-skin (rich KPIs + agent cards using `AgentAvatar`).
+- ⬜ Remaining views (Login hero, Pricing, Onboarding, Reports, Orchestration, Chat, Session, +
+  re-skins of Test Lab / Knowledge / Integrations / Subscription).

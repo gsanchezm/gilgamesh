@@ -97,3 +97,21 @@ body {
   font-size: 12.5px;
   cursor: pointer;
 }
+
+/* Screen title block (handoff §4.5): Marcellus 28–30px title + muted sub. */
+.gx-room__title {
+  font-family: var(--font-display);
+  font-size: 29px;
+  line-height: 1.1;
+  color: var(--text);
+  margin: 0 0 4px;
+}
+.gx-room__sub {
+  color: var(--muted);
+  font-size: 13.5px;
+  margin: 0 0 20px;
+}
+.gx-coming {
+  display: flex;
+  flex-direction: column;
+}

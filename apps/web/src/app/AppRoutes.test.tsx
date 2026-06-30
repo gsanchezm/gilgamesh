@@ -1,3 +1,4 @@
+import { ThemeProvider } from '@gilgamesh/ui';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -85,13 +86,15 @@ function makeClients(): Clients {
 
 function renderApp(clients: Clients, initialPath: string) {
   return render(
-    <SessionProvider>
-      <ClientsProvider clients={clients}>
-        <MemoryRouter initialEntries={[initialPath]}>
-          <AppRoutes />
-        </MemoryRouter>
-      </ClientsProvider>
-    </SessionProvider>,
+    <ThemeProvider>
+      <SessionProvider>
+        <ClientsProvider clients={clients}>
+          <MemoryRouter initialEntries={[initialPath]}>
+            <AppRoutes />
+          </MemoryRouter>
+        </ClientsProvider>
+      </SessionProvider>
+    </ThemeProvider>,
   );
 }
 
@@ -146,7 +149,8 @@ describe('AppRoutes', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     fireEvent.click(screen.getByRole('button', { name: 'Create project' }));
 
-    expect(await screen.findByText('Agent room')).toBeTruthy();
-    expect(screen.getByText('1 agents · OmniPizza')).toBeTruthy();
+    // The agent-room view loaded inside the shell. Assert the screen's unique subtitle (the nav
+    // rail now also has an "Agent room" label, so that text alone is no longer unique).
+    expect(await screen.findByText('1 agents · OmniPizza')).toBeTruthy();
   });
 });

@@ -2,11 +2,13 @@ import type { ReactNode } from 'react';
 import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { AgentRoomScreen } from '../screens/AgentRoomScreen';
 import { BillingScreen } from '../screens/BillingScreen';
+import { ComingSoonScreen } from '../screens/ComingSoonScreen';
 import { IntegrationsScreen } from '../screens/IntegrationsScreen';
 import { KnowledgeScreen } from '../screens/KnowledgeScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { OnboardingWizard } from '../screens/OnboardingWizard';
 import { TestLabScreen } from '../screens/TestLabScreen';
+import { AppLayout } from './AppLayout';
 import { useClients } from './clients';
 import { useSession } from './session';
 
@@ -92,6 +94,7 @@ export function AppRoutes() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<LoginRoute />} />
+      {/* Onboarding is a standalone stepped flow — outside the app shell. */}
       <Route
         path="/onboarding"
         element={
@@ -100,46 +103,22 @@ export function AppRoutes() {
           </RequireAuth>
         }
       />
+      {/* Authenticated in-app views render inside the sidebar+topbar shell. */}
       <Route
-        path="/projects/:projectId/agents"
         element={
           <RequireAuth>
-            <AgentRoomRoute />
+            <AppLayout />
           </RequireAuth>
         }
-      />
-      <Route
-        path="/projects/:projectId/lab"
-        element={
-          <RequireAuth>
-            <TestLabRoute />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/billing"
-        element={
-          <RequireAuth>
-            <BillingRoute />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/knowledge"
-        element={
-          <RequireAuth>
-            <KnowledgeRoute />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/integrations"
-        element={
-          <RequireAuth>
-            <IntegrationsRoute />
-          </RequireAuth>
-        }
-      />
+      >
+        <Route path="/projects/:projectId/agents" element={<AgentRoomRoute />} />
+        <Route path="/projects/:projectId/lab" element={<TestLabRoute />} />
+        <Route path="/projects/:projectId/orchestrate" element={<ComingSoonScreen title="Orchestration" />} />
+        <Route path="/projects/:projectId/reports" element={<ComingSoonScreen title="Reports" />} />
+        <Route path="/billing" element={<BillingRoute />} />
+        <Route path="/knowledge" element={<KnowledgeRoute />} />
+        <Route path="/integrations" element={<IntegrationsRoute />} />
+      </Route>
       <Route path="*" element={<Landing />} />
     </Routes>
   );
