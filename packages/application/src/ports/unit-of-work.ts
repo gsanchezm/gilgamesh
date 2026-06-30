@@ -5,6 +5,8 @@ import type {
   MembershipRepository,
   OrgRepository,
   ProjectRepository,
+  RunRepository,
+  RunResultRepository,
   ScenarioRepository,
   SessionRepository,
   SliceRepository,
@@ -28,6 +30,8 @@ export interface Repositories {
   features: FeatureRepository;
   scenarios: ScenarioRepository;
   testCases: TestCaseRepository;
+  runs: RunRepository;
+  runResults: RunResultRepository;
   agents: AgentRepository;
   toolBindings: ToolBindingRepository;
   subscriptions: SubscriptionRepository;

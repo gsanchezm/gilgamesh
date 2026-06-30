@@ -118,3 +118,23 @@ green end-to-end on branch `slice-2-test-lab-authoring`:
 
 `docker-compose.yml` runs Postgres + Redis; the BDD harness (`apps/api/acceptance`) and the Playwright config
 (`apps/web/playwright.config.ts`) both boot the real stack.
+
+## Slice 3 status (Test Execution + Results) — DoD COMPLETE
+
+`specs/slices/03-test-execution/` — run an authored `Feature` (its `Scenario`s) or `TestCase` behind the
+keystone **`TestKernel`** port and see **results** in-app. Owner decision S3: the port is wired to a
+**deterministic stub** `DeterministicKernel` (the Brain-stub pattern of slice 2) as a **synchronous núcleo** —
+the real `chaos-proxy`/TOM adapter + SSE streaming + DAG + workers are the Orchestration slice (keystone §7
+`BLOCKED-UNTIL-DELIVERED`). Built SDD→BDD→TDD across all layers, green end-to-end on branch
+`slice-3-test-execution`:
+- **domain** — `summarizeRun` (pure result aggregation → terminal `RunStatus` + counts + `ratePct`).
+- **application** — `TestKernel` port + `DeterministicKernel` stub (offline, streams `RunEvent`s); `Run`/
+  `RunResult` records + repos (added to the `UnitOfWork` bundle); `TriggerRun`/`ListRuns`/`GetRun` (UoW-atomic
+  run + results + `Scenario.lastStatus`/`TestCase.status` reflection); in-memory adapters.
+- **api** — `RunsModule` (`POST /projects/:id/runs`, `GET /projects/:id/runs`, `GET /runs/:id`); Prisma `Run`/
+  `RunResult` models/enums + migration + adapters in **both** UoW wirings; `DeterministicKernel` bound to the
+  `TestKernel` token.
+- **web** — `RunsClient` + a "Run" button per feature/test-case in `TestLabScreen` + an aggregated results
+  panel (CSRF on the trigger).
+- **Verified:** typecheck clean · ~216 Docker-free unit/e2e · `test:int` 10 · **BDD 75 scenarios / 592 steps** ·
+  **Playwright** smoke + Test Lab + run flow.

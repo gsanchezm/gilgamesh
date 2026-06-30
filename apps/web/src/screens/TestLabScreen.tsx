@@ -1,5 +1,6 @@
 import { Button } from '@gilgamesh/ui';
 import { useCallback, useEffect, useState } from 'react';
+import type { RunSummaryView, RunTargetKind, RunView, RunsClient } from '../lib/runs-client';
 import type {
   FeatureSummaryView,
   GeneratedDraftsView,
@@ -11,15 +12,18 @@ import type {
 
 export interface TestLabScreenProps {
   client: TestLabClient;
+  runsClient: RunsClient;
   projectId: string;
 }
 
 const PRIORITIES: TestCasePriority[] = ['HIGH', 'MEDIUM', 'LOW'];
 
-export function TestLabScreen({ client, projectId }: TestLabScreenProps) {
+export function TestLabScreen({ client, runsClient, projectId }: TestLabScreenProps) {
   const [slices, setSlices] = useState<SliceView[] | null>(null);
   const [features, setFeatures] = useState<FeatureSummaryView[]>([]);
   const [testCases, setTestCases] = useState<TestCaseView[]>([]);
+  const [runs, setRuns] = useState<RunSummaryView[]>([]);
+  const [lastRun, setLastRun] = useState<RunView | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [sliceKey, setSliceKey] = useState('');
@@ -34,18 +38,20 @@ export function TestLabScreen({ client, projectId }: TestLabScreenProps) {
 
   const load = useCallback(async () => {
     try {
-      const [s, f, t] = await Promise.all([
+      const [s, f, t, r] = await Promise.all([
         client.listSlices(projectId),
         client.listFeatures(projectId),
         client.listTestCases(projectId),
+        runsClient.listRuns(projectId),
       ]);
       setSlices(s);
       setFeatures(f);
       setTestCases(t);
+      setRuns(r);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load the Test Lab.');
     }
-  }, [client, projectId]);
+  }, [client, runsClient, projectId]);
 
   useEffect(() => {
     void load();
@@ -92,6 +98,13 @@ export function TestLabScreen({ client, projectId }: TestLabScreenProps) {
   const generate = () =>
     action(async () => {
       setDrafts(await client.generate(projectId, { prompt }));
+    });
+
+  const runTarget = (targetKind: RunTargetKind, targetId: string) =>
+    action(async () => {
+      const run = await runsClient.triggerRun(projectId, { targetKind, targetId });
+      setLastRun(run);
+      setRuns(await runsClient.listRuns(projectId));
     });
 
   if (error && slices === null) {
@@ -145,7 +158,12 @@ export function TestLabScreen({ client, projectId }: TestLabScreenProps) {
         <ul>
           {features.map((f) => (
             <li key={f.id}>
-              {f.name} · {f.scenarioCount} scenarios
+              <span>
+                {f.name} · {f.scenarioCount} scenarios
+              </span>{' '}
+              <Button aria-label={`Run feature ${f.name}`} onClick={() => runTarget('FEATURE', f.id)} disabled={busy}>
+                Run
+              </Button>
             </li>
           ))}
         </ul>
@@ -166,7 +184,12 @@ export function TestLabScreen({ client, projectId }: TestLabScreenProps) {
         <ul>
           {testCases.map((t) => (
             <li key={t.id}>
-              {t.key} · {t.title} · {t.priority}
+              <span>
+                {t.key} · {t.title} · {t.priority}
+              </span>{' '}
+              <Button aria-label={`Run test case ${t.title}`} onClick={() => runTarget('TESTCASE', t.id)} disabled={busy}>
+                Run
+              </Button>
             </li>
           ))}
         </ul>
@@ -194,6 +217,31 @@ export function TestLabScreen({ client, projectId }: TestLabScreenProps) {
             Generated {drafts.features.length} feature draft(s) and {drafts.testCases.length} test-case draft(s).
           </p>
         )}
+      </section>
+
+      <section aria-label="Runs">
+        <h2>Runs</h2>
+        {lastRun && (
+          <div className="gx-lab__run">
+            <p>
+              Run {lastRun.status} — {lastRun.passed}/{lastRun.total} passed ({lastRun.ratePct}%)
+            </p>
+            <ul>
+              {lastRun.results.map((r) => (
+                <li key={r.refId}>
+                  {r.name}: {r.status}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <ul>
+          {runs.map((r) => (
+            <li key={r.id}>
+              {r.targetKind} · {r.status} · {r.passed}/{r.total}
+            </li>
+          ))}
+        </ul>
       </section>
     </main>
   );

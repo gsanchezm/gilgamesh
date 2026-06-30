@@ -193,4 +193,43 @@ cases + 4 ports + DeterministicBrain stub), api (controllers + Prisma models/mig
 (TestLabClient + TestLabScreen). Green end-to-end: typecheck · ~182 Docker-free unit/e2e · test:int 9
 (Postgres+Redis) · BDD 69 scenarios/539 steps · Playwright (smoke + Test Lab). Deferred per S2: bulk import,
 the real Claude brain adapter (Brain slice), `__Host-csrf` + the CI quality-gate workflows (shared with the
-slice-1 follow-ups). Awaiting owner review/merge of `slice-2-test-lab-authoring`.
+slice-1 follow-ups). **Merged to `main` (FF, e22fad0) after the review fixes; slice-2 review follow-ups landed
+on main: a Prisma-wired testlab int test + a domain architecture fitness function.**
+
+## Paso 5 — Slice 3 scope (Test Execution + Results) — owner decision S3 (2026-06-30)
+
+Owner picked the **Test execution + results** vertical for slice 3. **Keystone §7 caveat surfaced:** the
+Orchestration/Reports-from-real-runs slice is `BLOCKED-UNTIL-DELIVERED` (real runs need the owner's
+chaos-proxy/TOM kernel, decision #5), and the full keystone execution model is async (enqueue → BullMQ
+workers → `TestKernel.run` streaming `RunEvent` → `RunNode` DAG → `Artifact` → SSE).
+
+**Decision S3 — build the execution shell behind a deterministic `TestKernel` stub now** (the Brain-stub
+pattern of slice 2), taking §7's *"everything else proceeds NOW behind the `TestKernel` port"* path, as a
+**synchronous núcleo**:
+- **In:** `Run` + `RunStatus` (keystone verbatim) · `TestKernel` port + `DeterministicKernel` stub (offline,
+  reproducible) · `TriggerRun` (sync execute of a Feature/TestCase) → `Run` + per-scenario `RunResult`s +
+  counts/`durationMs` · `POST /projects/{id}/runs` + `GET /projects/{id}/runs` + `GET /runs/{id}` · results UI ·
+  reflect latest result onto `Scenario.lastStatus`/`TestCase.status` · UoW-atomic · tenant isolation + RBAC.
+- **Deferred (Orchestration slice, when chaos-proxy lands):** real `chaos-proxy`/`AgentPlugin` execution, SSE
+  `/runs/{id}/events`, BullMQ workers, `RunNode`/DAG canvas, `Artifact`/reports, `/cancel`, `RunMode`/stages.
+
+Spec at `specs/slices/03-test-execution/spec.md` (12 ACs: AC-RUN-01..12). Building on `slice-3-test-execution`.
+
+**Slice 3 status — DONE (2026-06-30).** Built SDD→BDD→TDD across domain (`summarizeRun`), application
+(`TestKernel` port + `DeterministicKernel` stub + `TriggerRun`/`ListRuns`/`GetRun`, UoW-atomic), api (`RunsModule`
++ Prisma `Run`/`RunResult` models/migration + both wirings), web (`RunsClient` + Run button + results panel).
+Green end-to-end: typecheck · ~216 Docker-free unit/e2e · test:int 10 · BDD 75 scenarios/592 steps · Playwright
+(smoke + Test Lab + run flow). Deferred per S3 (Orchestration slice, when chaos-proxy lands): real execution,
+SSE `/events`, BullMQ workers, `RunNode`/DAG canvas, `Artifact`/reports, `/cancel`. Awaiting owner review/merge.
+
+**Slice 3 adversarial review (2026-06-30) — fixed before merge.** A 20-agent review found 2 real defects + 2
+nits the green suite missed (the in-memory wiring is single-threaded). Fixed, re-verified green (typecheck ·
+application 71 · api 62 · test:int 10 · BDD 75):
+- **[HIGH]** TriggerRun's FEATURE reflection rewrote the scenario set from a pre-kernel snapshot via
+  `replaceForFeature` (delete-all+insert) inside the tx → a feature edit committing during the run's I/O window
+  was clobbered (lost update). Now reflects via `ScenarioRepository.setLastStatus` (in-place per-row update by
+  id inside the tx, no-op if concurrently deleted).
+- **[MED]** malformed `targetId`/`runId` (non-UUID) → Prisma P2023 → generic 500; now mapped to 404 in the filter.
+- **[nit]** deterministic newest-first run order (`id desc` tiebreaker) + a real 2-run e2e assertion (was a
+  single-run false-green).
+- **Deferred (follow-up):** rate-limit/quota on the run trigger (`runMinutesQuota` enforcement → billing slice).

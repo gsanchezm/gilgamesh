@@ -9,6 +9,8 @@ export const TOKENS = {
   Features: 'FeatureRepository',
   Scenarios: 'ScenarioRepository',
   TestCases: 'TestCaseRepository',
+  Runs: 'RunRepository',
+  RunResults: 'RunResultRepository',
   Agents: 'AgentRepository',
   ToolBindings: 'ToolBindingRepository',
   Subscriptions: 'SubscriptionRepository',
@@ -19,4 +21,5 @@ export const TOKENS = {
   Tokens: 'TokenGenerator',
   Clock: 'Clock',
   Brain: 'AgentBrainPort',
+  Kernel: 'TestKernel',
 } as const;

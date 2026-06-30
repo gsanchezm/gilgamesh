@@ -8,6 +8,10 @@ export type TestCaseStatus = 'NOTRUN' | 'PASS' | 'FAIL' | 'BLOCKED' | 'SKIPPED';
 export type Plan = 'TEAM' | 'PRO' | 'ENTERPRISE';
 export type BillingCycle = 'MONTHLY' | 'ANNUAL';
 export type SubscriptionStatus = 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
+export type RunStatus = 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED' | 'CANCELED';
+export type RunTrigger = 'MANUAL' | 'SCHEDULE' | 'CI';
+export type RunTargetKind = 'FEATURE' | 'TESTCASE';
+export type ResultStatus = 'PASS' | 'FAIL' | 'SKIP';
 
 /**
  * Persistence-facing records — the contract between use cases and repository adapters.
@@ -109,6 +113,44 @@ export interface TestCaseRecord {
   assignedAgentId: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/**
+ * A test execution (keystone `Run`, slice-3 field subset). A run targets exactly one authored entity
+ * (a Feature → its scenarios, or a TestCase). Deferred keystone fields (mode, selectedStages, progress,
+ * commitSha) belong to the Orchestration slice.
+ */
+export interface RunRecord {
+  id: string;
+  orgId: string;
+  projectId: string;
+  status: RunStatus;
+  trigger: RunTrigger;
+  targetKind: RunTargetKind;
+  targetId: string;
+  runLabel: string | null;
+  passed: number | null;
+  failed: number | null;
+  skipped: number | null;
+  total: number | null;
+  ratePct: number | null;
+  durationMs: number | null;
+  createdById: string;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+  createdAt: Date;
+}
+
+/** A single per-scenario / per-test-case outcome of a Run (a `RunNode`-lite; the DAG is later). */
+export interface RunResultRecord {
+  id: string;
+  orgId: string;
+  runId: string;
+  refId: string;
+  name: string;
+  status: ResultStatus;
+  log: string[];
+  order: number;
 }
 
 export interface AgentRecord {

@@ -9,6 +9,7 @@ import { OrgsModule } from '../../src/orgs/orgs.module';
 import { PrismaPersistenceModule } from '../../src/persistence/prisma/prisma-persistence.module';
 import { PrismaService } from '../../src/persistence/prisma/prisma.service';
 import { ProjectsModule } from '../../src/projects/projects.module';
+import { RunsModule } from '../../src/runs/runs.module';
 import { TestLabModule } from '../../src/testlab/testlab.module';
 import type { GilgameshWorld } from './world';
 
@@ -30,6 +31,7 @@ BeforeAll(async () => {
       AgentsModule,
       OrgsModule,
       TestLabModule,
+      RunsModule,
     ],
     providers: APP_PROVIDERS,
   }).compile();
@@ -56,6 +58,6 @@ Before(async function (this: GilgameshWorld) {
   this.lastProjectId = null;
   this.projectsByName = new Map();
   await db.$executeRawUnsafe(
-    'TRUNCATE orgs, users, memberships, sessions, projects, slices, features, scenarios, test_cases, agents, tool_bindings, subscriptions, audit_logs CASCADE',
+    'TRUNCATE orgs, users, memberships, sessions, projects, slices, features, scenarios, test_cases, runs, run_results, agents, tool_bindings, subscriptions, audit_logs CASCADE',
   );
 });

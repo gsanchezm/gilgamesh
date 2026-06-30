@@ -5,6 +5,8 @@ import type {
   MembershipRepository,
   OrgRepository,
   ProjectRepository,
+  RunRepository,
+  RunResultRepository,
   ScenarioRepository,
   SessionRepository,
   SliceRepository,
@@ -22,15 +24,19 @@ import type {
   OrgRecord,
   ProjectRecord,
   Role,
+  RunRecord,
+  RunResultRecord,
   ScenarioRecord,
   SessionRecord,
   SliceRecord,
   SubscriptionRecord,
   TestCaseRecord,
+  TestCaseStatus,
   ToolBindingRecord,
   UserRecord,
 } from '../ports/records';
 import { DeterministicBrain } from '../brain/stub-brain';
+import { DeterministicKernel } from '../kernel/deterministic-kernel';
 import { FakeClock, FakePasswordHasher, FakeTokenGenerator, SeqIdGenerator } from './fakes';
 
 export class InMemoryUserRepository implements UserRepository {
@@ -164,6 +170,10 @@ export class InMemoryScenarioRepository implements ScenarioRepository {
   async deleteForFeature(featureId: string): Promise<void> {
     this.rows = this.rows.filter((s) => s.featureId !== featureId);
   }
+  async setLastStatus(scenarioId: string, status: TestCaseStatus): Promise<void> {
+    const s = this.rows.find((x) => x.id === scenarioId);
+    if (s) s.lastStatus = status;
+  }
 }
 
 export class InMemoryTestCaseRepository implements TestCaseRepository {
@@ -184,6 +194,30 @@ export class InMemoryTestCaseRepository implements TestCaseRepository {
   }
   async delete(id: string): Promise<void> {
     this.byId.delete(id);
+  }
+}
+
+export class InMemoryRunRepository implements RunRepository {
+  private readonly rows: RunRecord[] = [];
+  async create(rec: RunRecord): Promise<void> {
+    this.rows.push(rec);
+  }
+  async findById(id: string): Promise<RunRecord | null> {
+    return this.rows.find((r) => r.id === id) ?? null;
+  }
+  async listForProject(projectId: string): Promise<RunRecord[]> {
+    // Newest-first (most recently inserted).
+    return this.rows.filter((r) => r.projectId === projectId).reverse();
+  }
+}
+
+export class InMemoryRunResultRepository implements RunResultRepository {
+  private readonly rows: RunResultRecord[] = [];
+  async createMany(recs: RunResultRecord[]): Promise<void> {
+    this.rows.push(...recs);
+  }
+  async listForRun(runId: string): Promise<RunResultRecord[]> {
+    return this.rows.filter((r) => r.runId === runId).sort((a, b) => a.order - b.order);
   }
 }
 
@@ -262,6 +296,8 @@ export interface InMemoryContext {
   features: InMemoryFeatureRepository;
   scenarios: InMemoryScenarioRepository;
   testCases: InMemoryTestCaseRepository;
+  runs: InMemoryRunRepository;
+  runResults: InMemoryRunResultRepository;
   agents: InMemoryAgentRepository;
   toolBindings: InMemoryToolBindingRepository;
   subscriptions: InMemorySubscriptionRepository;
@@ -272,6 +308,7 @@ export interface InMemoryContext {
   hasher: FakePasswordHasher;
   tokens: FakeTokenGenerator;
   brain: DeterministicBrain;
+  kernel: DeterministicKernel;
 }
 
 export function createInMemoryContext(): InMemoryContext {
@@ -287,6 +324,8 @@ export function createInMemoryContext(): InMemoryContext {
     features: new InMemoryFeatureRepository(),
     scenarios: new InMemoryScenarioRepository(),
     testCases: new InMemoryTestCaseRepository(),
+    runs: new InMemoryRunRepository(),
+    runResults: new InMemoryRunResultRepository(),
     agents: new InMemoryAgentRepository(),
     toolBindings: new InMemoryToolBindingRepository(),
     subscriptions: new InMemorySubscriptionRepository(),
@@ -300,5 +339,6 @@ export function createInMemoryContext(): InMemoryContext {
     hasher: new FakePasswordHasher(),
     tokens: new FakeTokenGenerator(),
     brain: new DeterministicBrain(),
+    kernel: new DeterministicKernel(),
   };
 }
