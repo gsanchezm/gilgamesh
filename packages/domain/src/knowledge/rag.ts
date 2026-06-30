@@ -33,11 +33,11 @@ export function scrubChunk(text: string): string {
  *  token can't drive unbounded iteration (CodeQL js/loop-bound-injection). */
 const FNV_MAX_CHARS = 4096;
 
-/** FNV-1a 32-bit hash — deterministic, no Date/Math.random; iteration bounded by FNV_MAX_CHARS. */
+/** FNV-1a 32-bit hash — deterministic, no Date/Math.random; the `i < FNV_MAX_CHARS` term caps iteration
+ *  at a constant so the loop is never bounded purely by user input. */
 function fnv1a(s: string): number {
   let h = 2166136261;
-  const len = s.length < FNV_MAX_CHARS ? s.length : FNV_MAX_CHARS;
-  for (let i = 0; i < len; i++) {
+  for (let i = 0; i < FNV_MAX_CHARS && i < s.length; i++) {
     h ^= s.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
