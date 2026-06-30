@@ -7,8 +7,15 @@ import { RATE_LIMIT_STORE, type RateLimitStore } from './rate-limit-store';
 
 export const RATE_LIMIT = 'RATE_LIMIT';
 
-// Throttled auth endpoints (spec AC-AUTH-13 / §10.2). forgot/reset land with slice #7.
-const LIMITED_PATHS = ['/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password'];
+// Throttled endpoints: auth (AC-AUTH-13 / §10.2; forgot/reset land with slice #7) and the
+// AI generate endpoint (AC-GEN-04 — a future cost-bearing call, throttled per IP).
+const LIMITED_PATHS = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+  '/test-cases/generate',
+];
 
 /**
  * Fixed-window rate limit on auth endpoints, keyed by (path + IP + email) — per-IP-per-account.

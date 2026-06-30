@@ -18,10 +18,11 @@ import { PersistenceModule } from './persistence/persistence.module';
 import { PrismaPersistenceModule } from './persistence/prisma/prisma-persistence.module';
 import { TOKENS } from './persistence/tokens';
 import { ProjectsModule } from './projects/projects.module';
+import { TestLabModule } from './testlab/testlab.module';
 
 // The two compositions differ ONLY in the persistence wiring; controllers, guards, the
 // validation pipe and the domain->Problem filter are identical across both.
-const FEATURE_MODULES = [SecurityModule, AuthModule, ProjectsModule, AgentsModule, OrgsModule];
+const FEATURE_MODULES = [SecurityModule, AuthModule, ProjectsModule, AgentsModule, OrgsModule, TestLabModule];
 
 /** Shared global providers — reused by the BDD/int harnesses so they enforce the same pipe,
  *  CSRF guard and exception filter as production. */
