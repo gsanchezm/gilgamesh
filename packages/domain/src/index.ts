@@ -4,3 +4,4 @@ export * from './value-objects/slug';
 export * from './agents/roster';
 export * from './agents/runtime-status';
 export * from './testlab/parse-gherkin';
+export * from './execution/summarize-run';
