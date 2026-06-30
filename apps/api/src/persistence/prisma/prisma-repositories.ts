@@ -152,6 +152,8 @@ export class PrismaFeatureRepository implements FeatureRepository {
   listForProject(projectId: string, sliceId?: string): Promise<FeatureRecord[]> {
     return this.db.feature.findMany({
       where: { projectId, ...(sliceId !== undefined ? { sliceId } : {}) },
+      // Deterministic creation order (id asc = UUID v7 tiebreaker), matching the in-memory adapter.
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
   }
   async save(rec: FeatureRecord): Promise<void> {
@@ -191,6 +193,8 @@ export class PrismaTestCaseRepository implements TestCaseRepository {
   listForProject(projectId: string, sliceId?: string): Promise<TestCaseRecord[]> {
     return this.db.testCase.findMany({
       where: { projectId, ...(sliceId !== undefined ? { sliceId } : {}) },
+      // key is the monotonic per-project auto-number (TC_PRJ_001…), so key asc = creation order.
+      orderBy: { key: 'asc' },
     });
   }
   async save(rec: TestCaseRecord): Promise<void> {
