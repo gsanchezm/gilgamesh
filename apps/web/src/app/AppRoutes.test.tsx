@@ -73,6 +73,7 @@ function makeClients(): Clients {
         cancel: vi.fn(async () => ({ ...sub, status: 'CANCELED' })),
       };
     })(),
+    knowledge: { search: vi.fn(async () => ({ results: [], total: 0 })) },
   };
 }
 

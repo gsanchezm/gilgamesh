@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { AgentRoomScreen } from '../screens/AgentRoomScreen';
 import { BillingScreen } from '../screens/BillingScreen';
+import { KnowledgeScreen } from '../screens/KnowledgeScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { OnboardingWizard } from '../screens/OnboardingWizard';
 import { TestLabScreen } from '../screens/TestLabScreen';
@@ -72,6 +73,11 @@ function BillingRoute() {
   return <BillingScreen client={billing} orgId={activeOrgId ?? ''} />;
 }
 
+function KnowledgeRoute() {
+  const { knowledge } = useClients();
+  return <KnowledgeScreen client={knowledge} />;
+}
+
 export function AppRoutes() {
   return (
     <Routes>
@@ -106,6 +112,14 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <BillingRoute />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/knowledge"
+        element={
+          <RequireAuth>
+            <KnowledgeRoute />
           </RequireAuth>
         }
       />
