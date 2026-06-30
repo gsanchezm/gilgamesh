@@ -201,12 +201,12 @@ export class TriggerRun {
       await repos.runs.create(run);
       await repos.runResults.createMany(resultRecords);
       if (input.targetKind === 'FEATURE') {
-        const byRef = new Map(results.map((r) => [r.refId, r.status]));
-        const updated = scenarios.map((s) => ({
-          ...s,
-          lastStatus: byRef.has(s.id) ? REFLECT[byRef.get(s.id)!] : s.lastStatus,
-        }));
-        await repos.scenarios.replaceForFeature(input.targetId, updated);
+        // Update each scenario's lastStatus IN PLACE by id (a no-op if it was concurrently deleted),
+        // never rewriting the whole set from the pre-kernel snapshot — that would clobber a feature
+        // edit that committed during the run's I/O window (lost update).
+        for (const r of results) {
+          await repos.scenarios.setLastStatus(r.refId, REFLECT[r.status]);
+        }
       } else if (testCaseId) {
         const tc = await repos.testCases.findById(testCaseId);
         if (tc) await repos.testCases.save({ ...tc, status: REFLECT[results[0]!.status], updatedAt: now });

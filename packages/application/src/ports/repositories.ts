@@ -13,6 +13,7 @@ import type {
   SliceRecord,
   SubscriptionRecord,
   TestCaseRecord,
+  TestCaseStatus,
   ToolBindingRecord,
   UserRecord,
 } from './records';
@@ -70,6 +71,8 @@ export interface ScenarioRepository {
   replaceForFeature(featureId: string, recs: ScenarioRecord[]): Promise<void>;
   listForFeature(featureId: string): Promise<ScenarioRecord[]>;
   deleteForFeature(featureId: string): Promise<void>;
+  /** Updates one scenario's last run status in place by id; a no-op if the row is gone. */
+  setLastStatus(scenarioId: string, status: TestCaseStatus): Promise<void>;
 }
 
 export interface TestCaseRepository {

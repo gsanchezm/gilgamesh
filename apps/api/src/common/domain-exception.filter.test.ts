@@ -53,6 +53,17 @@ describe('DomainExceptionFilter (catch-all -> problem+json)', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'NOT_FOUND' }));
   });
 
+  it('maps a Prisma malformed-id (P2023) to 404 NOT_FOUND', () => {
+    const { res, host } = capture();
+    const err = new Prisma.PrismaClientKnownRequestError('Inconsistent column data: Error creating UUID', {
+      code: 'P2023',
+      clientVersion: '6.x',
+    });
+    new DomainExceptionFilter().catch(err, host);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'NOT_FOUND' }));
+  });
+
   it('maps an unmapped/infra error to a generic 500 without leaking internals', () => {
     const { res, host } = capture();
     new DomainExceptionFilter().catch(new Error('ECONNREFUSED 6379 redis'), host);

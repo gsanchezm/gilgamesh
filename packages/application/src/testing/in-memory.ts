@@ -31,6 +31,7 @@ import type {
   SliceRecord,
   SubscriptionRecord,
   TestCaseRecord,
+  TestCaseStatus,
   ToolBindingRecord,
   UserRecord,
 } from '../ports/records';
@@ -168,6 +169,10 @@ export class InMemoryScenarioRepository implements ScenarioRepository {
   }
   async deleteForFeature(featureId: string): Promise<void> {
     this.rows = this.rows.filter((s) => s.featureId !== featureId);
+  }
+  async setLastStatus(scenarioId: string, status: TestCaseStatus): Promise<void> {
+    const s = this.rows.find((x) => x.id === scenarioId);
+    if (s) s.lastStatus = status;
   }
 }
 

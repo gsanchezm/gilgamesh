@@ -56,6 +56,11 @@ export class DomainExceptionFilter implements ExceptionFilter {
       status = 404;
       code = 'NOT_FOUND';
       detail = 'The requested resource was not found.';
+    } else if (exception instanceof Prisma.PrismaClientKnownRequestError && exception.code === 'P2023') {
+      // Malformed id (e.g. a non-UUID reaching a uuid column) -> no such resource, not a 500.
+      status = 404;
+      code = 'NOT_FOUND';
+      detail = 'The requested resource was not found.';
     } else {
       // Unmapped (infra) error: log the real cause server-side, return a generic body so internals
       // are never leaked to the client.

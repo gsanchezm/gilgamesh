@@ -26,6 +26,7 @@ import type {
   SubscriptionRepository,
   TestCaseRecord,
   TestCaseRepository,
+  TestCaseStatus,
   ToolBindingRecord,
   ToolBindingRepository,
   UserRecord,
@@ -173,6 +174,10 @@ export class PrismaScenarioRepository implements ScenarioRepository {
   async deleteForFeature(featureId: string): Promise<void> {
     await this.db.scenario.deleteMany({ where: { featureId } });
   }
+  async setLastStatus(scenarioId: string, status: TestCaseStatus): Promise<void> {
+    // updateMany (not update) so a concurrently-deleted scenario is a no-op, never a P2025.
+    await this.db.scenario.updateMany({ where: { id: scenarioId }, data: { lastStatus: status } });
+  }
 }
 
 export class PrismaTestCaseRepository implements TestCaseRepository {
@@ -205,7 +210,8 @@ export class PrismaRunRepository implements RunRepository {
     return this.db.run.findUnique({ where: { id } });
   }
   listForProject(projectId: string): Promise<RunRecord[]> {
-    return this.db.run.findMany({ where: { projectId }, orderBy: { createdAt: 'desc' } });
+    // id desc (UUID v7 = time-ordered) is a stable tiebreaker for same-millisecond createdAt.
+    return this.db.run.findMany({ where: { projectId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
   }
 }
 

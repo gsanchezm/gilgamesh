@@ -73,9 +73,15 @@ describe('Test Execution API', () => {
     expect(got.status).toBe(200);
     expect(got.body.results).toHaveLength(3);
 
+    // A second run must sort ahead of the first (newest-first, deterministic tiebreaker).
+    const run2 = await mutate(request(server()).post(`/projects/${projectId}/runs`)).send({
+      targetKind: 'FEATURE',
+      targetId: featureId,
+    });
     const list = await read(request(server()).get(`/projects/${projectId}/runs`));
-    expect(list.body.length).toBeGreaterThanOrEqual(1);
-    expect(list.body[0].id).toBe(run.body.id);
+    expect(list.body.length).toBeGreaterThanOrEqual(2);
+    expect(list.body[0].id).toBe(run2.body.id);
+    expect(list.body[1].id).toBe(run.body.id);
   });
 
   it('rejects a run for a missing target (404)', async () => {
