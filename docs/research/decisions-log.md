@@ -270,3 +270,18 @@ Building on `slice-4-subscription-billing`.
 BillingScreen at /billing). Green: typecheck + lint · ~281 Docker-free · test:int 10 · BDD 82 scenarios/648
 steps · Playwright (smoke + Test Lab + run + billing). Closed the slice-3 deferred run-minute quota. Deferred
 per S4: real Stripe, Invoice/listInvoices, webhooks/handleWebhook. Awaiting owner review/merge.
+
+**Slice 4 adversarial review (2026-06-30) — fixed before merge.** An 18-agent review found a CRITICAL
+concurrency defect + 2 HIGH + 3 nits. Fixed, re-verified green (domain 43 · application 113 · api 68 · int 10
+· BDD 84 · web 49; typecheck+lint):
+- **[CRITICAL]** TriggerRun charged the quota by writing the whole pre-tx subscription row back, so a
+  concurrent ConfirmCheckout/plan/seat/cancel was silently reverted, and two concurrent runs bypassed the
+  quota (lost charge). Replaced with `SubscriptionRepository.chargeRunMinutes` — an atomic conditional
+  increment (Prisma raw `UPDATE … WHERE used+cost <= quota`) that touches only the counter and rolls back
+  the run on a `false`. (Same lost-update class slice 3 fixed for scenarios; the subscription charge regressed.)
+- **[latent]** ENTERPRISE quota was `MAX_SAFE_INTEGER` → int4 overflow on Postgres; now 1e9.
+- ENTERPRISE is no longer a free self-service upgrade (contact-sales); `currentPeriodEnd` derives from the cycle.
+- **[coverage]** added Postgres+HTTP BDD `@AC-SUB-07` scenarios (charge + 402) — catches the prior 402→500
+  false-green that the green suite missed.
+- **Deferred (follow-up):** optimistic-lock/version column for concurrent admin-vs-admin subscription
+  mutations (run-vs-admin is fixed); CANCELED-status run gating (cancellation policy is an owner call).
