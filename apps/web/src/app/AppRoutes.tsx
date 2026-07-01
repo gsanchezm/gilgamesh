@@ -7,6 +7,7 @@ import { IntegrationsScreen } from '../screens/IntegrationsScreen';
 import { KnowledgeScreen } from '../screens/KnowledgeScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { OnboardingWizard } from '../screens/OnboardingWizard';
+import { PricingScreen } from '../screens/PricingScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
 import { TestLabScreen } from '../screens/TestLabScreen';
 import { AppLayout } from './AppLayout';
@@ -72,6 +73,12 @@ function RegisterRoute() {
   );
 }
 
+function PricingRoute() {
+  const navigate = useNavigate();
+  // Public marketing page: both CTAs enter the funnel (start free → register; sign in → login).
+  return <PricingScreen onStart={() => navigate('/register')} onSignIn={() => navigate('/login')} />;
+}
+
 function OnboardingRoute() {
   const { onboarding } = useClients();
   const navigate = useNavigate();
@@ -130,8 +137,8 @@ export function AppRoutes() {
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<LoginRoute />} />
       <Route path="/register" element={<RegisterRoute />} />
-      {/* Public marketing pricing page; the hi-fi build lands in Phase 6 (capture 03). */}
-      <Route path="/pricing" element={<ComingSoonScreen title="Pricing" />} />
+      {/* Public marketing pricing page (capture 03). */}
+      <Route path="/pricing" element={<PricingRoute />} />
       {/* Onboarding is a standalone stepped flow — outside the app shell. */}
       <Route
         path="/onboarding"

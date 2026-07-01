@@ -65,7 +65,7 @@ remaining re-skins → new views (Pricing, Reports, Orchestration, Chat, Session
   tool/browser chips (`gxfloat`), circular brand mark, real EN copy (`Sign in` / hero / `Enter` CTA /
   Remember me / providers / Create account). Login logic + placeholders preserved; button renamed
   `Sign in`→`Enter` across unit + e2e specs. Verified in-browser (smoke green, visual dark/light).
-- 🔨 Phase 5 — **Register ("Create account") screen** (`capturas/02-registro.png`): the auth signup,
+- ✅ Phase 5 — **Register ("Create account") screen** (`capturas/02-registro.png`): the auth signup,
   twin of Login (shared animated hero on the left, form on the right). Backend already exists
   (`POST /auth/register` → `RegisterUser`, auto-signs-in; no Org yet — the tenant is bootstrapped at
   onboarding). Scope (owner-approved, advisor-sharpened):
@@ -83,6 +83,16 @@ remaining re-skins → new views (Pricing, Reports, Orchestration, Chat, Session
     onboarding-wizard follow-on). Register does **not** create the Org (spec AC-AUTH-01).
   - Follow-on (separate commit, no capture): re-skin the project **onboarding wizard** (port the
     prototype's `isOnboarding` layout) and consume the carried company as `orgName`.
-- ⬜ Remaining views (Pricing, Reports, Orchestration, Chat, Session, +
-  re-skins of Test Lab / Knowledge / Integrations / Subscription).
+- ✅ Phase 6 — **Pricing (public marketing page)** (`capturas/03-pricing.png`): ports the capture's
+  layout/visual language but renders the owner's **NEW 4-tier model** (Free/Starter/Growth/Scale,
+  billed per active workspace/mo — supersedes the slice-4 TEAM/PRO/ENTERPRISE seat model). Canonical
+  `PLAN_CATALOG` in `@gilgamesh/domain` (`pricing/plan-catalog.ts`, pure + TDD: monthly/annual = 10
+  months so 2 free, per-month-equivalent display). `PricingScreen`: top bar, hero, MONTHLY/ANNUAL
+  toggle, 4 cards (Growth = "Most popular", gold), "Everything in X, plus" prefaces, Scale
+  per-extra-workspace add-on. Always dark (pre-auth). Route `/pricing` (public) → CTAs enter the
+  funnel (start free → register; sign in → login). `pricing.feature` ↔ Playwright. **Deferred (its own
+  slice):** migrate the billing/subscription **backend** + the `/billing` screen to the new model —
+  scheduled to land with the **Subscription re-skin** (capture 12), its natural home.
+- ⬜ Remaining views (Reports, Orchestration, Chat, Session, + re-skins of Knowledge / Test Lab /
+  Integrations / Subscription — Subscription re-skin also migrates billing to the new pricing model).
 - ⬜ Playwright `.feature`-mapped scenarios per view.
