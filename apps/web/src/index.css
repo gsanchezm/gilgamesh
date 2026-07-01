@@ -1224,3 +1224,209 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- Reports (capture 08; read-only project run-health, aggregated across runs) ----------------- */
+.gx-report {
+  display: flex;
+  flex-direction: column;
+}
+.gx-report__head {
+  margin-bottom: 18px;
+}
+.gx-report__empty {
+  color: var(--muted);
+  font-size: 13.5px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card, 14px);
+  padding: 18px 20px;
+  margin: 8px 0 0;
+}
+.gx-report__stats {
+  display: grid;
+  grid-template-columns: 1.3fr repeat(4, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+/* The highlighted health card (capture: violet gradient = the "backend" discipline family). */
+.gx-report__health {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 20px;
+  border-radius: var(--radius-card, 14px);
+  border: 1px solid rgba(126, 99, 166, 0.5);
+  background: linear-gradient(158deg, #4a3c74 0%, #2b2450 62%, #241f45 100%);
+  color: #f2eefc;
+}
+.gx-report__healthLabel {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: rgba(242, 238, 252, 0.72);
+}
+.gx-report__healthRate {
+  margin: 2px 0;
+  font-family: var(--font-display);
+  font-size: 42px;
+  line-height: 1;
+  color: #fff;
+}
+.gx-report__healthLine {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.gx-report__healthSub {
+  margin: 4px 0 10px;
+  font-size: 12px;
+  color: rgba(242, 238, 252, 0.78);
+  line-height: 1.45;
+}
+.gx-report__bar {
+  margin-top: auto;
+  display: flex;
+  height: 8px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.14);
+}
+.gx-report__bar--pass {
+  background: var(--green);
+}
+.gx-report__bar--fail {
+  background: var(--danger);
+}
+.gx-report__bar--skip {
+  background: var(--amber);
+}
+.gx-report__stat {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 18px 20px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card, 14px);
+}
+.gx-report__statLabel {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.gx-report__statValue {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 40px;
+  line-height: 1;
+  color: var(--text);
+}
+.gx-report__statValue--pass {
+  color: var(--green);
+}
+.gx-report__statValue--fail {
+  color: var(--danger);
+}
+.gx-report__statValue--skip {
+  color: var(--amber);
+}
+.gx-report__section {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 28px 0 12px;
+}
+.gx-report__runs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gx-report__run {
+  display: grid;
+  grid-template-columns: 1.4fr auto auto 1fr auto auto;
+  align-items: center;
+  gap: 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 13px 16px;
+}
+.gx-report__runLabel {
+  font-weight: 600;
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gx-report__runStatus {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: var(--radius-pill, 20px);
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  justify-self: start;
+}
+.gx-report__runStatus--done {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 45%, transparent);
+}
+.gx-report__runStatus--failed {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+.gx-report__runStatus--running,
+.gx-report__runStatus--queued {
+  color: var(--amber);
+  border-color: color-mix(in srgb, var(--amber) 45%, transparent);
+}
+.gx-report__runRate {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text);
+}
+.gx-report__runCounts,
+.gx-report__runDuration,
+.gx-report__runDate {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  justify-self: end;
+}
+
+@media (max-width: 920px) {
+  .gx-report__stats {
+    grid-template-columns: 1fr 1fr;
+  }
+  .gx-report__health {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 640px) {
+  .gx-report__stats {
+    grid-template-columns: 1fr;
+  }
+  .gx-report__run {
+    grid-template-columns: 1fr auto;
+    row-gap: 6px;
+  }
+  .gx-report__runCounts,
+  .gx-report__runDuration,
+  .gx-report__runDate {
+    justify-self: start;
+  }
+}
