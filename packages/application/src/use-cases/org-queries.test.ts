@@ -65,14 +65,14 @@ describe('Org queries', () => {
   });
 
   describe('GetOrgSubscription', () => {
-    it('returns the seeded TEAM trial subscription for a member', async () => {
+    it('returns the seeded FREE trial subscription for a member', async () => {
       const sub = await new GetOrgSubscription(ctx).execute({ userId, orgId });
       expect(sub).toMatchObject({
-        plan: 'TEAM',
+        plan: 'FREE',
         status: 'TRIALING',
         billingCycle: 'MONTHLY',
-        seats: 5,
-        runMinutesQuota: 1000,
+        seats: 1,
+        runMinutesQuota: 500,
         runMinutesUsed: 0,
       });
     });

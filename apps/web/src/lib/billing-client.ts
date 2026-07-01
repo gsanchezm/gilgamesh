@@ -1,6 +1,6 @@
 import { getJson, sendJson } from './http';
 
-export type Plan = 'TEAM' | 'PRO' | 'ENTERPRISE';
+export type Plan = 'FREE' | 'STARTER' | 'GROWTH' | 'SCALE';
 export type BillingCycle = 'MONTHLY' | 'ANNUAL';
 
 export interface SubscriptionView {
@@ -9,6 +9,9 @@ export interface SubscriptionView {
   billingCycle: BillingCycle;
   seats: number;
   maxSeats: number;
+  maxServicesPerWorkspace: number;
+  maxUsersPerWorkspace: number;
+  includedWorkspaces: number;
   unlimited: boolean;
   runMinutesQuota: number;
   runMinutesUsed: number;

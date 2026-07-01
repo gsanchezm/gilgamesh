@@ -1,11 +1,11 @@
 import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 
-const PLANS = ['TEAM', 'PRO', 'ENTERPRISE'] as const;
+const PLANS = ['FREE', 'STARTER', 'GROWTH', 'SCALE'] as const;
 const CYCLES = ['MONTHLY', 'ANNUAL'] as const;
 
 export class ChangePlanDto {
   @IsIn(PLANS)
-  plan!: 'TEAM' | 'PRO' | 'ENTERPRISE';
+  plan!: 'FREE' | 'STARTER' | 'GROWTH' | 'SCALE';
 
   @IsOptional()
   @IsIn(CYCLES)
@@ -15,6 +15,6 @@ export class ChangePlanDto {
 export class UpdateSeatsDto {
   @IsInt()
   @Min(1)
-  @Max(1000)
+  @Max(1000000)
   seats!: number;
 }

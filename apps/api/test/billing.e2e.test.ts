@@ -43,24 +43,24 @@ describe('Subscription & Billing API', () => {
   it('views the seeded subscription with limits + usage', async () => {
     const res = await read(request(server()).get(`/orgs/${orgId}/subscription`));
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ plan: 'TEAM', status: 'TRIALING', maxSeats: 5, runMinutesQuota: 1000 });
+    expect(res.body).toMatchObject({ plan: 'FREE', status: 'TRIALING', maxSeats: 1, runMinutesQuota: 500 });
   });
 
   it('rejects a plan change without the CSRF token (403)', async () => {
-    const res = await read(request(server()).patch(`/orgs/${orgId}/subscription`)).send({ plan: 'PRO' });
+    const res = await read(request(server()).patch(`/orgs/${orgId}/subscription`)).send({ plan: 'STARTER' });
     expect(res.status).toBe(403);
   });
 
-  it('changes the plan (remaps quota), updates seats, rejects bad input', async () => {
-    const changed = await mutate(request(server()).patch(`/orgs/${orgId}/subscription`)).send({ plan: 'PRO' });
+  it('changes the plan (remaps quota), updates active workspaces, rejects bad input', async () => {
+    const changed = await mutate(request(server()).patch(`/orgs/${orgId}/subscription`)).send({ plan: 'GROWTH' });
     expect(changed.status).toBe(200);
-    expect(changed.body).toMatchObject({ plan: 'PRO', runMinutesQuota: 10000, maxSeats: 11 });
+    expect(changed.body).toMatchObject({ plan: 'GROWTH', runMinutesQuota: 25000, maxServicesPerWorkspace: 15 });
 
     expect((await mutate(request(server()).patch(`/orgs/${orgId}/subscription`)).send({ plan: 'NOPE' })).status).toBe(422);
 
     const seats = await mutate(request(server()).patch(`/orgs/${orgId}/subscription/seats`)).send({ seats: 8 });
     expect(seats.body.seats).toBe(8);
-    expect((await mutate(request(server()).patch(`/orgs/${orgId}/subscription/seats`)).send({ seats: 20 })).status).toBe(422);
+    expect((await mutate(request(server()).patch(`/orgs/${orgId}/subscription/seats`)).send({ seats: 0 })).status).toBe(422);
   });
 
   it('checks out (mock) then confirms to ACTIVE, then cancels', async () => {

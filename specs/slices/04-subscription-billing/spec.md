@@ -38,16 +38,17 @@ loop that makes execution metered.
   `updateSeats`; deterministic + offline (no Stripe/network). Bound as the `PaymentProvider` token in both wirings.
 - **View** — `GetOrgSubscription` (exists, slice 1) extended with the plan limits + a usage view
   (`runMinutesUsed`/`runMinutesQuota`). RBAC: any member.
-- **Change plan / cycle** — `ChangeSubscription`: remaps `runMinutesQuota` + seat limit per the §9 pricing
-  (TEAM 1000 min/≤5 seats · PRO 10000 min/≤11 · ENTERPRISE unlimited); rejects a downgrade whose seat max < the
-  current `seats`. RBAC: `OWNER`/`ADMIN`.
-- **Seats** — `UpdateSeats`: set `seats` within the plan max (over max → `VALIDATION`). RBAC: `OWNER`/`ADMIN`.
+- **Change plan / cycle** — `ChangeSubscription`: remaps the monthly execution quota + active-workspace limit
+  per the new §9 pricing (FREE 500 exec/1 workspace · STARTER 5k · GROWTH 25k · SCALE unlimited); rejects a
+  downgrade whose workspace max < the current active workspaces. RBAC: `OWNER`/`ADMIN`.
+- **Active workspaces** — `UpdateSeats`: set the legacy `seats` field within the plan max (over max →
+  `VALIDATION`). RBAC: `OWNER`/`ADMIN`.
 - **Checkout (mock)** — `StartCheckout` → `PaymentProvider.createCheckout` returns a `checkoutUrl`;
   `ConfirmCheckout` (mock "payment succeeded") → status `TRIALING`→`ACTIVE`, sets `providerCustomerId` /
   `providerSubscriptionId` / `currentPeriodEnd`. RBAC: `OWNER`/`ADMIN`.
 - **Cancel** — `CancelSubscription`: status → `CANCELED`. RBAC: `OWNER`/`ADMIN`.
 - **Quota enforcement (slice-3 closure)** — `TriggerRun` charges `runMinutes = max(1, scenarioCount)` to
-  `runMinutesUsed`; if `runMinutesUsed + cost > runMinutesQuota` and the plan is not unlimited (ENTERPRISE) and
+  `runMinutesUsed`; if `runMinutesUsed + cost > runMinutesQuota` and the plan is not unlimited (SCALE) and
   the status is not `ACTIVE`/`TRIALING`-with-room → reject with `QUOTA_EXCEEDED` (→ HTTP 402). The charge +
   the run write commit in one `UnitOfWork` transaction.
 - API (keystone §6): `GET /orgs/{id}/subscription` (extend), `PATCH /orgs/{id}/subscription` (plan/cycle/seats),
@@ -79,13 +80,14 @@ loop that makes execution metered.
 
 ## 4. Domain model (keystone names verbatim)
 
-- **`Plan`** = `TEAM | PRO | ENTERPRISE`; **`BillingCycle`** = `MONTHLY | ANNUAL`;
+- **`Plan`** = `FREE | STARTER | GROWTH | SCALE`; **`BillingCycle`** = `MONTHLY | ANNUAL`;
   **`SubscriptionStatus`** = `TRIALING | ACTIVE | PAST_DUE | CANCELED` (all keystone).
 - **`Subscription`** (exists, slice 1): `id, orgId(unique), plan, billingCycle, seats, status, runMinutesQuota,
   runMinutesUsed, providerCustomerId?, providerSubscriptionId?, currentPeriodEnd?`.
-- **Plan limits (pure domain, keystone §9):** `TEAM → {runMinutesQuota: 1000, maxSeats: 5}`,
-  `PRO → {10000, 11}`, `ENTERPRISE → {unlimited, large}`. A pure `planLimits(plan)` + `priceCents(plan, cycle)`
-  (annual ≈ 16% off) in `packages/domain`.
+- **Plan limits (pure domain, keystone §9):** `FREE → {runMinutesQuota: 500, maxSeats: 1}`,
+  `STARTER → {5000, unlimited workspaces}`, `GROWTH → {25000, unlimited workspaces}`,
+  `SCALE → {unlimited, 10 included workspaces + add-ons}`. A pure `planLimits(plan)` +
+  `priceCents(plan, cycle, activeWorkspaces)` in `packages/domain`.
 
 ### `PaymentProvider` port (keystone §5, `@gilgamesh/application` ports)
 ```
@@ -108,14 +110,14 @@ returns a stable `checkoutUrl` (`https://mock.pay/checkout/<orgId>`); confirmati
   (`runMinutesUsed`/`runMinutesQuota`).
 - **AC-SUB-02** — An `OWNER`/`ADMIN` changes the plan; `runMinutesQuota` + seat max remap per §9. A `MEMBER`
   → `403`.
-- **AC-SUB-03** — Changing to a plan whose `maxSeats` < current `seats` is rejected (`VALIDATION`).
-- **AC-SUB-04** — `UpdateSeats` within the plan max succeeds; over the max → `VALIDATION`.
+- **AC-SUB-03** — Changing to a plan whose active-workspace max is below current `seats` is rejected (`VALIDATION`).
+- **AC-SUB-04** — `UpdateSeats` within the active-workspace max succeeds; over the max → `VALIDATION`.
 - **AC-SUB-05** — `StartCheckout` returns a `checkoutUrl` via the `PaymentProvider`; `ConfirmCheckout` sets
   status `ACTIVE` + `providerCustomerId`/`providerSubscriptionId`/`currentPeriodEnd`.
 - **AC-SUB-06** — `CancelSubscription` sets status `CANCELED`.
-- **AC-SUB-07** — `TriggerRun` charges `max(1, scenarioCount)` minutes to `runMinutesUsed`; a run that would
-  exceed `runMinutesQuota` on a non-unlimited plan → `QUOTA_EXCEEDED` (HTTP 402); ENTERPRISE is unlimited.
-- **AC-SUB-08** — The annual cycle reflects the ≈16% discount in the computed price.
+- **AC-SUB-07** — `TriggerRun` charges `max(1, scenarioCount)` executions to `runMinutesUsed`; a run that would
+  exceed `runMinutesQuota` on a non-unlimited plan → `QUOTA_EXCEEDED` (HTTP 402); SCALE is unlimited.
+- **AC-SUB-08** — The annual cycle reflects 2 months free in the computed price.
 - **AC-SUB-09** — Tenant isolation: a non-member hitting the org's subscription endpoints → `404`.
 - **AC-SUB-10** — Plan change / checkout / cancel are audited.
 - **AC-SUB-11** — The `PaymentProvider` is a port; slice 4 wires a deterministic **mock** (offline, no Stripe).

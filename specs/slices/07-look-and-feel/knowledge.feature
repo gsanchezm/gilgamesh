@@ -1,3 +1,4 @@
+@ui
 Feature: Knowledge base (upload + indexed documents + shared search)
   The re-skinned Knowledge base (capture 09): upload per-org documents to ground the agents (private
   RAG), see them listed under "Indexed documents", and still search the GLOBAL shared corpus. Uploaded

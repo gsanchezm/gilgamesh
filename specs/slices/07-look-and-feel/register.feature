@@ -1,3 +1,4 @@
+@ui
 Feature: Create account (registration screen)
   The web signup screen (capture 02-registro) — twin of Login: the shared animated hero on the
   left, the "Create account" form on the right. Registration hits the real POST /auth/register,

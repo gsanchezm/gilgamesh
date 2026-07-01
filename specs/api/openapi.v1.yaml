@@ -332,7 +332,7 @@ paths:
       description: |
         Creates a root-tenant `Org` and an `OWNER` membership for the caller, and — in the same
         transaction — seeds the per-Org **11-agent catalog** (roster, keystone §3) and a trial
-        `Subscription` (TEAM / TRIALING). `slug` is unique; if omitted, it is derived from `name`.
+        `Subscription` (FREE / TRIALING). `slug` is unique; if omitted, it is derived from `name`.
         RBAC: any authenticated user may create an org. **Anti-abuse:** self-service org creation is
         rate-limited **per user** (bounded count per window) to prevent trial/org-farming and
         shared-quota abuse; exceeding it returns `429`.
@@ -1789,7 +1789,7 @@ paths:
                 plan: { $ref: '#/components/schemas/Plan' }
                 billingCycle: { $ref: '#/components/schemas/BillingCycle' }
                 seats: { type: integer, minimum: 1 }
-            example: { plan: PRO, billingCycle: ANNUAL, seats: 5 }
+            example: { plan: GROWTH, billingCycle: ANNUAL, seats: 5 }
       responses:
         '200':
           description: Checkout session created.
@@ -2106,7 +2106,7 @@ components:
       enum: [SOURCE_REPOS, PROJECT_TRACKING, TEST_MANAGEMENT, COMMUNICATION, CICD, DEVICES_BROWSERS]
     Plan:
       type: string
-      enum: [TEAM, PRO, ENTERPRISE]
+      enum: [FREE, STARTER, GROWTH, SCALE]
     BillingCycle:
       type: string
       enum: [MONTHLY, ANNUAL]

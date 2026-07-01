@@ -71,9 +71,10 @@ enum AgentFamily {
 }
 
 enum Plan {
-  TEAM
-  PRO
-  ENTERPRISE
+  FREE
+  STARTER
+  GROWTH
+  SCALE
 }
 
 enum BillingCycle {
