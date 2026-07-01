@@ -17,7 +17,11 @@ import type {
   UserRepository,
 } from '../ports/repositories';
 import { cosineSimilarity } from '@gilgamesh/domain';
-import type { KnowledgeChunkRepository, ScoredChunk } from '../ports/knowledge';
+import type {
+  KnowledgeChunkRepository,
+  KnowledgeDocumentRepository,
+  ScoredChunk,
+} from '../ports/knowledge';
 import { KnowledgeRetriever } from '../use-cases/knowledge';
 import type { Repositories, UnitOfWork } from '../ports/unit-of-work';
 import type {
@@ -26,6 +30,7 @@ import type {
   FeatureRecord,
   IntegrationRecord,
   KnowledgeChunkRecord,
+  KnowledgeDocumentRecord,
   MembershipRecord,
   OrgRecord,
   ProjectRecord,
@@ -328,13 +333,29 @@ export class InMemoryKnowledgeChunkRepository implements KnowledgeChunkRepositor
   }
   async search(queryEmbedding: number[], k: number): Promise<ScoredChunk[]> {
     return [...this.byId.values()]
+      // Shared corpus only (orgId null) — per-org uploaded chunks never surface in the global search.
+      .filter((chunk) => chunk.orgId == null)
       .map((chunk) => ({ chunk, score: cosineSimilarity(queryEmbedding, chunk.embedding) }))
       // Deterministic tiebreak by id (mirrors the Prisma `ORDER BY … , id`) so ties don't diverge.
       .sort((a, b) => b.score - a.score || (a.chunk.id < b.chunk.id ? -1 : a.chunk.id > b.chunk.id ? 1 : 0))
       .slice(0, k);
   }
   async count(): Promise<number> {
-    return this.byId.size;
+    let n = 0;
+    for (const c of this.byId.values()) if (c.orgId == null) n += 1;
+    return n;
+  }
+}
+
+export class InMemoryKnowledgeDocumentRepository implements KnowledgeDocumentRepository {
+  private readonly rows: KnowledgeDocumentRecord[] = [];
+  async create(doc: KnowledgeDocumentRecord): Promise<void> {
+    this.rows.push(doc);
+  }
+  async listForOrg(orgId: string): Promise<KnowledgeDocumentRecord[]> {
+    return this.rows
+      .filter((d) => d.orgId === orgId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : -1));
   }
 }
 
@@ -374,6 +395,7 @@ export interface InMemoryContext {
   subscriptions: InMemorySubscriptionRepository;
   audit: InMemoryAuditLogRepository;
   knowledge: InMemoryKnowledgeChunkRepository;
+  knowledgeDocuments: InMemoryKnowledgeDocumentRepository;
   integrations: InMemoryIntegrationRepository;
   repoProvider: MockRepoProvider;
   vault: StubSecretVault;
@@ -413,6 +435,7 @@ export function createInMemoryContext(): InMemoryContext {
   return {
     ...repos,
     knowledge,
+    knowledgeDocuments: new InMemoryKnowledgeDocumentRepository(),
     integrations: new InMemoryIntegrationRepository(),
     repoProvider: new MockRepoProvider(),
     vault: new StubSecretVault(),

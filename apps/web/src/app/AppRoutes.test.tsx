@@ -75,7 +75,11 @@ function makeClients(): Clients {
         cancel: vi.fn(async () => ({ ...sub, status: 'CANCELED' })),
       };
     })(),
-    knowledge: { search: vi.fn(async () => ({ results: [], total: 0 })) },
+    knowledge: {
+      search: vi.fn(async () => ({ results: [], total: 0 })),
+      listDocuments: vi.fn(async () => []),
+      uploadDocument: vi.fn(async () => ({ id: 'd1', name: 'd.md', type: 'md', chunkCount: 1, createdAt: '2026-07-01T00:00:00.000Z' })),
+    },
     integrations: {
       list: vi.fn(async () => []),
       connect: vi.fn(async () => ({ key: 'github', name: 'GitHub', group: 'SOURCE_REPOS', connected: true, config: {}, connectedAt: null })),

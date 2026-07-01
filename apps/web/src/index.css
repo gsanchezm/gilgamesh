@@ -694,3 +694,149 @@ body {
   font-size: 12.5px;
   color: #7e90ac;
 }
+
+/* ---- Knowledge base (capture 09; upload + indexed docs + shared search) ----- */
+.gx-kb {
+  display: flex;
+  flex-direction: column;
+}
+.gx-kb__drop {
+  margin: 8px 0 4px;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-card, 16px);
+  background: var(--card);
+  padding: 40px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+.gx-kb__drop--over {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--card));
+}
+.gx-kb__dropicon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  color: var(--accent);
+}
+.gx-kb__dropText {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+.gx-kb__demo {
+  padding: 8px 14px;
+  font-size: 12.5px;
+}
+.gx-kb__section {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 26px 0 12px;
+}
+.gx-kb__empty {
+  color: var(--muted);
+  font-size: 13.5px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card, 16px);
+  padding: 18px 20px;
+  margin: 0;
+}
+.gx-kb__docs,
+.gx-kb__results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gx-kb__doc {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.gx-kb__docname {
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gx-kb__doctype {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+.gx-kb__docchunks {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.gx-kb__search {
+  display: flex;
+  gap: 10px;
+  max-width: 520px;
+}
+.gx-kb__search input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  background: var(--field, color-mix(in srgb, var(--muted) 8%, transparent));
+  border-radius: 10px;
+  padding: 11px 13px;
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+}
+.gx-kb__meta {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  margin: 14px 0 8px;
+}
+.gx-kb__result {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.gx-kb__content {
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+.gx-kb__citation {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0;
+}
+.gx-kb__score {
+  color: var(--accent);
+}

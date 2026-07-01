@@ -93,6 +93,17 @@ remaining re-skins → new views (Pricing, Reports, Orchestration, Chat, Session
   funnel (start free → register; sign in → login). `pricing.feature` ↔ Playwright. **Deferred (its own
   slice):** migrate the billing/subscription **backend** + the `/billing` screen to the new model —
   scheduled to land with the **Subscription re-skin** (capture 12), its natural home.
-- ⬜ Remaining views (Reports, Orchestration, Chat, Session, + re-skins of Knowledge / Test Lab /
-  Integrations / Subscription — Subscription re-skin also migrates billing to the new pricing model).
+- ✅ Phase 7 — **Knowledge base re-skin + per-org document upload** (`capturas/09-base-de-conocimiento.png`).
+  The capture is an UPLOAD/ingest view (not the existing global search), so this adds a **new per-org
+  capability** (owner-approved: real .md/.txt ingest + a "+ demo" sample; PDF/.docx parsing deferred —
+  no new deps): `KnowledgeDocument` (per-org) + `orgId`/`documentId` on `KnowledgeChunk` (migration
+  `knowledge_per_org_documents`); `chunkText` (domain, pure); `UploadKnowledgeDocument`/
+  `ListKnowledgeDocuments` (RBAC: non-member → NOT_FOUND); the shared `search`/`count` filter
+  `orgId IS NULL` so uploaded chunks **never leak** into the global search; `POST|GET
+  /orgs/:orgId/knowledge/documents` in both wirings. Web: `KnowledgeScreen` re-skin (drag/click upload
+  zone + "+ demo" + "Indexed documents" list) **keeping** the shared search. Verified: domain 71 ·
+  application 142 · web 83 · api 85 Docker-free · knowledge int 4 (pgvector) · Playwright knowledge.
+  **Follow-up:** wire per-org retrieval into grounding; PDF/.docx parsing (needs deps).
+- ⬜ Remaining views (Reports, Orchestration, Chat, Session, + re-skins of Test Lab / Integrations /
+  Subscription — Subscription re-skin also migrates billing to the new pricing model).
 - ⬜ Playwright `.feature`-mapped scenarios per view.

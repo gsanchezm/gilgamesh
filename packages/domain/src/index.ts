@@ -8,4 +8,5 @@ export * from './execution/summarize-run';
 export * from './billing/plans';
 export * from './pricing/plan-catalog';
 export * from './knowledge/rag';
+export * from './knowledge/chunk-text';
 export * from './integrations/integrations';

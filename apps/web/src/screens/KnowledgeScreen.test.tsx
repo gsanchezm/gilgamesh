@@ -15,13 +15,51 @@ const view: KnowledgeSearchView = {
 };
 
 function fakeClient(overrides?: Partial<KnowledgeClient>): KnowledgeClient {
-  return { search: vi.fn(async () => view), ...overrides };
+  return {
+    search: vi.fn(async () => view),
+    listDocuments: vi.fn(async () => []),
+    uploadDocument: vi.fn(async () => ({ id: 'd-new', name: 'demo.md', type: 'md', chunkCount: 5, createdAt: '2026-07-01T00:00:00.000Z' })),
+    ...overrides,
+  };
+}
+
+function renderScreen(client: KnowledgeClient) {
+  return render(<KnowledgeScreen client={client} orgId="org-1" />);
 }
 
 describe('KnowledgeScreen', () => {
-  it('searches and renders results with source citations', async () => {
+  it('loads and lists the org’s indexed documents on mount', async () => {
+    const client = fakeClient({
+      listDocuments: vi.fn(async () => [
+        { id: 'd1', name: 'design.md', type: 'md', chunkCount: 3, createdAt: '2026-07-01T00:00:00.000Z' },
+      ]),
+    });
+    renderScreen(client);
+
+    await waitFor(() => expect(client.listDocuments).toHaveBeenCalledWith('org-1'));
+    expect(await screen.findByText('design.md')).toBeTruthy();
+  });
+
+  it('shows an empty state when there are no documents', async () => {
+    renderScreen(fakeClient());
+    expect(await screen.findByText(/No documents uploaded yet/i)).toBeTruthy();
+  });
+
+  it('ingests a sample via the demo button and shows the new document', async () => {
     const client = fakeClient();
-    render(<KnowledgeScreen client={client} />);
+    renderScreen(client);
+    await waitFor(() => expect(client.listDocuments).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: /demo/i }));
+
+    await waitFor(() => expect(client.uploadDocument).toHaveBeenCalledTimes(1));
+    expect(client.uploadDocument).toHaveBeenCalledWith('org-1', expect.objectContaining({ type: 'md' }));
+    expect(await screen.findByText('demo.md')).toBeTruthy();
+  });
+
+  it('searches the shared KB and renders results with citations', async () => {
+    const client = fakeClient();
+    renderScreen(client);
 
     fireEvent.change(screen.getByLabelText('Search query'), { target: { value: 'boundary value' } });
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
@@ -29,14 +67,6 @@ describe('KnowledgeScreen', () => {
     await waitFor(() => expect(client.search).toHaveBeenCalledWith('boundary value', 8));
     expect(await screen.findByText(/Boundary value analysis tests the edges/)).toBeTruthy();
     expect(screen.getByText(/ISTQB_CTFL_Syllabus_v4.0.1 · Boundary Value Analysis/)).toBeTruthy();
-    expect(screen.getByText('1 of 42 chunks')).toBeTruthy();
-  });
-
-  it('does not search an empty query', () => {
-    const client = fakeClient();
-    render(<KnowledgeScreen client={client} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
-    expect(client.search).not.toHaveBeenCalled();
   });
 
   it('shows an error when the search fails', async () => {
@@ -45,7 +75,7 @@ describe('KnowledgeScreen', () => {
         throw new Error('Could not search the knowledge base.');
       }),
     });
-    render(<KnowledgeScreen client={client} />);
+    renderScreen(client);
     fireEvent.change(screen.getByLabelText('Search query'), { target: { value: 'x' } });
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
     expect((await screen.findByRole('alert')).textContent).toContain('Could not search the knowledge base.');

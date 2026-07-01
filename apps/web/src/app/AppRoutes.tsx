@@ -128,7 +128,8 @@ function BillingRoute() {
 
 function KnowledgeRoute() {
   const { knowledge } = useClients();
-  return <KnowledgeScreen client={knowledge} />;
+  const { activeOrgId } = useSession();
+  return <KnowledgeScreen client={knowledge} orgId={activeOrgId ?? ''} />;
 }
 
 export function AppRoutes() {

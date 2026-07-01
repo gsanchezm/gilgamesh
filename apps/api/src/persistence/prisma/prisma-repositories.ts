@@ -10,6 +10,8 @@ import type {
   IntegrationRepository,
   KnowledgeChunkRecord,
   KnowledgeChunkRepository,
+  KnowledgeDocumentRecord,
+  KnowledgeDocumentRepository,
   MembershipRecord,
   MembershipRepository,
   ScoredChunk,
@@ -371,9 +373,11 @@ export class PrismaKnowledgeChunkRepository implements KnowledgeChunkRepository 
     for (const c of chunks) {
       const vec = `[${c.embedding.join(',')}]`;
       await this.db.$executeRaw`
-        INSERT INTO knowledge_chunks (id, source, heading_path, section, content, embedding, token_estimate)
-        VALUES (${c.id}, ${c.source}, ${c.headingPath}, ${c.section}, ${c.content}, ${vec}::vector, ${c.tokenEstimate})
+        INSERT INTO knowledge_chunks (id, org_id, document_id, source, heading_path, section, content, embedding, token_estimate)
+        VALUES (${c.id}, ${c.orgId ?? null}::uuid, ${c.documentId ?? null}::uuid, ${c.source}, ${c.headingPath}, ${c.section}, ${c.content}, ${vec}::vector, ${c.tokenEstimate})
         ON CONFLICT (id) DO UPDATE SET
+          org_id = EXCLUDED.org_id,
+          document_id = EXCLUDED.document_id,
           source = EXCLUDED.source,
           heading_path = EXCLUDED.heading_path,
           section = EXCLUDED.section,
@@ -385,10 +389,12 @@ export class PrismaKnowledgeChunkRepository implements KnowledgeChunkRepository 
 
   async search(queryEmbedding: number[], k: number): Promise<ScoredChunk[]> {
     const vec = `[${queryEmbedding.join(',')}]`;
+    // Shared corpus only (org_id IS NULL) — per-org uploaded chunks never surface in the global search.
     const rows = await this.db.$queryRaw<KnowledgeSearchRow[]>`
       SELECT id, source, heading_path AS "headingPath", section, content,
              token_estimate AS "tokenEstimate", 1 - (embedding <=> ${vec}::vector) AS score
       FROM knowledge_chunks
+      WHERE org_id IS NULL
       ORDER BY embedding <=> ${vec}::vector, id
       LIMIT ${k}`;
     return rows.map((r) => ({
@@ -406,7 +412,40 @@ export class PrismaKnowledgeChunkRepository implements KnowledgeChunkRepository 
   }
 
   async count(): Promise<number> {
-    return this.db.knowledgeChunk.count();
+    return this.db.knowledgeChunk.count({ where: { orgId: null } });
+  }
+}
+
+/** Per-org uploaded knowledge documents (slice 7). Plain typed-client rows (no vector column here). */
+export class PrismaKnowledgeDocumentRepository implements KnowledgeDocumentRepository {
+  constructor(private readonly db: Prisma.TransactionClient) {}
+
+  async create(doc: KnowledgeDocumentRecord): Promise<void> {
+    await this.db.knowledgeDocument.create({
+      data: {
+        id: doc.id,
+        orgId: doc.orgId,
+        name: doc.name,
+        type: doc.type,
+        chunkCount: doc.chunkCount,
+        createdAt: doc.createdAt,
+      },
+    });
+  }
+
+  async listForOrg(orgId: string): Promise<KnowledgeDocumentRecord[]> {
+    const rows = await this.db.knowledgeDocument.findMany({
+      where: { orgId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      orgId: r.orgId,
+      name: r.name,
+      type: r.type,
+      chunkCount: r.chunkCount,
+      createdAt: r.createdAt,
+    }));
   }
 }
 

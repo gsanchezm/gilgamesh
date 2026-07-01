@@ -14,6 +14,7 @@ import {
   InMemoryFeatureRepository,
   InMemoryIntegrationRepository,
   InMemoryKnowledgeChunkRepository,
+  InMemoryKnowledgeDocumentRepository,
   InMemoryMembershipRepository,
   InMemoryOrgRepository,
   InMemoryProjectRepository,
@@ -137,6 +138,7 @@ import { TOKENS } from './tokens';
     { provide: TOKENS.Kernel, useValue: new DeterministicKernel() },
     { provide: TOKENS.Payment, useValue: new MockPaymentProvider() },
     { provide: TOKENS.Knowledge, useValue: new InMemoryKnowledgeChunkRepository() },
+    { provide: TOKENS.KnowledgeDocuments, useValue: new InMemoryKnowledgeDocumentRepository() },
     {
       provide: TOKENS.KnowledgeRetrieval,
       useFactory: (brain: AgentBrainPort, knowledge: KnowledgeChunkRepository) =>
@@ -172,6 +174,7 @@ import { TOKENS } from './tokens';
     TOKENS.Kernel,
     TOKENS.Payment,
     TOKENS.Knowledge,
+    TOKENS.KnowledgeDocuments,
     TOKENS.KnowledgeRetrieval,
     TOKENS.Integrations,
     TOKENS.RepoProvider,
