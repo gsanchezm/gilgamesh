@@ -13,13 +13,32 @@ export interface LoginScreenProps {
 
 // Tool / browser / platform marks that orbit the hero helix (handoff login, capture 01).
 const HERO_CHIPS = [
-  { src: '/assets/platforms/platform-android.svg', alt: 'Android', top: '8%', left: '58%', delay: '0s' },
-  { src: '/assets/tools/tool-pixelmatch.png', alt: 'Visual', top: '20%', left: '22%', delay: '0.8s' },
-  { src: '/assets/tools/tool-playwright.png', alt: 'Playwright', top: '40%', left: '70%', delay: '1.6s' },
-  { src: '/assets/browsers/browser-chrome.png', alt: 'Chromium', top: '62%', left: '30%', delay: '0.4s' },
-  { src: '/assets/tools/tool-api.svg', alt: 'API', top: '66%', left: '66%', delay: '2s' },
-  { src: '/assets/browsers/browser-firefox.png', alt: 'Firefox', top: '82%', left: '46%', delay: '1.2s' },
+  { src: '/assets/platforms/platform-android.svg', alt: 'Android', top: '9%', left: '57%', delay: '0s' },
+  { src: '/assets/tools/tool-pixelmatch.png', alt: 'Visual', top: '22%', left: '20%', delay: '0.8s' },
+  { src: '/assets/tools/tool-playwright.png', alt: 'Playwright', top: '42%', left: '72%', delay: '1.6s' },
+  { src: '/assets/browsers/browser-chrome.png', alt: 'Chromium', top: '58%', left: '10%', delay: '0.4s' },
+  { src: '/assets/tools/tool-api.svg', alt: 'API', top: '70%', left: '82%', delay: '2s' },
+  { src: '/assets/browsers/browser-firefox.png', alt: 'Firefox', top: '86%', left: '40%', delay: '1.2s' },
 ];
+
+// Smooth double helix: two dense sine strands phase-shifted by π so they weave, spanning the hero
+// (handoff capture 01) — replaces the earlier dashed zig-zag.
+const HELIX_W = 620;
+const HELIX_H = 1000;
+function helixStrand(phase: number): string {
+  const amp = 152;
+  const cx = 310;
+  const periods = 2.6;
+  const steps = 168;
+  let d = '';
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const x = cx + amp * Math.sin(t * periods * Math.PI * 2 + phase);
+    const y = t * HELIX_H;
+    d += `${i === 0 ? 'M' : 'L'}${x.toFixed(1)} ${y.toFixed(1)} `;
+  }
+  return d.trim();
+}
 
 export function LoginScreen({ authClient, onSuccess, onForgot, onCreate, onViewPlans }: LoginScreenProps) {
   const [email, setEmail] = useState('');
@@ -50,17 +69,9 @@ export function LoginScreen({ authClient, onSuccess, onForgot, onCreate, onViewP
   return (
     <main className="gx-auth">
       <aside className="gx-auth__hero" aria-hidden="true">
-        <svg className="gx-auth__helix" viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice">
-          <path
-            className="gx-auth__strand gx-auth__strand--gold"
-            d="M130,-20 C 300,140 60,260 200,400 C 340,540 100,660 190,820"
-            fill="none"
-          />
-          <path
-            className="gx-auth__strand gx-auth__strand--blue"
-            d="M270,-20 C 100,140 340,260 200,400 C 60,540 300,660 210,820"
-            fill="none"
-          />
+        <svg className="gx-auth__helix" viewBox={`0 0 ${HELIX_W} ${HELIX_H}`} preserveAspectRatio="xMidYMid slice">
+          <path className="gx-auth__strand gx-auth__strand--gold" d={helixStrand(0)} fill="none" />
+          <path className="gx-auth__strand gx-auth__strand--blue" d={helixStrand(Math.PI)} fill="none" />
         </svg>
         {HERO_CHIPS.map((c) => (
           <span

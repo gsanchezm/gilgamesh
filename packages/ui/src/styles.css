@@ -125,6 +125,17 @@
   }
 }
 
+/* Slow ambient sway for the login-hero double helix. */
+@keyframes gxsway {
+  0%,
+  100% {
+    transform: translateX(-9px);
+  }
+  50% {
+    transform: translateX(9px);
+  }
+}
+
 /* Agent avatar (handoff §5 anatomy): family-colored frame → inset portrait → status dot. */
 .gx-avatar {
   position: relative;

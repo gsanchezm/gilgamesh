@@ -103,6 +103,16 @@ body {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 1.1fr 1fr;
+  /* One seamless dark backdrop for BOTH columns (handoff capture 01): brightest under the brand on
+     the left, falling off to the right, so the form floats on the same gradient — no visible seam.
+     Login is always dark (the handoff has no light login), so pin the dark token values here. */
+  background: radial-gradient(135% 100% at 30% 18%, #1b3462, #0a1526 72%);
+  --text: #eaf0fa;
+  --muted: #8597b4;
+  --border: rgba(255, 255, 255, 0.13);
+  --field: rgba(255, 255, 255, 0.045);
+  --accent: #e7c877;
+  --accent-soft: rgba(201, 161, 78, 0.15);
 }
 .gx-auth__hero {
   position: relative;
@@ -112,7 +122,6 @@ body {
   align-items: center;
   justify-content: center;
   padding: 48px;
-  background: radial-gradient(120% 80% at 30% 0%, #1a3260, #0b1a37);
 }
 .gx-auth__helix {
   position: absolute;
@@ -120,20 +129,22 @@ body {
   width: 100%;
   height: 100%;
   pointer-events: none;
+  animation: gxsway 9s ease-in-out infinite;
 }
 .gx-auth__strand {
-  stroke-width: 1.5;
-  stroke-dasharray: 5 11;
+  fill: none;
+  stroke-width: 2.4;
+  stroke-linecap: round;
 }
 .gx-auth__strand--gold {
   stroke: #c9a14e;
-  opacity: 0.4;
-  animation: gxdash 2.6s linear infinite;
+  opacity: 0.55;
+  filter: drop-shadow(0 0 6px rgba(201, 161, 78, 0.55));
 }
 .gx-auth__strand--blue {
-  stroke: #3f6fa3;
-  opacity: 0.32;
-  animation: gxdash 3.4s linear infinite reverse;
+  stroke: #4a90d9;
+  opacity: 0.46;
+  filter: drop-shadow(0 0 6px rgba(74, 144, 217, 0.5));
 }
 .gx-auth__chip {
   position: absolute;
@@ -195,7 +206,7 @@ body {
   flex-direction: column;
   justify-content: center;
   padding: 48px 56px;
-  background: var(--bg);
+  background: transparent;
 }
 .gx-auth__viewplans {
   position: absolute;
