@@ -33,8 +33,8 @@ Backend = does the data/logic exist · UI = re-skinned to the `capturas/NN` targ
 | 07 | Chat / voice | 🔴 | 🔴 | blocked on Brain/Claude |
 | 08 | Reports | 🟡 | 🔴 | data exists in Runs |
 | 09 | Knowledge base | ✅ | ✅ | + per-org upload |
-| 10 | Test Lab | ✅ | 🟡 | **← NEXT re-skin** |
-| 11 | Integrations | ✅ | 🟡 | |
+| 10 | Test Lab | ✅ | ✅ | Integrated TestLabSummaryStats & refactored layout |
+| 11 | Integrations | ✅ | 🟡 | **← NEXT re-skin** |
 | 12 | Subscription | ✅ | 🟡 | old model; 4-tier migration pending |
 | 13 | Session — web | 🔴 | 🔴 | needs execution timeline data |
 | 14 | Session — android | 🔴 | 🔴 | Expo not started |

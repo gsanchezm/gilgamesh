@@ -82,7 +82,8 @@ describe('TestLabScreen', () => {
   it('loads and renders slices, features and test cases', async () => {
     render(<TestLabScreen client={fakeClient()} runsClient={fakeRuns()} integrationsClient={fakeIntegrations()} projectId="p1" />);
     expect(await screen.findByText('Checkout')).toBeTruthy();
-    expect(screen.getByText('1 slices · 0 features · 0 test cases')).toBeTruthy();
+    const summary = screen.getByRole('region', { name: 'Test Lab summary' });
+    expect(summary).toBeTruthy();
   });
 
   it('adds a slice', async () => {

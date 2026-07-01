@@ -1,5 +1,6 @@
 import { Button } from '@gilgamesh/ui';
 import { useCallback, useEffect, useState } from 'react';
+import { TestLabSummaryStats } from '../components/TestLabSummaryStats';
 import type { IntegrationsClient } from '../lib/integrations-client';
 import type { RunSummaryView, RunTargetKind, RunView, RunsClient } from '../lib/runs-client';
 import type {
@@ -150,10 +151,12 @@ export function TestLabScreen({ client, runsClient, integrationsClient, projectI
     <main className="gx-lab">
       <header className="gx-lab__head">
         <h1>Test Lab</h1>
-        <p className="gx-lab__sub">
-          {slices.length} slices · {features.length} features · {testCases.length} test cases
-        </p>
       </header>
+      <TestLabSummaryStats
+        slicesCount={slices.length}
+        featuresCount={features.length}
+        testCasesCount={testCases.length}
+      />
 
       {error && (
         <p role="alert" className="gx-login__error">
