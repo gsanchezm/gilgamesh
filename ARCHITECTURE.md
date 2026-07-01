@@ -291,6 +291,10 @@ sibling agent).
 
 ## 10. Where to look next
 
+- **Live product status (as-built):** [`docs/research/feature-status.md`](docs/research/feature-status.md) —
+  the board of what's shipped vs. in-progress vs. blocked. Note the build order diverged from the §5 plan:
+  as-built, slices 3–6 are Execution / Subscription / Knowledge / Integrations and **slice 7 = the *Look & feel*
+  re-skin** (in progress). Per-slice detail lives in [`CLAUDE.md`](CLAUDE.md).
 - **Build & boundaries:** [`docs/conventions/monorepo.md`](docs/conventions/monorepo.md) — pnpm
   workspaces, Turborepo task graph/caching, `@gilgamesh/*` naming, and the **import-boundary enforcement**
   that fails CI on inward-rule or cross-slice violations.
