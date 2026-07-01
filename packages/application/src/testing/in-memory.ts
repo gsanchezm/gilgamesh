@@ -216,6 +216,14 @@ export class InMemoryScenarioRepository implements ScenarioRepository {
   async listForFeature(featureId: string): Promise<ScenarioRecord[]> {
     return this.rows.filter((s) => s.featureId === featureId).sort((a, b) => a.order - b.order);
   }
+  async countByFeature(featureIds: string[]): Promise<Map<string, number>> {
+    const wanted = new Set(featureIds);
+    const counts = new Map<string, number>();
+    for (const s of this.rows) {
+      if (wanted.has(s.featureId)) counts.set(s.featureId, (counts.get(s.featureId) ?? 0) + 1);
+    }
+    return counts;
+  }
   async deleteForFeature(featureId: string): Promise<void> {
     this.rows = this.rows.filter((s) => s.featureId !== featureId);
   }

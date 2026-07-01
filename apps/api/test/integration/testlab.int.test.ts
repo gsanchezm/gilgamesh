@@ -82,4 +82,22 @@ describe('Test Lab (Prisma · real Postgres)', () => {
     expect(persisted).not.toBeNull();
     expect(persisted?.sliceId).toBeNull();
   });
+
+  it('assigns distinct keys under concurrent creation — no unique-collision 500 (audit #7)', async () => {
+    const N = 6;
+    const results = await Promise.all(
+      Array.from({ length: N }, (_, i) =>
+        mutate(request(server()).post(`${base}/projects/${projectId}/test-cases`)).send({
+          title: `Concurrent ${i}`,
+          priority: 'LOW',
+        }),
+      ),
+    );
+
+    // The derive-key/insert race is absorbed by the CONFLICT retry: every request succeeds…
+    expect(results.map((r) => r.status)).toEqual(Array(N).fill(201));
+    // …and each lands on a distinct key (no duplicates, no lost writes).
+    const keys = results.map((r) => r.body.key as string);
+    expect(new Set(keys).size).toBe(N);
+  });
 });

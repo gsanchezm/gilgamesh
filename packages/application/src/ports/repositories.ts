@@ -89,6 +89,8 @@ export interface ScenarioRepository {
   /** Replaces all scenarios for a feature (used on create + re-parse on update). */
   replaceForFeature(featureId: string, recs: ScenarioRecord[]): Promise<void>;
   listForFeature(featureId: string): Promise<ScenarioRecord[]>;
+  /** Scenario counts grouped by feature id (one aggregate query) — avoids the per-feature N+1 in ListFeatures. */
+  countByFeature(featureIds: string[]): Promise<Map<string, number>>;
   deleteForFeature(featureId: string): Promise<void>;
   /** Updates one scenario's last run status in place by id; a no-op if the row is gone. */
   setLastStatus(scenarioId: string, status: TestCaseStatus): Promise<void>;

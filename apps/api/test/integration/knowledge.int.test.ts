@@ -89,4 +89,21 @@ describe('Knowledge / RAG (Prisma · real Postgres + pgvector)', () => {
     const res = await new SearchKnowledge({ knowledge, brain }).execute({ query: 'boundary value edges' });
     expect(res.results[0]!.content).toContain('boundary value');
   });
+
+  it('batch-ingests a set larger than one INSERT batch and upserts across it (audit #10)', async () => {
+    const N = 600; // > the 500-row batch cap, so the chunking boundary is exercised
+    const docs = Array.from({ length: N }, (_, i) => ({
+      id: `bulk-${i}`,
+      source: 'bulk',
+      headingPath: [],
+      section: 's',
+      text: `chunk ${i}: an equivalence partition sample about testing technique variant ${i}`,
+    }));
+    await new IngestKnowledge({ knowledge, brain }).execute(docs);
+    expect(await knowledge.count()).toBe(N);
+
+    // Re-ingesting the same ids updates in place (ON CONFLICT), never duplicates — still N rows.
+    await new IngestKnowledge({ knowledge, brain }).execute(docs.map((d) => ({ ...d, text: `${d.text} revised` })));
+    expect(await knowledge.count()).toBe(N);
+  });
 });
