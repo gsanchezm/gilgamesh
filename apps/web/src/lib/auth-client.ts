@@ -1,4 +1,5 @@
 import { readCsrfToken } from './csrf';
+import { API_BASE } from './http';
 
 export interface LoginInput {
   email: string;
@@ -38,8 +39,6 @@ export interface AuthClient {
   /** Revokes the current session (server clears the cookie). */
   logout(): Promise<void>;
 }
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
 
 export const httpAuthClient: AuthClient = {
   async login(input) {

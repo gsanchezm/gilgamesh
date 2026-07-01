@@ -1,4 +1,5 @@
 import { readCsrfToken } from './csrf';
+import { API_BASE, ok } from './http';
 
 export interface Citation {
   source: string;
@@ -38,16 +39,6 @@ export interface KnowledgeClient {
   listDocuments(orgId: string): Promise<KnowledgeDocument[]>;
   /** Ingest a per-org document (.md/.txt text). */
   uploadDocument(orgId: string, input: UploadDocumentInput): Promise<KnowledgeDocument>;
-}
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
-
-async function ok<T>(res: Response, fallback: string): Promise<T> {
-  if (!res.ok) {
-    const problem = (await res.json().catch(() => ({}))) as { detail?: string };
-    throw new Error(problem.detail ?? fallback);
-  }
-  return (await res.json()) as T;
 }
 
 export const httpKnowledgeClient: KnowledgeClient = {

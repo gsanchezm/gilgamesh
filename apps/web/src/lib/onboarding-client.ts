@@ -1,4 +1,5 @@
 import { readCsrfToken } from './csrf';
+import { API_BASE } from './http';
 
 export type ProjectFormat = 'BDD' | 'TRADITIONAL';
 export type RepoProvider = 'github' | 'bitbucket' | 'ado';
@@ -17,8 +18,6 @@ export interface CreateProjectResult {
 export interface OnboardingClient {
   createProject(input: CreateProjectInput): Promise<CreateProjectResult>;
 }
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
 
 export const httpOnboardingClient: OnboardingClient = {
   async createProject(input) {
