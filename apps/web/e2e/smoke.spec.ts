@@ -22,7 +22,7 @@ test('full flow: login → onboarding (CSRF POST) → agent room toggle + wake-a
   await page.goto('/login');
   await page.getByPlaceholder('name@company.com').fill(email);
   await page.getByPlaceholder('••••••••').fill(PASSWORD);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Enter' }).click();
 
   // 2) Onboarding wizard. "Create project" is a POST /projects that MUST carry X-CSRF-Token
   //    (double-submit) — if the client CSRF wiring were broken this 403s and we never advance.

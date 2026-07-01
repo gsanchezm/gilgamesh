@@ -61,6 +61,10 @@ remaining re-skins → new views (Pricing, Reports, Orchestration, Chat, Session
 - ✅ Phase 3 — Dashboard (Agent room) re-skin: `Card` + `AgentCard` primitives, KPI row (Agents
   awake / Runs today / Success rate / Scenarios), Agents legend, agent-card grid + "work together"
   card; CTAs wired (Go to canvas / Open / Chat) to ComingSoon routes. Real EN copy from the prototype.
-- ⬜ Remaining views (Login hero, Pricing, Onboarding, Reports, Orchestration, Chat, Session, +
+- ✅ Phase 4 — Login hero re-skin: two-column layout, animated helix (`gxdash`) with orbiting
+  tool/browser chips (`gxfloat`), circular brand mark, real EN copy (`Sign in` / hero / `Enter` CTA /
+  Remember me / providers / Create account). Login logic + placeholders preserved; button renamed
+  `Sign in`→`Enter` across unit + e2e specs. Verified in-browser (smoke green, visual dark/light).
+- ⬜ Remaining views (Pricing, Onboarding re-skin, Reports, Orchestration, Chat, Session, +
   re-skins of Test Lab / Knowledge / Integrations / Subscription).
-- ⬜ Playwright `.feature`-mapped scenarios per view + visual check (dark/light vs `capturas/`).
+- ⬜ Playwright `.feature`-mapped scenarios per view.

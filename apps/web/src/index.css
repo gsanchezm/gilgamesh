@@ -98,6 +98,214 @@ body {
   cursor: pointer;
 }
 
+/* ---- Login / auth (two-column hero, capture 01) ---------------------------- */
+.gx-auth {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+}
+.gx-auth__hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  background: radial-gradient(120% 80% at 30% 0%, #1a3260, #0b1a37);
+}
+.gx-auth__helix {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.gx-auth__strand {
+  stroke-width: 1.5;
+  stroke-dasharray: 5 11;
+}
+.gx-auth__strand--gold {
+  stroke: #c9a14e;
+  opacity: 0.4;
+  animation: gxdash 2.6s linear infinite;
+}
+.gx-auth__strand--blue {
+  stroke: #3f6fa3;
+  opacity: 0.32;
+  animation: gxdash 3.4s linear infinite reverse;
+}
+.gx-auth__chip {
+  position: absolute;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #0a1730;
+  border: 1px solid rgba(201, 161, 78, 0.3);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
+  animation: gxfloat 6s ease-in-out infinite;
+}
+.gx-auth__chip img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+.gx-auth__brand {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+}
+.gx-auth__mark {
+  width: 148px;
+  height: 148px;
+  margin: 0 auto;
+  border-radius: 50%;
+  background-color: #0a1730;
+  background-size: cover;
+  background-position: center;
+  border: 1px solid rgba(201, 161, 78, 0.5);
+  box-shadow: 0 0 0 8px rgba(201, 161, 78, 0.06);
+}
+.gx-auth__logo {
+  font-family: var(--font-display);
+  font-size: 36px;
+  letter-spacing: 0.18em;
+  color: #e7c877;
+  margin: 22px 0 6px;
+}
+.gx-auth__tagline {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: #8597b4;
+}
+.gx-auth__herotext {
+  max-width: 320px;
+  margin: 22px auto 0;
+  color: #c4d0e4;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.gx-auth__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 48px 56px;
+  background: var(--bg);
+}
+.gx-auth__viewplans {
+  position: absolute;
+  top: 30px;
+  right: 40px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.gx-auth__title {
+  font-family: var(--font-display);
+  font-size: 30px;
+  color: var(--text);
+  margin: 0;
+}
+.gx-auth__sub {
+  color: var(--muted);
+  font-size: 13.5px;
+  margin: 4px 0 24px;
+}
+.gx-auth__form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+}
+.gx-auth__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.gx-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.gx-checkbox input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+.gx-auth__enter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px;
+  font-size: 14px;
+  margin-top: 4px;
+}
+.gx-auth__divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.gx-auth__divider::before,
+.gx-auth__divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.gx-auth__providers {
+  display: flex;
+  gap: 10px;
+}
+.gx-auth__providers .gx-btn {
+  flex: 1;
+}
+.gx-auth__foot {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin: 4px 0 0;
+}
+.gx-auth__footlink {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+@media (max-width: 900px) {
+  .gx-auth {
+    grid-template-columns: 1fr;
+  }
+  .gx-auth__hero {
+    display: none;
+  }
+  .gx-auth__panel {
+    padding: 40px 28px;
+    align-items: center;
+  }
+}
+
 /* Screen title block (handoff §4.5): Marcellus 28–30px title + muted sub. */
 .gx-room__title {
   font-family: var(--font-display);

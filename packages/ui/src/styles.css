@@ -114,6 +114,17 @@
   }
 }
 
+/* Gentle float for the login-hero orbiting tool chips. */
+@keyframes gxfloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
 /* Agent avatar (handoff §5 anatomy): family-colored frame → inset portrait → status dot. */
 .gx-avatar {
   position: relative;

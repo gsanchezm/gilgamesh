@@ -17,7 +17,7 @@ test('Billing: view plan + usage, change plan, mock checkout to ACTIVE', async (
   await page.goto('/login');
   await page.getByPlaceholder('name@company.com').fill(email);
   await page.getByPlaceholder('••••••••').fill(PASSWORD);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Enter' }).click();
 
   await expect(page.getByText('Name your project')).toBeVisible();
   await page.getByPlaceholder('OmniPizza').fill('OmniPizza');

@@ -141,7 +141,7 @@ describe('AppRoutes', () => {
     fireEvent.change(screen.getByPlaceholderText('••••••••'), {
       target: { value: 'correct horse battery' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enter' }));
 
     expect(await screen.findByText('Name your project')).toBeTruthy();
     fireEvent.change(screen.getByPlaceholderText('OmniPizza'), { target: { value: 'OmniPizza' } });

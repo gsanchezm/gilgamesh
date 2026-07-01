@@ -17,7 +17,7 @@ test('Knowledge: search the shared KB and see results with source citations', as
   await page.goto('/login');
   await page.getByPlaceholder('name@company.com').fill(email);
   await page.getByPlaceholder('••••••••').fill(PASSWORD);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Enter' }).click();
 
   // Onboard so we land authenticated, then jump to the (org-agnostic) knowledge base.
   await expect(page.getByText('Name your project')).toBeVisible();
