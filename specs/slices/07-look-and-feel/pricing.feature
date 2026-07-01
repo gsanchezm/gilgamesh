@@ -1,3 +1,4 @@
+@ui
 Feature: Pricing (public marketing page)
   The public pricing page (capture 03-pricing) presenting the four self-serve tiers billed PER ACTIVE
   WORKSPACE / month — Free, Starter, Growth, Scale (owner's 2026-07-01 model). Reachable pre-auth from

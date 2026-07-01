@@ -10,6 +10,7 @@ export interface CheckoutRequest {
   orgId: string;
   plan: Plan;
   cycle: BillingCycle;
+  /** Active workspaces. Kept as `seats` for the provider seam until Stripe is introduced. */
   seats: number;
 }
 

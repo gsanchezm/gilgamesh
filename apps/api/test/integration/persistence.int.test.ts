@@ -68,7 +68,7 @@ describe('Persistence (Prisma · real Postgres)', () => {
     expect(await db.slice.count()).toBe(5);
     expect(await db.toolBinding.count()).toBe(11);
     expect(await db.subscription.count()).toBe(1);
-    expect((await db.subscription.findFirst())?.plan).toBe('TEAM');
+    expect((await db.subscription.findFirst())?.plan).toBe('FREE');
     expect(await db.auditLog.count()).toBeGreaterThanOrEqual(3); // auth.register + org.created + project.created
     expect((await db.user.findFirst())?.passwordHash.startsWith('$argon2')).toBe(true);
   });

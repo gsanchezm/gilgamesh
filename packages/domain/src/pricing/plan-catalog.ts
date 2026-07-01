@@ -3,9 +3,8 @@
  * PER ACTIVE WORKSPACE / month (Free / Starter / Growth / Scale). Pure, framework-agnostic (Clean
  * Architecture — no imports), so web + a future mobile app render the same source of truth.
  *
- * NOTE: this is the *marketing* catalog. The billing/subscription domain (`../billing/plans.ts`) still
- * models the legacy TEAM/PRO/ENTERPRISE per-seat tiers; migrating that backend + the /billing screen to
- * this model is its own follow-up slice. Keep the two clearly separate until then.
+ * NOTE: this is the marketing catalog. The billing/subscription domain now mirrors these same tier ids
+ * while retaining legacy storage column names until the subscription schema is expanded.
  */
 
 export type PlanTierId = 'free' | 'starter' | 'growth' | 'scale';

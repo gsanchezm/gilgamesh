@@ -1,20 +1,43 @@
 import { describe, expect, it } from 'vitest';
 import { planLimits, priceCents } from './plans';
 
-describe('planLimits (keystone §9)', () => {
-  it('maps each plan to its run-minute quota + seat cap', () => {
-    expect(planLimits('TEAM')).toEqual({ runMinutesQuota: 1000, maxSeats: 5, unlimited: false });
-    expect(planLimits('PRO')).toMatchObject({ runMinutesQuota: 10000, maxSeats: 11, unlimited: false });
-    expect(planLimits('ENTERPRISE').unlimited).toBe(true);
+describe('planLimits', () => {
+  it('maps each plan to active workspace, service and execution limits', () => {
+    expect(planLimits('FREE')).toMatchObject({
+      runMinutesQuota: 500,
+      maxSeats: 1,
+      maxServicesPerWorkspace: 2,
+      unlimited: false,
+    });
+    expect(planLimits('STARTER')).toMatchObject({
+      runMinutesQuota: 5000,
+      maxServicesPerWorkspace: 5,
+      maxUsersPerWorkspace: 3,
+      unlimited: false,
+    });
+    expect(planLimits('GROWTH')).toMatchObject({
+      runMinutesQuota: 25000,
+      maxServicesPerWorkspace: 15,
+      unlimited: false,
+    });
+    expect(planLimits('SCALE')).toMatchObject({
+      includedWorkspaces: 10,
+      unlimited: true,
+    });
   });
 });
 
-describe('priceCents (keystone §9)', () => {
-  it('returns the monthly price and a discounted annual price', () => {
-    expect(priceCents('TEAM', 'MONTHLY')).toBe(19900);
-    expect(priceCents('TEAM', 'ANNUAL')).toBe(16600);
-    expect(priceCents('PRO', 'MONTHLY')).toBe(49900);
-    expect(priceCents('PRO', 'ANNUAL')).toBeLessThan(priceCents('PRO', 'MONTHLY'));
-    expect(priceCents('ENTERPRISE', 'MONTHLY')).toBe(0); // custom / contact sales
+describe('priceCents', () => {
+  it('returns the monthly price and a two-months-free annual equivalent', () => {
+    expect(priceCents('FREE', 'MONTHLY')).toBe(0);
+    expect(priceCents('STARTER', 'MONTHLY')).toBe(2900);
+    expect(priceCents('STARTER', 'ANNUAL')).toBe(2417);
+    expect(priceCents('GROWTH', 'MONTHLY')).toBe(9900);
+    expect(priceCents('GROWTH', 'ANNUAL')).toBeLessThan(priceCents('GROWTH', 'MONTHLY'));
+  });
+
+  it('prices Scale add-on workspaces beyond the 10 included', () => {
+    expect(priceCents('SCALE', 'MONTHLY', 10)).toBe(49900);
+    expect(priceCents('SCALE', 'MONTHLY', 12)).toBe(69700);
   });
 });

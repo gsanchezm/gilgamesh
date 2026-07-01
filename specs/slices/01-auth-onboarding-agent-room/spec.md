@@ -120,13 +120,10 @@ agent resolves to `ACTIVE` (enabled) or `IDLE` (disabled).
 
 **Seed values (deterministic):**
 - 11 `Agent` rows = roster from keystone §3 exactly (slot, deityName, family, glyph, culture, defaultTool).
-- `Subscription` seed: `plan = TEAM`, `status = TRIALING`, `billingCycle = MONTHLY`, `seats = 5`,
-  `runMinutesQuota = 1000`, `runMinutesUsed = 0` (keystone §9 TEAM tier). **Trial note:** the `Agent` catalog
+- `Subscription` seed: `plan = FREE`, `status = TRIALING`, `billingCycle = MONTHLY`, `seats = 1`,
+  `runMinutesQuota = 500`, `runMinutesUsed = 0` (keystone §9 FREE tier). **Trial note:** the `Agent` catalog
   is *always* the full 11 (keystone §2). While `status = TRIALING`, the org evaluates the **full 11-agent
-  roster** (all may be awake). The TEAM plan's "≤5 agents" cap (keystone §9) is a *usage cap that takes
-  effect on conversion to a paid plan* and is **enforced in the later Subscription/billing slice** — slice 1
-  neither enforces nor surfaces it. This keeps `runMinutesQuota = 1000` and `plan = TEAM` internally
-  consistent with "all 11 active during trial".
+  roster** (all may be awake). Plan limits apply to workspace/services/execution usage, not catalog seeding.
 - 11 `ToolBinding` rows on project create: `tool = Agent.defaultTool`, **`enabled = true`** (all 11 Active on
   first load during the trial — documented seed default; see the trial note above, §10 edge note, and the
   decision rationale).
@@ -216,7 +213,7 @@ Org is created **implicitly** on Finish (no org-name field — see deviation not
 - **Finish** triggers the **tenant bootstrap** (transactional — all-or-nothing):
   1. If the user has **no `Membership`**: `POST /orgs` (O7) → create `Org` (name derived from the user's
      name; `slug` auto-generated + de-collided), create OWNER `Membership`, **seed the 11 `Agent`** rows from
-     roster §3, **seed `Subscription`** (TEAM/TRIALING). If the user **already** has a membership (second
+     roster §3, **seed `Subscription`** (FREE/TRIALING). If the user **already** has a membership (second
      project), this step is **skipped** and the existing org is reused.
   2. `POST /projects` (O10) → create `Project` with `name/slug/format` (+ optional repo metadata), then seed
      **11 `ToolBinding`** rows (`tool = defaultTool`, `enabled = true`).
@@ -292,8 +289,8 @@ verifies (traceability matrix in §11).
   `Membership` + exactly 11 `Agent` rows + one `Subscription` are created.
 - **AC-ONB-05** The seeded 11 `Agent` rows match the keystone §3 roster exactly (slot, deityName, family,
   glyph, culture, defaultTool).
-- **AC-ONB-06** The seeded `Subscription` is `plan=TEAM`, `status=TRIALING`, `seats=5`,
-  `runMinutesQuota=1000`, `runMinutesUsed=0`.
+- **AC-ONB-06** The seeded `Subscription` is `plan=FREE`, `status=TRIALING`, `seats=1`,
+  `runMinutesQuota=500`, `runMinutesUsed=0`.
 - **AC-ONB-07** `POST /projects` creates the `Project` with the chosen name/format (+ optional repo metadata)
   and seeds 11 `ToolBinding` rows (`tool=defaultTool`, `enabled=true`).
 - **AC-ONB-08** An `Org` `slug` collision is resolved by auto-suffixing to a unique slug (no error).
@@ -437,7 +434,7 @@ Never store credentials/tokens/passwords in `metadata`.
 | AC-ONB-03 | onboarding.feature | `@AC-ONB-03` Skip repo connection |
 | AC-ONB-04 | onboarding.feature | `@AC-ONB-04` Finish bootstraps the tenant |
 | AC-ONB-05 | onboarding.feature | `@AC-ONB-05` Seeded agents match the roster |
-| AC-ONB-06 | onboarding.feature | `@AC-ONB-06` Seeded subscription is a TEAM trial |
+| AC-ONB-06 | onboarding.feature | `@AC-ONB-06` Seeded subscription is a FREE trial |
 | AC-ONB-07 | onboarding.feature | `@AC-ONB-07` Project create seeds tool bindings |
 | AC-ONB-08 | onboarding.feature | `@AC-ONB-08` Org slug collision is suffixed |
 | AC-ONB-09 | onboarding.feature | `@AC-ONB-09` Project slug collision within an org |
@@ -500,11 +497,9 @@ Never store credentials/tokens/passwords in `metadata`.
   field); the decisions log + task require onboarding to create the `Org`. To honor *both* "match the
   prototype" and "onboarding creates Org+Project", the `Org.name` is **derived** from the user's name and the
   `slug` auto-generated/de-collided, editable later (out of slice scope). No new visible step/field is added.
-- **TEAM trial unlocks the full 11-agent roster:** the seeded `Subscription` is `plan = TEAM` / `TRIALING`,
-  yet all 11 agents are seedable/awake. Keystone §2 fixes the catalog at 11 always; keystone §9's TEAM "≤5
-  agents" cap is treated as a *paid-conversion usage cap enforced in the later Subscription/billing slice*,
-  not a slice-1 constraint. Alternative considered: seed `plan = PRO` (natively 11 agents) — rejected as a
-  stranger default ($499 "most popular" as the trial seed) requiring more touchpoints.
+- **FREE trial unlocks the full 11-agent roster:** the seeded `Subscription` is `plan = FREE` / `TRIALING`,
+  yet all 11 agents are seedable/awake. Keystone §2 fixes the catalog at 11 always; plan limits apply to
+  workspace/services/execution usage, not to seeding the fixed agent catalog.
 
 **Open questions (non-blocking; defer to later slices):**
 - Org rename + slug-edit UI (settings) — which slice owns it?

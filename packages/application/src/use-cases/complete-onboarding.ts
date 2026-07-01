@@ -38,7 +38,7 @@ export interface CompleteOnboardingDeps {
 
 /**
  * Finishes onboarding. On a user's FIRST project this bootstraps the tenant — Org + OWNER
- * Membership + the 11-agent catalog + a TEAM trial Subscription — then creates the Project,
+ * Membership + the 11-agent catalog + a FREE trial Subscription — then creates the Project,
  * its default vertical slices and a per-agent ToolBinding (all awake). On a subsequent project
  * the existing Org is reused (no new Org/agents/subscription). All 11 bindings start enabled
  * (spec AC-ONB-07 / AC-ROOM-03).
@@ -157,11 +157,11 @@ export class CompleteOnboarding {
     await repos.subscriptions.create({
       id: this.deps.ids.next(),
       orgId,
-      plan: 'TEAM',
+      plan: 'FREE',
       billingCycle: 'MONTHLY',
-      seats: 5,
+      seats: 1,
       status: 'TRIALING',
-      runMinutesQuota: 1000,
+      runMinutesQuota: 500,
       runMinutesUsed: 0,
       providerCustomerId: null,
       providerSubscriptionId: null,

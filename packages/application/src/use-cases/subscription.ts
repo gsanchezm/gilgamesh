@@ -12,9 +12,14 @@ export interface SubscriptionView {
   plan: Plan;
   status: SubscriptionStatus;
   billingCycle: BillingCycle;
+  /** Active workspaces. Backed by the legacy `seats` column until the storage model is renamed. */
   seats: number;
   maxSeats: number;
+  maxServicesPerWorkspace: number;
+  maxUsersPerWorkspace: number;
+  includedWorkspaces: number;
   unlimited: boolean;
+  /** Monthly executions. Backed by the legacy `runMinutes*` columns until the storage model is renamed. */
   runMinutesQuota: number;
   runMinutesUsed: number;
   priceCents: number;
@@ -30,10 +35,13 @@ export function subscriptionView(sub: SubscriptionRecord): SubscriptionView {
     billingCycle: sub.billingCycle,
     seats: sub.seats,
     maxSeats: limits.maxSeats,
+    maxServicesPerWorkspace: limits.maxServicesPerWorkspace,
+    maxUsersPerWorkspace: limits.maxUsersPerWorkspace,
+    includedWorkspaces: limits.includedWorkspaces,
     unlimited: limits.unlimited,
     runMinutesQuota: sub.runMinutesQuota,
     runMinutesUsed: sub.runMinutesUsed,
-    priceCents: priceCents(sub.plan, sub.billingCycle),
+    priceCents: priceCents(sub.plan, sub.billingCycle, sub.seats),
     providerCustomerId: sub.providerCustomerId,
     currentPeriodEnd: sub.currentPeriodEnd,
   };
@@ -84,14 +92,10 @@ export class ChangeSubscription {
     billingCycle?: BillingCycle;
   }): Promise<SubscriptionView> {
     await requireOrgAdmin(this.deps, input.userId, input.orgId);
-    // ENTERPRISE is custom/contact-sales — not a free self-service upgrade to unlimited run minutes.
-    if (input.plan === 'ENTERPRISE') {
-      throw new ApplicationError('VALIDATION', 'ENTERPRISE is custom — contact sales to upgrade.');
-    }
     const sub = await requireSub(this.deps, input.orgId);
     const limits = planLimits(input.plan);
     if (sub.seats > limits.maxSeats) {
-      throw new ApplicationError('VALIDATION', 'Current seats exceed the new plan limit; reduce seats first.');
+      throw new ApplicationError('VALIDATION', 'Current active workspaces exceed the new plan limit; reduce them first.');
     }
     const updated: SubscriptionRecord = {
       ...sub,
@@ -115,7 +119,7 @@ export class UpdateSeats {
     const sub = await requireSub(this.deps, input.orgId);
     const limits = planLimits(sub.plan);
     if (!Number.isInteger(input.seats) || input.seats < 1 || input.seats > limits.maxSeats) {
-      throw new ApplicationError('VALIDATION', `Seats must be between 1 and ${limits.maxSeats}.`);
+      throw new ApplicationError('VALIDATION', `Active workspaces must be between 1 and ${limits.maxSeats}.`);
     }
     const updated: SubscriptionRecord = { ...sub, seats: input.seats };
     await this.deps.subscriptions.save(updated);

@@ -1,5 +1,5 @@
 Feature: Subscription & billing (mock provider)
-  As an owner I manage my org's plan, seats and billing behind a mock payment provider.
+  As an owner I manage my org's plan, active workspaces and billing behind a mock payment provider.
 
   Background:
     Given the API base path is "/api/v1"
@@ -10,27 +10,27 @@ Feature: Subscription & billing (mock provider)
   Scenario: View the seeded subscription
     When I GET the subscription
     Then the response status is 200
-    And the subscription plan is "TEAM"
+    And the subscription plan is "FREE"
     And the subscription status is "TRIALING"
-    And the subscription quota is 1000
+    And the subscription quota is 500
 
   @AC-SUB-02
   Scenario: Changing the plan remaps the run-minute quota
-    When I change the plan to "PRO"
+    When I change the plan to "GROWTH"
     Then the response status is 200
-    And the subscription plan is "PRO"
-    And the subscription quota is 10000
+    And the subscription plan is "GROWTH"
+    And the subscription quota is 25000
     And an AuditLog entry "subscription.plan_changed" is recorded
 
   @AC-SUB-02
   Scenario: A viewer cannot change the plan
     Given "viewer@uruk.io" is a viewer in my org
-    When I change the plan to "PRO"
+    When I change the plan to "STARTER"
     Then the response status is 403
 
   @AC-SUB-04
-  Scenario: Seats over the plan limit are rejected
-    When I update seats to 6
+  Scenario: Active workspaces over the Free plan limit are rejected
+    When I update seats to 2
     Then the response status is 422
     And the response body is a "Problem" document
 
