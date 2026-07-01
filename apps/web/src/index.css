@@ -146,17 +146,22 @@ body {
   opacity: 0.46;
   filter: drop-shadow(0 0 6px rgba(74, 144, 217, 0.5));
 }
+.gx-auth__rung {
+  stroke: rgba(201, 161, 78, 0.16);
+  stroke-width: 1.3;
+}
 .gx-auth__chip {
   position: absolute;
+  transform: translate(-50%, -50%);
   width: 46px;
   height: 46px;
   border-radius: 50%;
   display: grid;
   place-items: center;
   background: #0a1730;
-  border: 1px solid rgba(201, 161, 78, 0.3);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
-  animation: gxfloat 6s ease-in-out infinite;
+  border: 1px solid rgba(201, 161, 78, 0.4);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5);
+  z-index: 1;
 }
 .gx-auth__chip img {
   width: 24px;
@@ -168,23 +173,39 @@ body {
   z-index: 2;
   text-align: center;
 }
+/* Dark radial behind the brand so it reads above the helix, not lost in it (owner: more prominence). */
+.gx-auth__brand::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 32%;
+  transform: translate(-50%, -50%);
+  width: 480px;
+  height: 480px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(8, 16, 30, 0.92), rgba(8, 16, 30, 0) 72%);
+  z-index: -1;
+  pointer-events: none;
+}
 .gx-auth__mark {
-  width: 148px;
-  height: 148px;
+  width: 196px;
+  height: 196px;
   margin: 0 auto;
   border-radius: 50%;
   background-color: #0a1730;
   background-size: cover;
   background-position: center;
-  border: 1px solid rgba(201, 161, 78, 0.5);
-  box-shadow: 0 0 0 8px rgba(201, 161, 78, 0.06);
+  border: 1px solid rgba(201, 161, 78, 0.55);
+  box-shadow:
+    0 0 0 10px rgba(201, 161, 78, 0.07),
+    0 24px 60px rgba(0, 0, 0, 0.55);
 }
 .gx-auth__logo {
   font-family: var(--font-display);
-  font-size: 36px;
-  letter-spacing: 0.18em;
+  font-size: 44px;
+  letter-spacing: 0.2em;
   color: #e7c877;
-  margin: 22px 0 6px;
+  margin: 26px 0 8px;
 }
 .gx-auth__tagline {
   font-family: var(--font-mono);

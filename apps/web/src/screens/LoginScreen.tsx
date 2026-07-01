@@ -11,34 +11,40 @@ export interface LoginScreenProps {
   onViewPlans?: () => void;
 }
 
-// Tool / browser / platform marks that orbit the hero helix (handoff login, capture 01).
-const HERO_CHIPS = [
-  { src: '/assets/platforms/platform-android.svg', alt: 'Android', top: '9%', left: '57%', delay: '0s' },
-  { src: '/assets/tools/tool-pixelmatch.png', alt: 'Visual', top: '22%', left: '20%', delay: '0.8s' },
-  { src: '/assets/tools/tool-playwright.png', alt: 'Playwright', top: '42%', left: '72%', delay: '1.6s' },
-  { src: '/assets/browsers/browser-chrome.png', alt: 'Chromium', top: '58%', left: '10%', delay: '0.4s' },
-  { src: '/assets/tools/tool-api.svg', alt: 'API', top: '70%', left: '82%', delay: '2s' },
-  { src: '/assets/browsers/browser-firefox.png', alt: 'Firefox', top: '86%', left: '40%', delay: '1.2s' },
-];
+// Hero double helix (handoff capture 01): two phase-shifted sine strands that weave around a tilted
+// axis, DNA-style rungs between them, and tool marks riding the strands (so they follow the flow).
+// All coordinates are in the SVG viewBox.
+const HELIX_W = 600;
+const HELIX_H = 900;
+const AMP = 132;
+const CX = 300;
+const PERIODS = 2.3;
+const LEAN = 168; // diagonal incline: the axis drifts across as the helix descends
 
-// Smooth double helix: two dense sine strands phase-shifted by π so they weave, spanning the hero
-// (handoff capture 01) — replaces the earlier dashed zig-zag.
-const HELIX_W = 620;
-const HELIX_H = 1000;
-function helixStrand(phase: number): string {
-  const amp = 152;
-  const cx = 310;
-  const periods = 2.6;
-  const steps = 168;
+function strandX(t: number, phase: number): number {
+  return CX + AMP * Math.sin(t * PERIODS * Math.PI * 2 + phase) + LEAN * (t - 0.5);
+}
+function strandPath(phase: number): string {
+  const steps = 150;
   let d = '';
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
-    const x = cx + amp * Math.sin(t * periods * Math.PI * 2 + phase);
-    const y = t * HELIX_H;
-    d += `${i === 0 ? 'M' : 'L'}${x.toFixed(1)} ${y.toFixed(1)} `;
+    d += `${i === 0 ? 'M' : 'L'}${strandX(t, phase).toFixed(1)} ${(t * HELIX_H).toFixed(1)} `;
   }
   return d.trim();
 }
+// Rungs at even intervals (the "intermediate lines" of the ladder).
+const RUNGS = Array.from({ length: 16 }, (_, k) => (k + 0.5) / 16);
+// Tool marks placed along the visible helix, ringing the brand (handoff capture 01) without landing
+// on the wordmark. Positions are % within the hero.
+const HERO_CHIPS = [
+  { src: '/assets/platforms/platform-android.svg', top: '4%', left: '46%' },
+  { src: '/assets/tools/tool-pixelmatch.png', top: '23%', left: '15%' },
+  { src: '/assets/tools/tool-playwright.png', top: '44%', left: '6%' },
+  { src: '/assets/tools/tool-api.svg', top: '52%', left: '63%' },
+  { src: '/assets/browsers/browser-chrome.png', top: '80%', left: '22%' },
+  { src: '/assets/browsers/browser-firefox.png', top: '90%', left: '46%' },
+];
 
 export function LoginScreen({ authClient, onSuccess, onForgot, onCreate, onViewPlans }: LoginScreenProps) {
   const [email, setEmail] = useState('');
@@ -70,15 +76,21 @@ export function LoginScreen({ authClient, onSuccess, onForgot, onCreate, onViewP
     <main className="gx-auth">
       <aside className="gx-auth__hero" aria-hidden="true">
         <svg className="gx-auth__helix" viewBox={`0 0 ${HELIX_W} ${HELIX_H}`} preserveAspectRatio="xMidYMid slice">
-          <path className="gx-auth__strand gx-auth__strand--gold" d={helixStrand(0)} fill="none" />
-          <path className="gx-auth__strand gx-auth__strand--blue" d={helixStrand(Math.PI)} fill="none" />
+          {RUNGS.map((t) => (
+            <line
+              key={t}
+              className="gx-auth__rung"
+              x1={strandX(t, 0).toFixed(1)}
+              y1={(t * HELIX_H).toFixed(1)}
+              x2={strandX(t, Math.PI).toFixed(1)}
+              y2={(t * HELIX_H).toFixed(1)}
+            />
+          ))}
+          <path className="gx-auth__strand gx-auth__strand--gold" d={strandPath(0)} fill="none" />
+          <path className="gx-auth__strand gx-auth__strand--blue" d={strandPath(Math.PI)} fill="none" />
         </svg>
         {HERO_CHIPS.map((c) => (
-          <span
-            key={c.alt}
-            className="gx-auth__chip"
-            style={{ top: c.top, left: c.left, animationDelay: c.delay }}
-          >
+          <span key={c.src} className="gx-auth__chip" style={{ top: c.top, left: c.left }}>
             <img src={c.src} alt="" />
           </span>
         ))}
