@@ -1,11 +1,15 @@
 # Audit follow-up — tracking (living)
 
-Triage + execution status of the codebase audit (10 enhancements + 5 refactors). Branch:
-`refactor/audit-hardening`. Updated as work lands. Items needing the owner's call are in
-**§ Pending owner decision** — they change behavior/contracts or are infra, so they are *not*
-auto-started inside the loop.
+Triage + execution status of the codebase audit. Updated as work lands. Items needing the owner's
+call are in **§ Pending owner decision** — they change behavior/contracts or are infra.
 
-## Done — Batch A (safe, contract-stable) ✅ committed, fully verified
+**Branch map (owner decision, 2026-07-01):** Batch A is **merged to `main`** (independent, contract-stable).
+`#1`/`#2` (knowledge integrity), **Batch B** (`#6`/`#7`/`#10`) and **R2** landed on **`feat/look-and-feel`**
+and reach `main` when that branch merges (*ride look&feel*; `#10` is entangled with look&feel's per-org
+knowledge schema, so it cannot be decoupled to `main` on its own). Batch A was cut on
+`refactor/audit-hardening`, now redundant — safe to delete once `main` is pushed.
+
+## Done — Batch A (safe, contract-stable) ✅ merged to `main`
 
 | # | Item | What landed |
 |---|------|-------------|
@@ -17,13 +21,19 @@ auto-started inside the loop.
 Verification: typecheck + lint clean · api 83 + application 138 Docker-free · `test:int` 14 ·
 BDD 94 scenarios / 739 steps (Postgres + Redis).
 
-## Planned — Batch B (contained correctness / perf, safe to do in-loop)
+## Done — knowledge integrity + Batch B + R2 ✅ on `feat/look-and-feel`
 
-| # | Item | Approach |
-|---|------|----------|
-| 7 | Deterministic TC-key under concurrency | Retry-on-`P2002` (the unique constraint is already the source of truth) rather than a counter table. Only reproduces against real Postgres → verify with `test:int`. |
-| 6 | N+1 in `ListFeatures` | New repo method (e.g. `countScenariosByFeature`) on `ScenarioRepository`; one aggregate query instead of per-feature. Port change → both adapters + fitness tests. Low urgency at current scale. |
-| 10 | Batch RAG ingest | `upsertMany` → single multi-row `INSERT … ON CONFLICT` (or chunked) instead of one round-trip per chunk. Raw SQL → verify with `test:int` (pgvector). |
+Built SDD/TDD (real RED→GREEN at unit + integration), all green:
+`409 Docker-free · test:int 19 · BDD 94 · typecheck · lint`.
+
+| # | Item | What landed | Commit |
+|---|------|-------------|--------|
+| 1 | Atomic knowledge-document upload | `UploadKnowledgeDocument` wraps document + chunks in one `UnitOfWork.transaction` (document written first so the `document_id` FK holds); `Repositories` bundle gains `knowledge`/`knowledgeDocuments`. No more orphaned chunks. | `89d5ca2` |
+| 2 | FKs on `knowledge_chunks` | Migration adds FK `org_id → orgs` and `document_id → knowledge_documents` (`ON DELETE CASCADE`, nullable for the global corpus) + indexes (`document_id`, composite `org_id,document_id`); purges pre-existing orphans first. | `89d5ca2` |
+| 7 | Deterministic TC-key under concurrency | Prisma `create` maps `P2002` → domain `CONFLICT`; `CreateTestCase` re-reads + retries with the next key (bounded). Verified with a real-concurrency `test:int`. | `3130c12` |
+| 6 | N+1 in `ListFeatures` | New `ScenarioRepository.countByFeature` (one grouped `groupBy`) on both adapters; `ListFeatures` no longer queries per feature. | `3130c12` |
+| 10 | Batch RAG ingest | `upsertMany` → one multi-row `INSERT … ON CONFLICT` per 500-row batch (`Prisma.join`) instead of a round-trip per chunk. | `3130c12` |
+| R2 | Centralize web fetch helpers | `apps/web/src/lib/http.ts` (`API_BASE`, `ok`, `getJson`, `sendJson`); the 8 clients import instead of redeclaring (−79 net lines, no behavior change). | `e6beb7c` |
 
 ## Pending owner decision (surfaced, NOT auto-started)
 
