@@ -410,3 +410,22 @@ platform built on a peer-reviewed mathematical model." Full detail in the auto-m
 TEAM/PRO/ENTERPRISE, per-seat, `runMinutesQuota`) and the `03-pricing` capture's 3 old tiers. **Phase 6 Pricing
 page ports the capture's LAYOUT but renders these 4 NEW tiers from a canonical plan catalog.** Migrating the
 billing/subscription backend + the `/billing` screen to this model is its own follow-up slice (flagged to owner).
+
+## Audit remediation — owner decisions (2026-07-01)
+
+The pasted codebase audit was re-run against `feat/look-and-feel`, so it re-flagged items already fixed on the
+divergent `refactor/audit-hardening` branch. Reconciled + executed SDD/TDD, all green. Decisions:
+- **Branch strategy — DECIDED:** merge **Batch A → `main`** (independent, contract-stable — done + pushed
+  `2cca0de..328d5fc`) and fix **#1/#2 on `feat/look-and-feel`** since that knowledge-document code only exists
+  there. Rejected cherry-picking Batch A into look&feel (duplicates work / risks later conflicts).
+- **Batch B placement — DECIDED: ride look&feel.** `#6`/`#7`/`#10` are contract-stable but were built on
+  look&feel; `#10` is entangled with slice-7's per-org knowledge schema (writes `org_id`/`document_id`, columns
+  absent on `main`) so it cannot be decoupled; `#6`/`#7` are low-urgency → not worth a separate off-`main`
+  branch. All reach `main` when look&feel merges. `refactor/audit-hardening` is now redundant (safe to delete).
+- **Delivered on `feat/look-and-feel`:** `#1`/`#2` atomic knowledge upload (`UnitOfWork`, document-first) + chunk
+  FKs/indexes + orphan purge (`89d5ca2`); `#6` `countByFeature` (no N+1), `#7` TC-key retry-on-`CONFLICT`
+  (`P2002`→`CONFLICT`), `#10` batch `upsertMany` via `Prisma.join` (`3130c12`); `R2` shared `apps/web/src/lib/http.ts`
+  (`e6beb7c`). Verified 409 Docker-free · `test:int` 19 · BDD 94 · typecheck · lint.
+- **Bloque 3 — PENDING owner decision** (behavior/contract/infra, not auto-started): rate-limit fail-open policy ·
+  per-IP backoff (own slice) · pagination (own slice) · RAG final posture · optimize heavy assets (E5) · pin
+  GitHub Actions to SHA. Tracking: `audit-followup.md` · board: `feature-status.md`.
