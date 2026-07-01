@@ -65,6 +65,24 @@ remaining re-skins → new views (Pricing, Reports, Orchestration, Chat, Session
   tool/browser chips (`gxfloat`), circular brand mark, real EN copy (`Sign in` / hero / `Enter` CTA /
   Remember me / providers / Create account). Login logic + placeholders preserved; button renamed
   `Sign in`→`Enter` across unit + e2e specs. Verified in-browser (smoke green, visual dark/light).
-- ⬜ Remaining views (Pricing, Onboarding re-skin, Reports, Orchestration, Chat, Session, +
+- 🔨 Phase 5 — **Register ("Create account") screen** (`capturas/02-registro.png`): the auth signup,
+  twin of Login (shared animated hero on the left, form on the right). Backend already exists
+  (`POST /auth/register` → `RegisterUser`, auto-signs-in; no Org yet — the tenant is bootstrapped at
+  onboarding). Scope (owner-approved, advisor-sharpened):
+  - Extract a shared `AuthHero` (helix canvas + brand) from `LoginScreen`; Login stays byte-identical.
+  - `RegisterScreen`: First / Middle / Last name, **Company**, Corporate email, Password + Confirm,
+    gold `Create account →`, `View plans →`, `Already have an account? Sign in`. Client validation:
+    required first/last/company/email, valid email, **password ≥ 12** (matches API `@MinLength(12)`),
+    `password === confirm` (confirm is client-only).
+  - `authClient.register()` mirrors the **login** client (`credentials:'include'`, **no** CSRF token —
+    register establishes the session; the controller has no CsrfGuard).
+  - Route `/register` (public; redirect to `/onboarding` when already authed). Wire Login
+    `Create account` → `/register`, both screens' `View plans` → `/pricing` (Phase 6), Register
+    `Sign in` → `/login`. **Company** is carried to `/onboarding` via router state (becomes the Org
+    name there — fixes the current `orgName = projectName` shortcut; that wiring lands with the
+    onboarding-wizard follow-on). Register does **not** create the Org (spec AC-AUTH-01).
+  - Follow-on (separate commit, no capture): re-skin the project **onboarding wizard** (port the
+    prototype's `isOnboarding` layout) and consume the carried company as `orgName`.
+- ⬜ Remaining views (Pricing, Reports, Orchestration, Chat, Session, +
   re-skins of Test Lab / Knowledge / Integrations / Subscription).
 - ⬜ Playwright `.feature`-mapped scenarios per view.

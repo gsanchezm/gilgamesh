@@ -101,8 +101,10 @@ body {
 /* ---- Login / auth (two-column hero, capture 01) ---------------------------- */
 .gx-auth {
   min-height: 100vh;
-  display: grid;
-  grid-template-columns: 1.1fr 1fr;
+  /* Port the prototype's composition: the hero fills the left (flex:1) and the form sits in a
+     fixed-width column pinned to the right (see .gx-auth__panel). This keeps the two adjacent and
+     the form the same width at any viewport — no center void, unlike a scaling 2-fr grid. */
+  display: flex;
   /* One seamless dark backdrop for BOTH columns (handoff capture 01): brightest under the brand on
      the left, falling off to the right, so the form floats on the same gradient — no visible seam.
      Login is always dark (the handoff has no light login), so pin the dark token values here. */
@@ -117,6 +119,8 @@ body {
 .gx-auth__hero {
   position: relative;
   overflow: hidden;
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -186,16 +190,20 @@ body {
 }
 .gx-auth__panel {
   position: relative;
+  /* Fixed 520px right column with 76px side padding = 368px content, exactly like the prototype's
+     shared auth column (login / register / forgot all live here). */
+  width: 520px;
+  flex: none;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 48px 56px;
+  padding: 0 76px;
   background: transparent;
 }
 .gx-auth__viewplans {
   position: absolute;
   top: 30px;
-  right: 40px;
+  right: 76px;
   background: none;
   border: none;
   color: var(--muted);
@@ -219,13 +227,25 @@ body {
   flex-direction: column;
   gap: 16px;
   width: 100%;
-  max-width: 380px;
+  max-width: 368px;
 }
 .gx-auth__row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+/* Register (capture 02) packs paired fields per row inside the same 368px auth column. */
+.gx-auth__form--wide {
+  gap: 14px;
+}
+.gx-auth__pair {
+  display: flex;
+  gap: 12px;
+}
+.gx-auth__pair > .gx-field {
+  flex: 1;
+  min-width: 0;
 }
 .gx-checkbox {
   display: inline-flex;
@@ -289,13 +309,12 @@ body {
   cursor: pointer;
 }
 @media (max-width: 900px) {
-  .gx-auth {
-    grid-template-columns: 1fr;
-  }
   .gx-auth__hero {
     display: none;
   }
+  /* Single-column: the form takes the whole width instead of the fixed 520px right rail. */
   .gx-auth__panel {
+    width: 100%;
     padding: 40px 28px;
     align-items: center;
   }

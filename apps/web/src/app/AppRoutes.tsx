@@ -7,6 +7,7 @@ import { IntegrationsScreen } from '../screens/IntegrationsScreen';
 import { KnowledgeScreen } from '../screens/KnowledgeScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { OnboardingWizard } from '../screens/OnboardingWizard';
+import { RegisterScreen } from '../screens/RegisterScreen';
 import { TestLabScreen } from '../screens/TestLabScreen';
 import { AppLayout } from './AppLayout';
 import { useClients } from './clients';
@@ -43,6 +44,30 @@ function LoginRoute() {
         signIn(result.activeOrgId);
         navigate('/onboarding');
       }}
+      onCreate={() => navigate('/register')}
+      onViewPlans={() => navigate('/pricing')}
+    />
+  );
+}
+
+function RegisterRoute() {
+  const { auth } = useClients();
+  const { signIn, authed, booting } = useSession();
+  const navigate = useNavigate();
+  if (booting) return <Booting />;
+  // An already-authenticated user shouldn't see the signup form.
+  if (authed) return <Navigate to="/onboarding" replace />;
+  return (
+    <RegisterScreen
+      authClient={auth}
+      onSuccess={(company) => {
+        // Register auto-signs-in but creates no Org yet; carry the company to onboarding, where it
+        // becomes the Org name (the tenant is bootstrapped there — spec AC-AUTH-01).
+        signIn(null);
+        navigate('/onboarding', { state: { company } });
+      }}
+      onSignIn={() => navigate('/login')}
+      onViewPlans={() => navigate('/pricing')}
     />
   );
 }
@@ -104,6 +129,9 @@ export function AppRoutes() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<LoginRoute />} />
+      <Route path="/register" element={<RegisterRoute />} />
+      {/* Public marketing pricing page; the hi-fi build lands in Phase 6 (capture 03). */}
+      <Route path="/pricing" element={<ComingSoonScreen title="Pricing" />} />
       {/* Onboarding is a standalone stepped flow — outside the app shell. */}
       <Route
         path="/onboarding"

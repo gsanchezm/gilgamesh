@@ -6,6 +6,7 @@ import type { AuthClient } from '../lib/auth-client';
 function fakeClient(overrides?: Partial<AuthClient>): AuthClient {
   return {
     login: vi.fn(async () => ({ activeOrgId: 'org-1' })),
+    register: vi.fn(async () => ({ userId: 'u-1' })),
     me: vi.fn(async () => null),
     logout: vi.fn(async () => {}),
     ...overrides,

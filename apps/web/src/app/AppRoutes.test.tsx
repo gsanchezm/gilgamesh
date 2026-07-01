@@ -25,6 +25,7 @@ function makeClients(): Clients {
   return {
     auth: {
       login: vi.fn(async () => ({ activeOrgId: 'org-1' })),
+      register: vi.fn(async () => ({ userId: 'u-1' })),
       me: vi.fn(async () => null),
       logout: vi.fn(async () => {}),
     },
@@ -130,6 +131,34 @@ describe('AppRoutes', () => {
     );
     expect(await screen.findByText('Name your project')).toBeTruthy();
     expect(screen.queryByPlaceholderText('name@company.com')).toBeNull();
+  });
+
+  it('navigates login → register and back via Sign in', async () => {
+    renderApp(makeClients(), '/login');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+    expect(await screen.findByLabelText('Company')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
+  });
+
+  it('registers then continues into onboarding', async () => {
+    const clients = makeClients();
+    renderApp(clients, '/register');
+
+    fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Gabriel' } });
+    fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Sánchez' } });
+    fireEvent.change(screen.getByLabelText('Company'), { target: { value: 'Acme Inc.' } });
+    fireEvent.change(screen.getByLabelText('Corporate email'), { target: { value: 'gil@acme.com' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correct horse battery' } });
+    fireEvent.change(screen.getByLabelText('Confirm password'), {
+      target: { value: 'correct horse battery' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+
+    expect(await screen.findByText('Name your project')).toBeTruthy();
+    expect(clients.auth.register).toHaveBeenCalledTimes(1);
   });
 
   it('flows login → onboarding → agent room', async () => {
