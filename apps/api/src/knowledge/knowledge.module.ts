@@ -8,6 +8,7 @@ import {
   ListKnowledgeDocuments,
   type MembershipRepository,
   SearchKnowledge,
+  type UnitOfWork,
   UploadKnowledgeDocument,
 } from '@gilgamesh/application';
 import { Module, type Provider } from '@nestjs/common';
@@ -33,14 +34,13 @@ const providers: Provider[] = [
   {
     provide: UploadKnowledgeDocument,
     useFactory: (
-      documents: KnowledgeDocumentRepository,
-      knowledge: KnowledgeChunkRepository,
+      uow: UnitOfWork,
       brain: AgentBrainPort,
       memberships: MembershipRepository,
       ids: IdGenerator,
       clock: Clock,
-    ) => new UploadKnowledgeDocument({ documents, knowledge, brain, memberships, ids, clock }),
-    inject: [T.KnowledgeDocuments, T.Knowledge, T.Brain, T.Memberships, T.Ids, T.Clock],
+    ) => new UploadKnowledgeDocument({ uow, brain, memberships, ids, clock }),
+    inject: [T.UnitOfWork, T.Brain, T.Memberships, T.Ids, T.Clock],
   },
   {
     provide: ListKnowledgeDocuments,

@@ -3,9 +3,10 @@ import { ApplicationError } from '../errors';
 import type { AgentBrainPort } from '../ports/brain';
 import type { Clock } from '../ports/clock';
 import type { IdGenerator } from '../ports/id';
-import type { KnowledgeChunkRepository, KnowledgeDocumentRepository } from '../ports/knowledge';
+import type { KnowledgeDocumentRepository } from '../ports/knowledge';
 import type { KnowledgeChunkRecord, KnowledgeDocumentRecord } from '../ports/records';
 import type { MembershipRepository } from '../ports/repositories';
+import type { UnitOfWork } from '../ports/unit-of-work';
 
 /** Org gate: a non-member gets NOT_FOUND so tenant existence is never leaked (mirrors requireProjectAccess). */
 async function requireOrgMember(
@@ -44,8 +45,7 @@ export interface UploadKnowledgeDocumentInput {
 }
 
 export interface UploadKnowledgeDocumentDeps {
-  documents: KnowledgeDocumentRepository;
-  knowledge: KnowledgeChunkRepository;
+  uow: UnitOfWork;
   brain: AgentBrainPort;
   memberships: MembershipRepository;
   ids: IdGenerator;
@@ -57,6 +57,9 @@ export interface UploadKnowledgeDocumentDeps {
  * tenant-scoped `KnowledgeChunkRecord`s (orgId + documentId), and record the `KnowledgeDocumentRecord`.
  * Any org member may upload. The chunks are excluded from the shared global search (no cross-org leak);
  * wiring per-org retrieval into grounding is a follow-up.
+ *
+ * The document row and its chunks are written in ONE transaction (all-or-nothing): a failed write never
+ * leaves orphaned chunks behind. The document is inserted FIRST so the chunks' `document_id` FK is satisfied.
  */
 export class UploadKnowledgeDocument {
   constructor(private readonly deps: UploadKnowledgeDocumentDeps) {}
@@ -72,6 +75,7 @@ export class UploadKnowledgeDocument {
       throw new ApplicationError('VALIDATION', 'The document has no indexable text.');
     }
 
+    // Embedding is external I/O — do it BEFORE opening the DB transaction (never hold a tx over I/O).
     const embeddings = await this.deps.brain.embed(chunks.map((c) => c.text));
     const documentId = this.deps.ids.next();
     const now = this.deps.clock.now();
@@ -87,7 +91,6 @@ export class UploadKnowledgeDocument {
       embedding: embeddings[i]!,
       tokenEstimate: (c.text.match(/\S+/g) ?? []).length,
     }));
-    await this.deps.knowledge.upsertMany(records);
 
     const doc: KnowledgeDocumentRecord = {
       id: documentId,
@@ -97,7 +100,12 @@ export class UploadKnowledgeDocument {
       chunkCount: records.length,
       createdAt: now,
     };
-    await this.deps.documents.create(doc);
+
+    await this.deps.uow.transaction(async (repos) => {
+      await repos.knowledgeDocuments.create(doc);
+      await repos.knowledge.upsertMany(records);
+    });
+
     return toView(doc);
   }
 }

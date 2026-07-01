@@ -121,6 +121,7 @@ model Org {
   auditLogs    AuditLog[]
   integrations Integration[]
   knowledgeDocuments KnowledgeDocument[]
+  knowledgeChunks    KnowledgeChunk[]
 
   @@map("orgs")
 }
@@ -446,7 +447,14 @@ model KnowledgeChunk {
   embedding     Unsupported("vector(1536)")
   tokenEstimate Int                         @map("token_estimate")
 
+  // Per-org uploaded chunks are referentially tied to their org + document (audit #2). Both are
+  // nullable (the GLOBAL shared corpus has neither) and cascade so cleanup can't leave orphans.
+  org      Org?              @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  document KnowledgeDocument? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
   @@index([orgId])
+  @@index([documentId])
+  @@index([orgId, documentId])
   @@map("knowledge_chunks")
 }
 
@@ -458,7 +466,8 @@ model KnowledgeDocument {
   chunkCount Int      @map("chunk_count")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  org    Org              @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  chunks KnowledgeChunk[]
 
   @@index([orgId, createdAt])
   @@map("knowledge_documents")

@@ -5,6 +5,7 @@ import {
   DeterministicBrain,
   DeterministicKernel,
   type KnowledgeChunkRepository,
+  type KnowledgeDocumentRepository,
   KnowledgeRetriever,
   MockPaymentProvider,
   MockRepoProvider,
@@ -94,6 +95,8 @@ import { TOKENS } from './tokens';
         toolBindings: ToolBindingRepository,
         subscriptions: SubscriptionRepository,
         audit: AuditLogRepository,
+        knowledge: KnowledgeChunkRepository,
+        knowledgeDocuments: KnowledgeDocumentRepository,
       ) =>
         new InMemoryUnitOfWork({
           users,
@@ -111,6 +114,8 @@ import { TOKENS } from './tokens';
           toolBindings,
           subscriptions,
           audit,
+          knowledge,
+          knowledgeDocuments,
         }),
       inject: [
         TOKENS.Users,
@@ -128,6 +133,8 @@ import { TOKENS } from './tokens';
         TOKENS.ToolBindings,
         TOKENS.Subscriptions,
         TOKENS.Audit,
+        TOKENS.Knowledge,
+        TOKENS.KnowledgeDocuments,
       ],
     },
     { provide: TOKENS.Hasher, useValue: new Argon2PasswordHasher() },

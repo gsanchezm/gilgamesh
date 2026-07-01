@@ -413,6 +413,8 @@ export interface InMemoryContext {
 export function createInMemoryContext(): InMemoryContext {
   // Build the repos once; the UnitOfWork wraps the SAME instances so writes made inside a
   // transaction are visible to readers that resolve the repos directly.
+  const knowledge = new InMemoryKnowledgeChunkRepository();
+  const knowledgeDocuments = new InMemoryKnowledgeDocumentRepository();
   const repos = {
     users: new InMemoryUserRepository(),
     orgs: new InMemoryOrgRepository(),
@@ -429,13 +431,12 @@ export function createInMemoryContext(): InMemoryContext {
     toolBindings: new InMemoryToolBindingRepository(),
     subscriptions: new InMemorySubscriptionRepository(),
     audit: new InMemoryAuditLogRepository(),
+    knowledge,
+    knowledgeDocuments,
   };
   const brain = new DeterministicBrain();
-  const knowledge = new InMemoryKnowledgeChunkRepository();
   return {
     ...repos,
-    knowledge,
-    knowledgeDocuments: new InMemoryKnowledgeDocumentRepository(),
     integrations: new InMemoryIntegrationRepository(),
     repoProvider: new MockRepoProvider(),
     vault: new StubSecretVault(),

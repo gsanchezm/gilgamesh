@@ -4,6 +4,8 @@ import {
   PrismaAgentRepository,
   PrismaAuditLogRepository,
   PrismaFeatureRepository,
+  PrismaKnowledgeChunkRepository,
+  PrismaKnowledgeDocumentRepository,
   PrismaMembershipRepository,
   PrismaOrgRepository,
   PrismaProjectRepository,
@@ -37,6 +39,8 @@ export function makePrismaRepos(client: Prisma.TransactionClient): Repositories 
     toolBindings: new PrismaToolBindingRepository(client),
     subscriptions: new PrismaSubscriptionRepository(client),
     audit: new PrismaAuditLogRepository(client),
+    knowledge: new PrismaKnowledgeChunkRepository(client),
+    knowledgeDocuments: new PrismaKnowledgeDocumentRepository(client),
   };
 }
 

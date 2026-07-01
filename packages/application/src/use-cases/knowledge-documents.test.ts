@@ -17,8 +17,7 @@ function seedMember(ctx: InMemoryContext, orgId = ORG, userId = USER) {
 
 function uploader(ctx: InMemoryContext) {
   return new UploadKnowledgeDocument({
-    documents: ctx.knowledgeDocuments,
-    knowledge: ctx.knowledge,
+    uow: ctx.uow,
     brain: ctx.brain,
     memberships: ctx.memberships,
     ids: ctx.ids,
@@ -91,6 +90,26 @@ describe('UploadKnowledgeDocument', () => {
     await expect(
       uploader(ctx).execute({ orgId: ORG, userId: USER, name: 'empty.md', type: 'md', content: '   \n\n  ' }),
     ).rejects.toMatchObject({ code: 'VALIDATION' });
+  });
+
+  it('does not write chunks when the document row cannot be created (atomic — no orphans)', async () => {
+    await seedMember(ctx);
+    // The document write is attempted first; make it fail and assert no chunks were persisted.
+    let chunksWritten = false;
+    const upsertMany = ctx.knowledge.upsertMany.bind(ctx.knowledge);
+    ctx.knowledge.upsertMany = async (recs) => {
+      chunksWritten = true;
+      return upsertMany(recs);
+    };
+    ctx.knowledgeDocuments.create = async () => {
+      throw new Error('db down: document write failed');
+    };
+
+    await expect(
+      uploader(ctx).execute({ orgId: ORG, userId: USER, name: 'design.md', type: 'md', content: MD }),
+    ).rejects.toThrow(/document write failed/);
+
+    expect(chunksWritten).toBe(false);
   });
 });
 
