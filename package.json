@@ -17,7 +17,8 @@
     "test": "turbo run test",
     "test:bdd": "turbo run test:bdd",
     "test:e2e": "turbo run test:e2e",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "wt": "node scripts/worktree.mjs"
   },
   "devDependencies": {
     "eslint": "^10.6.0",
