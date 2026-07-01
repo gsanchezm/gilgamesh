@@ -373,3 +373,59 @@ invariant HOLDS (no raw-token leak in any wiring) and found 1 HIGH + nits, all f
   added `ProjectRepository.linkRepo` (targeted repo-column update) and the import uses it.
 - `listForOrg` now orders by key (deterministic "first connected"); dropped the unused `config` DTO field;
   added a Postgres-level BDD guard asserting no token in the row/audit + `secretRef == vault://{orgId}/{key}`.
+
+## Slice 7 (Look & feel) — session decisions (2026-07-01)
+
+Working `feat/look-and-feel`, UI + functionality in parallel, ~100% faithful to `capturas/`, porting the
+prototype. Owner decisions this session:
+- **View order** = flow + backend-first: **Onboarding(register) → Pricing → backend re-skins (Knowledge,
+  Test Lab, Integrations, Subscription) → heavy new views (Orchestration, Chat, Reports, Session)**.
+- **"Functionality a la par" for backend-less views = REAL backend** (not mock-seam) via SDD→BDD→TDD slices.
+  Caveat surfaced (not blocking; those views are last): **Orchestration** real backend is blocked on the
+  TOM/chaos-proxy kernel (§7 `BLOCKED-UNTIL-DELIVERED`), **Chat+voice** on the real Brain/Claude adapter
+  (deferred); **Reports** + **Session-replay** are partially doable now over slice-3 `Run`/`RunResult`
+  (Session-replay needs per-action timeline data slice-3 doesn't persist yet).
+- **Review cadence** = **per-view screenshot** (build a view fully, screenshot dark[/light], owner approves
+  before the next). Self-check each view with an adversarial screenshot-vs-capture diff before showing.
+
+**Phase 5 — Register ("Create account", capture 02-registro) — DONE, owner-approved (2026-07-01).**
+The web signup, twin of Login. Extracted shared `AuthHero` (helix canvas + brand) from Login (byte-identical);
+`RegisterScreen` (First/Middle/Last/Company/email/password+confirm; client validation password ≥ 12 & match)
+→ real `POST /auth/register` (auto-signs-in; NO CSRF — register establishes the session; the Org is NOT
+created here, spec AC-AUTH-01). Route `/register` wired (+ a `/pricing` placeholder for Phase 6); **Company**
+carried to onboarding via router state (→ future `orgName`, fixing the `orgName = projectName` shortcut).
+Shared `.gx-auth` layout reworked to the prototype's flex model (hero `flex:1` + fixed 520px right column)
+after an adversarial fidelity diff flagged the scaling-grid composition — improved Login too, no regression.
+Verified green: web 75 unit · typecheck + lint · Playwright register 4 + smoke. **Follow-on (separate commit,
+no capture):** re-skin the project onboarding wizard (port the prototype's `isOnboarding`) consuming the
+carried company as `orgName`.
+
+**NEW pricing / business model (owner, 2026-07-01) — authoritative, SUPERSEDES the slice-4 billing model.**
+Billing unit = **active workspaces / month** (not seats/projects/executions). **4 tiers:** FREE $0 (1 ws · 2
+services · 500 exec) · STARTER $29 (unltd ws · 5 svc · 5k exec · 3 users) · GROWTH $99 (15 svc · 25k exec ·
+unltd users) · SCALE $499 base incl 10 ws + $99/extra ws (unltd exec/svc, SSO, RBAC, SLA). Annual = 2 months
+free. Anti-abuse = per-ws service + execution limits. Positioning: "the Stripe of testing" / "the only testing
+platform built on a peer-reviewed mathematical model." Full detail in the auto-memory `gilgamesh-pricing.md`.
+**IMPLICATION:** this supersedes the slice-4 billing domain (`planLimits`/`priceCents`, `PlanTier`
+TEAM/PRO/ENTERPRISE, per-seat, `runMinutesQuota`) and the `03-pricing` capture's 3 old tiers. **Phase 6 Pricing
+page ports the capture's LAYOUT but renders these 4 NEW tiers from a canonical plan catalog.** Migrating the
+billing/subscription backend + the `/billing` screen to this model is its own follow-up slice (flagged to owner).
+
+## Audit remediation — owner decisions (2026-07-01)
+
+The pasted codebase audit was re-run against `feat/look-and-feel`, so it re-flagged items already fixed on the
+divergent `refactor/audit-hardening` branch. Reconciled + executed SDD/TDD, all green. Decisions:
+- **Branch strategy — DECIDED:** merge **Batch A → `main`** (independent, contract-stable — done + pushed
+  `2cca0de..328d5fc`) and fix **#1/#2 on `feat/look-and-feel`** since that knowledge-document code only exists
+  there. Rejected cherry-picking Batch A into look&feel (duplicates work / risks later conflicts).
+- **Batch B placement — DECIDED: ride look&feel.** `#6`/`#7`/`#10` are contract-stable but were built on
+  look&feel; `#10` is entangled with slice-7's per-org knowledge schema (writes `org_id`/`document_id`, columns
+  absent on `main`) so it cannot be decoupled; `#6`/`#7` are low-urgency → not worth a separate off-`main`
+  branch. All reach `main` when look&feel merges. `refactor/audit-hardening` is now redundant (safe to delete).
+- **Delivered on `feat/look-and-feel`:** `#1`/`#2` atomic knowledge upload (`UnitOfWork`, document-first) + chunk
+  FKs/indexes + orphan purge (`89d5ca2`); `#6` `countByFeature` (no N+1), `#7` TC-key retry-on-`CONFLICT`
+  (`P2002`→`CONFLICT`), `#10` batch `upsertMany` via `Prisma.join` (`3130c12`); `R2` shared `apps/web/src/lib/http.ts`
+  (`e6beb7c`). Verified 409 Docker-free · `test:int` 19 · BDD 94 · typecheck · lint.
+- **Bloque 3 — PENDING owner decision** (behavior/contract/infra, not auto-started): rate-limit fail-open policy ·
+  per-IP backoff (own slice) · pagination (own slice) · RAG final posture · optimize heavy assets (E5) · pin
+  GitHub Actions to SHA. Tracking: `audit-followup.md` · board: `feature-status.md`.

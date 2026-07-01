@@ -1,3 +1,4 @@
+import { ThemeProvider } from '@gilgamesh/ui';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -24,6 +25,7 @@ function makeClients(): Clients {
   return {
     auth: {
       login: vi.fn(async () => ({ activeOrgId: 'org-1' })),
+      register: vi.fn(async () => ({ userId: 'u-1' })),
       me: vi.fn(async () => null),
       logout: vi.fn(async () => {}),
     },
@@ -60,8 +62,9 @@ function makeClients(): Clients {
     },
     billing: (() => {
       const sub = {
-        plan: 'TEAM' as const, status: 'TRIALING', billingCycle: 'MONTHLY' as const, seats: 1, maxSeats: 5,
-        unlimited: false, runMinutesQuota: 1000, runMinutesUsed: 0, priceCents: 19900,
+        plan: 'FREE' as const, status: 'TRIALING', billingCycle: 'MONTHLY' as const, seats: 1, maxSeats: 1,
+        maxServicesPerWorkspace: 2, maxUsersPerWorkspace: 1, includedWorkspaces: 1,
+        unlimited: false, runMinutesQuota: 500, runMinutesUsed: 0, priceCents: 0,
         providerCustomerId: null, currentPeriodEnd: null,
       };
       return {
@@ -73,7 +76,11 @@ function makeClients(): Clients {
         cancel: vi.fn(async () => ({ ...sub, status: 'CANCELED' })),
       };
     })(),
-    knowledge: { search: vi.fn(async () => ({ results: [], total: 0 })) },
+    knowledge: {
+      search: vi.fn(async () => ({ results: [], total: 0 })),
+      listDocuments: vi.fn(async () => []),
+      uploadDocument: vi.fn(async () => ({ id: 'd1', name: 'd.md', type: 'md', chunkCount: 1, createdAt: '2026-07-01T00:00:00.000Z' })),
+    },
     integrations: {
       list: vi.fn(async () => []),
       connect: vi.fn(async () => ({ key: 'github', name: 'GitHub', group: 'SOURCE_REPOS', connected: true, config: {}, connectedAt: null })),
@@ -85,13 +92,15 @@ function makeClients(): Clients {
 
 function renderApp(clients: Clients, initialPath: string) {
   return render(
-    <SessionProvider>
-      <ClientsProvider clients={clients}>
-        <MemoryRouter initialEntries={[initialPath]}>
-          <AppRoutes />
-        </MemoryRouter>
-      </ClientsProvider>
-    </SessionProvider>,
+    <ThemeProvider>
+      <SessionProvider>
+        <ClientsProvider clients={clients}>
+          <MemoryRouter initialEntries={[initialPath]}>
+            <AppRoutes />
+          </MemoryRouter>
+        </ClientsProvider>
+      </SessionProvider>
+    </ThemeProvider>,
   );
 }
 
@@ -129,6 +138,34 @@ describe('AppRoutes', () => {
     expect(screen.queryByPlaceholderText('name@company.com')).toBeNull();
   });
 
+  it('navigates login → register and back via Sign in', async () => {
+    renderApp(makeClients(), '/login');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+    expect(await screen.findByLabelText('Company')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
+  });
+
+  it('registers then continues into onboarding', async () => {
+    const clients = makeClients();
+    renderApp(clients, '/register');
+
+    fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Gabriel' } });
+    fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Sánchez' } });
+    fireEvent.change(screen.getByLabelText('Company'), { target: { value: 'Acme Inc.' } });
+    fireEvent.change(screen.getByLabelText('Corporate email'), { target: { value: 'gil@acme.com' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correct horse battery' } });
+    fireEvent.change(screen.getByLabelText('Confirm password'), {
+      target: { value: 'correct horse battery' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+
+    expect(await screen.findByText('Name your project')).toBeTruthy();
+    expect(clients.auth.register).toHaveBeenCalledTimes(1);
+  });
+
   it('flows login → onboarding → agent room', async () => {
     renderApp(makeClients(), '/login');
 
@@ -138,7 +175,7 @@ describe('AppRoutes', () => {
     fireEvent.change(screen.getByPlaceholderText('••••••••'), {
       target: { value: 'correct horse battery' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enter' }));
 
     expect(await screen.findByText('Name your project')).toBeTruthy();
     fireEvent.change(screen.getByPlaceholderText('OmniPizza'), { target: { value: 'OmniPizza' } });
@@ -146,7 +183,8 @@ describe('AppRoutes', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     fireEvent.click(screen.getByRole('button', { name: 'Create project' }));
 
-    expect(await screen.findByText('Agent room')).toBeTruthy();
-    expect(screen.getByText('1 agents · OmniPizza')).toBeTruthy();
+    // The agent-room view loaded inside the shell. Assert the screen's unique subtitle (the nav
+    // rail now also has an "Agent room" label, so that text alone is no longer unique).
+    expect(await screen.findByText('1 agents · OmniPizza')).toBeTruthy();
   });
 });

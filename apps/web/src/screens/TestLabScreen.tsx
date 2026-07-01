@@ -1,5 +1,6 @@
 import { Button } from '@gilgamesh/ui';
 import { useCallback, useEffect, useState } from 'react';
+import { TestLabSummaryStats } from '../components/TestLabSummaryStats';
 import type { IntegrationsClient } from '../lib/integrations-client';
 import type { RunSummaryView, RunTargetKind, RunView, RunsClient } from '../lib/runs-client';
 import type {
@@ -98,7 +99,13 @@ export function TestLabScreen({ client, runsClient, integrationsClient, projectI
       const created = await client.createFeature(projectId, { path: featurePath, content: featureContent });
       setFeatures((prev) => [
         ...prev,
-        { id: created.id, name: created.name, path: created.path, sliceId: created.sliceId, scenarioCount: created.scenarios.length },
+        {
+          id: created.id,
+          name: created.name,
+          path: created.path,
+          sliceId: created.sliceId,
+          scenarioCount: created.scenarios.length,
+        },
       ]);
       setFeaturePath('');
       setFeatureContent('');
@@ -144,10 +151,12 @@ export function TestLabScreen({ client, runsClient, integrationsClient, projectI
     <main className="gx-lab">
       <header className="gx-lab__head">
         <h1>Test Lab</h1>
-        <p className="gx-lab__sub">
-          {slices.length} slices · {features.length} features · {testCases.length} test cases
-        </p>
       </header>
+      <TestLabSummaryStats
+        slicesCount={slices.length}
+        featuresCount={features.length}
+        testCasesCount={testCases.length}
+      />
 
       {error && (
         <p role="alert" className="gx-login__error">
@@ -162,8 +171,18 @@ export function TestLabScreen({ client, runsClient, integrationsClient, projectI
             <li key={s.id}>{s.name}</li>
           ))}
         </ul>
-        <input aria-label="Slice key" placeholder="key" value={sliceKey} onChange={(e) => setSliceKey(e.target.value)} />
-        <input aria-label="Slice name" placeholder="Name" value={sliceName} onChange={(e) => setSliceName(e.target.value)} />
+        <input
+          aria-label="Slice key"
+          placeholder="key"
+          value={sliceKey}
+          onChange={(e) => setSliceKey(e.target.value)}
+        />
+        <input
+          aria-label="Slice name"
+          placeholder="Name"
+          value={sliceName}
+          onChange={(e) => setSliceName(e.target.value)}
+        />
         <Button onClick={addSlice} disabled={busy}>
           Add slice
         </Button>
@@ -177,11 +196,16 @@ export function TestLabScreen({ client, runsClient, integrationsClient, projectI
           value={repoFullName}
           onChange={(e) => setRepoFullName(e.target.value)}
         />
-        <input aria-label="Branch" placeholder="main" value={repoBranch} onChange={(e) => setRepoBranch(e.target.value)} />
+        <input
+          aria-label="Branch"
+          placeholder="main"
+          value={repoBranch}
+          onChange={(e) => setRepoBranch(e.target.value)}
+        />
         <Button onClick={importRepo} disabled={busy || !repoFullName.trim()}>
           Import features
         </Button>
-        {importMsg && <p className="gx-testlab__import-msg">{importMsg}</p>}
+        {importMsg && <p className="gx-lab__import-msg">{importMsg}</p>}
       </section>
 
       <section aria-label="Features">
@@ -192,13 +216,22 @@ export function TestLabScreen({ client, runsClient, integrationsClient, projectI
               <span>
                 {f.name} · {f.scenarioCount} scenarios
               </span>{' '}
-              <Button aria-label={`Run feature ${f.name}`} onClick={() => runTarget('FEATURE', f.id)} disabled={busy}>
+              <Button
+                aria-label={`Run feature ${f.name}`}
+                onClick={() => runTarget('FEATURE', f.id)}
+                disabled={busy}
+              >
                 Run
               </Button>
             </li>
           ))}
         </ul>
-        <input aria-label="Feature path" placeholder="path.feature" value={featurePath} onChange={(e) => setFeaturePath(e.target.value)} />
+        <input
+          aria-label="Feature path"
+          placeholder="path.feature"
+          value={featurePath}
+          onChange={(e) => setFeaturePath(e.target.value)}
+        />
         <textarea
           aria-label="Feature content"
           placeholder="Feature: …"
@@ -218,14 +251,27 @@ export function TestLabScreen({ client, runsClient, integrationsClient, projectI
               <span>
                 {t.key} · {t.title} · {t.priority}
               </span>{' '}
-              <Button aria-label={`Run test case ${t.title}`} onClick={() => runTarget('TESTCASE', t.id)} disabled={busy}>
+              <Button
+                aria-label={`Run test case ${t.title}`}
+                onClick={() => runTarget('TESTCASE', t.id)}
+                disabled={busy}
+              >
                 Run
               </Button>
             </li>
           ))}
         </ul>
-        <input aria-label="Test case title" placeholder="Title" value={tcTitle} onChange={(e) => setTcTitle(e.target.value)} />
-        <select aria-label="Priority" value={tcPriority} onChange={(e) => setTcPriority(e.target.value as TestCasePriority)}>
+        <input
+          aria-label="Test case title"
+          placeholder="Title"
+          value={tcTitle}
+          onChange={(e) => setTcTitle(e.target.value)}
+        />
+        <select
+          aria-label="Priority"
+          value={tcPriority}
+          onChange={(e) => setTcPriority(e.target.value as TestCasePriority)}
+        >
           {PRIORITIES.map((p) => (
             <option key={p} value={p}>
               {p}
@@ -239,7 +285,12 @@ export function TestLabScreen({ client, runsClient, integrationsClient, projectI
 
       <section aria-label="Generate">
         <h2>Generate with AI</h2>
-        <input aria-label="Prompt" placeholder="Describe what to test…" value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+        <input
+          aria-label="Prompt"
+          placeholder="Describe what to test…"
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+        />
         <Button onClick={generate} disabled={busy}>
           {busy ? 'Generating…' : 'Generate'}
         </Button>

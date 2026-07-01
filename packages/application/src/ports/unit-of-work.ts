@@ -1,3 +1,4 @@
+import type { KnowledgeChunkRepository, KnowledgeDocumentRepository } from './knowledge';
 import type {
   AgentRepository,
   AuditLogRepository,
@@ -36,6 +37,8 @@ export interface Repositories {
   toolBindings: ToolBindingRepository;
   subscriptions: SubscriptionRepository;
   audit: AuditLogRepository;
+  knowledge: KnowledgeChunkRepository;
+  knowledgeDocuments: KnowledgeDocumentRepository;
 }
 
 /**

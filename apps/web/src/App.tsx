@@ -1,3 +1,4 @@
+import { ThemeProvider } from '@gilgamesh/ui';
 import { BrowserRouter } from 'react-router-dom';
 import { AppRoutes } from './app/AppRoutes';
 import { ClientsProvider } from './app/clients';
@@ -6,12 +7,14 @@ import { httpAuthClient } from './lib/auth-client';
 
 export function App() {
   return (
-    <SessionProvider bootstrap={() => httpAuthClient.me()}>
-      <ClientsProvider>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
-      </ClientsProvider>
-    </SessionProvider>
+    <ThemeProvider>
+      <SessionProvider bootstrap={() => httpAuthClient.me()}>
+        <ClientsProvider>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </ClientsProvider>
+      </SessionProvider>
+    </ThemeProvider>
   );
 }

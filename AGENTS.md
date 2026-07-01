@@ -14,6 +14,8 @@ agents alike. This file is the quick brief.
 - `specs/_keystone/foundation-vocabulary.md` — the **frozen** source of truth for names/enums/ports/paths.
 - `specs/slices/<NN>/` — one folder per feature: the SDD `spec.md` + Gherkin `.feature` acceptance files.
 - `docs/conventions/` + `docs/research/decisions-log.md` — methodology, gates, and every owner decision.
+- `docs/research/feature-status.md` — the live product board (shipped vs. in-progress vs. blocked; as-built
+  slice 7 = the *Look & feel* re-skin). Slices 1–6 are on `main`; slice 7 + audit fixes on `feat/look-and-feel`.
 
 ## Build, test & dev commands
 

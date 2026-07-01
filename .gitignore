@@ -12,7 +12,12 @@ playwright-report/
 test-results/
 *.log
 
+# Parallel-branch worktrees (Tier 0) — git worktrees live under .worktrees/, created via `pnpm wt`.
+.worktrees/
+
 # RAG knowledge corpus — copyrighted ISTQB syllabi + commercial BDD books (owner decision S5-D:
 # private/non-redistributable). Kept OUT of this public repo; ingested locally via `pnpm ingest:corpus`.
 # When the repo is made private, this line can be removed to commit the corpus.
 rag/
+
+design_handoff_gilgamesh/

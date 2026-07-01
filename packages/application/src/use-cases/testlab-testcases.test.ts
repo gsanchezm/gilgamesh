@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { ApplicationError } from '../errors';
 import { createInMemoryContext, type InMemoryContext } from '../testing/in-memory';
 import { CompleteOnboarding } from './complete-onboarding';
 import { RegisterUser } from './register-user';
@@ -44,6 +45,26 @@ describe('Test Lab — test case authoring', () => {
     const b = await new CreateTestCase(ctx).execute({ userId, projectId, title: 'B', priority: 'LOW' });
     expect(a.key).toBe('TC_PRJ_001');
     expect(b.key).toBe('TC_PRJ_002');
+  });
+
+  it('recovers from a concurrent key collision by retrying with the next free key (audit #7)', async () => {
+    await new CreateTestCase(ctx).execute({ userId, projectId, title: 'A', priority: 'LOW' }); // TC_PRJ_001
+
+    // Simulate a race: as we try to insert TC_PRJ_002, a concurrent create grabs that key first, so the
+    // unique constraint rejects ours (CONFLICT). The use case must re-read and retry with the next key.
+    const realCreate = ctx.testCases.create.bind(ctx.testCases);
+    let raced = false;
+    ctx.testCases.create = async (rec) => {
+      if (!raced && rec.key === 'TC_PRJ_002') {
+        raced = true;
+        await realCreate({ ...rec, id: 'concurrent-winner' });
+        throw new ApplicationError('CONFLICT', `Test case key "${rec.key}" already exists.`);
+      }
+      return realCreate(rec);
+    };
+
+    const recovered = await new CreateTestCase(ctx).execute({ userId, projectId, title: 'B', priority: 'LOW' });
+    expect(recovered.key).toBe('TC_PRJ_003');
   });
 
   it('lists, reads, updates and deletes (AC-TC-02/03)', async () => {

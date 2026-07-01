@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import { Button } from '@gilgamesh/ui';
 import type { AuthClient, LoginResult } from '../lib/auth-client';
+import { AuthHero } from './AuthHero';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -9,12 +9,14 @@ export interface LoginScreenProps {
   onSuccess: (result: LoginResult) => void;
   onForgot?: () => void;
   onCreate?: () => void;
+  onViewPlans?: () => void;
 }
 
-export function LoginScreen({ authClient, onSuccess, onForgot, onCreate }: LoginScreenProps) {
+export function LoginScreen({ authClient, onSuccess, onForgot, onCreate, onViewPlans }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -37,15 +39,18 @@ export function LoginScreen({ authClient, onSuccess, onForgot, onCreate }: Login
   }
 
   return (
-    <main className="gx-login">
-      <div>
-        <div className="gx-login__brand">
-          <div className="gx-login__mark" aria-hidden />
-          <h1 className="gx-login__title">GILGAMESH</h1>
-          <p className="gx-login__tagline">TESTING · TRUSTED · ELEVATED</p>
-        </div>
+    <main className="gx-auth">
+      <AuthHero />
 
-        <form className="gx-login__form" onSubmit={handleSubmit} noValidate>
+      <section className="gx-auth__panel">
+        <button type="button" className="gx-auth__viewplans" onClick={onViewPlans}>
+          View plans →
+        </button>
+
+        <h1 className="gx-auth__title">Sign in</h1>
+        <p className="gx-auth__sub">Access with your corporate email.</p>
+
+        <form className="gx-auth__form" onSubmit={handleSubmit} noValidate>
           <label className="gx-field">
             <span className="gx-field__label">Corporate email</span>
             <input
@@ -69,15 +74,21 @@ export function LoginScreen({ authClient, onSuccess, onForgot, onCreate }: Login
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
-              <button
-                type="button"
-                className="gx-field__reveal"
-                onClick={() => setShowPass((s) => !s)}
-              >
+              <button type="button" className="gx-field__reveal" onClick={() => setShowPass((s) => !s)}>
                 {showPass ? 'Hide' : 'Show'}
               </button>
             </span>
           </label>
+
+          <div className="gx-auth__row">
+            <label className="gx-checkbox">
+              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+              <span>Remember me</span>
+            </label>
+            <button type="button" className="gx-login__link" onClick={onForgot}>
+              Forgot your password?
+            </button>
+          </div>
 
           {error ? (
             <p role="alert" className="gx-login__error">
@@ -85,20 +96,30 @@ export function LoginScreen({ authClient, onSuccess, onForgot, onCreate }: Login
             </p>
           ) : null}
 
-          <Button type="submit" disabled={submitting}>
-            {submitting ? 'Signing in…' : 'Sign in'}
-          </Button>
-          <button type="button" className="gx-login__link" onClick={onForgot}>
-            Forgot your password?
+          <button type="submit" className="gx-btn gx-btn--primary gx-auth__enter" disabled={submitting}>
+            {submitting ? 'Signing in…' : 'Enter'} <span aria-hidden="true">→</span>
           </button>
-          <Button type="button" variant="secondary">
-            SSO · SAML
-          </Button>
-          <button type="button" className="gx-login__link" onClick={onCreate}>
-            Create account
-          </button>
+
+          <div className="gx-auth__divider">
+            <span>or continue with</span>
+          </div>
+          <div className="gx-auth__providers">
+            <button type="button" className="gx-btn gx-btn--secondary" disabled title="Coming soon">
+              Google
+            </button>
+            <button type="button" className="gx-btn gx-btn--secondary" disabled title="Coming soon">
+              SSO · SAML
+            </button>
+          </div>
+
+          <p className="gx-auth__foot">
+            No account yet?{' '}
+            <button type="button" className="gx-auth__footlink" onClick={onCreate}>
+              Create account
+            </button>
+          </p>
         </form>
-      </div>
+      </section>
     </main>
   );
 }

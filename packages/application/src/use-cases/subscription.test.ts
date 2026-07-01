@@ -26,23 +26,33 @@ describe('Subscription & Billing', () => {
 
   it('views the seeded subscription with limits + usage (AC-SUB-01)', async () => {
     const v = await new GetOrgSubscription(ctx).execute({ userId, orgId });
-    expect(v).toMatchObject({ plan: 'TEAM', status: 'TRIALING', maxSeats: 5, unlimited: false, runMinutesQuota: 1000 });
+    expect(v).toMatchObject({
+      plan: 'FREE',
+      status: 'TRIALING',
+      maxSeats: 1,
+      maxServicesPerWorkspace: 2,
+      unlimited: false,
+      runMinutesQuota: 500,
+    });
   });
 
-  it('changes the plan and remaps quota + seat cap (AC-SUB-02)', async () => {
-    const v = await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'PRO' });
-    expect(v).toMatchObject({ plan: 'PRO', runMinutesQuota: 10000, maxSeats: 11 });
+  it('changes the plan and remaps execution quota + workspace cap (AC-SUB-02)', async () => {
+    const v = await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'GROWTH' });
+    expect(v).toMatchObject({ plan: 'GROWTH', runMinutesQuota: 25000, maxServicesPerWorkspace: 15 });
   });
 
-  it('updates seats within the plan cap, rejects over it (AC-SUB-04)', async () => {
+  it('updates active workspaces within the plan cap, rejects over it (AC-SUB-04)', async () => {
+    await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'STARTER' });
     expect((await new UpdateSeats(ctx).execute({ userId, orgId, seats: 4 })).seats).toBe(4);
-    await expect(new UpdateSeats(ctx).execute({ userId, orgId, seats: 6 })).rejects.toMatchObject({ code: 'VALIDATION' });
+    const sub = await ctx.subscriptions.findByOrg(orgId);
+    await ctx.subscriptions.save({ ...sub!, plan: 'FREE', runMinutesQuota: 500, seats: 1 });
+    await expect(new UpdateSeats(ctx).execute({ userId, orgId, seats: 2 })).rejects.toMatchObject({ code: 'VALIDATION' });
   });
 
-  it('rejects a plan change whose seat cap is below current seats (AC-SUB-03)', async () => {
-    await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'PRO' });
+  it('rejects a plan change whose workspace cap is below current active workspaces (AC-SUB-03)', async () => {
+    await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'STARTER' });
     await new UpdateSeats(ctx).execute({ userId, orgId, seats: 8 });
-    await expect(new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'TEAM' })).rejects.toMatchObject({
+    await expect(new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'FREE' })).rejects.toMatchObject({
       code: 'VALIDATION',
     });
   });
@@ -57,10 +67,9 @@ describe('Subscription & Billing', () => {
     expect(ctx.audit.rows.some((r) => r.action === 'subscription.activated')).toBe(true);
   });
 
-  it('rejects a self-service upgrade to ENTERPRISE (contact sales)', async () => {
-    await expect(new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'ENTERPRISE' })).rejects.toMatchObject({
-      code: 'VALIDATION',
-    });
+  it('allows a self-service upgrade to Scale', async () => {
+    const v = await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'SCALE' });
+    expect(v).toMatchObject({ plan: 'SCALE', unlimited: true, includedWorkspaces: 10 });
   });
 
   it('cancels the subscription (AC-SUB-06)', async () => {
@@ -68,8 +77,8 @@ describe('Subscription & Billing', () => {
   });
 
   it('discounts the annual cycle (AC-SUB-08)', async () => {
-    const m = await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'PRO', billingCycle: 'MONTHLY' });
-    const a = await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'PRO', billingCycle: 'ANNUAL' });
+    const m = await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'STARTER', billingCycle: 'MONTHLY' });
+    const a = await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'STARTER', billingCycle: 'ANNUAL' });
     expect(a.priceCents).toBeLessThan(m.priceCents);
   });
 
@@ -78,8 +87,8 @@ describe('Subscription & Billing', () => {
       await new RegisterUser(ctx).execute({ firstName: 'M', lastName: 'R', email: 'm@uruk.io', password: 'C0rrect-Horse!' })
     ).userId;
     await ctx.memberships.create({ id: ctx.ids.next(), orgId, userId: member, role: 'MEMBER', createdAt: ctx.clock.now() });
-    expect((await new GetOrgSubscription(ctx).execute({ userId: member, orgId })).plan).toBe('TEAM');
-    await expect(new ChangeSubscription(ctx).execute({ userId: member, orgId, plan: 'PRO' })).rejects.toMatchObject({
+    expect((await new GetOrgSubscription(ctx).execute({ userId: member, orgId })).plan).toBe('FREE');
+    await expect(new ChangeSubscription(ctx).execute({ userId: member, orgId, plan: 'STARTER' })).rejects.toMatchObject({
       code: 'FORBIDDEN',
     });
 
@@ -87,7 +96,7 @@ describe('Subscription & Billing', () => {
       await new RegisterUser(ctx).execute({ firstName: 'E', lastName: 'X', email: 'eve@uruk.io', password: 'C0rrect-Horse!' })
     ).userId;
     await expect(new GetOrgSubscription(ctx).execute({ userId: outsider, orgId })).rejects.toMatchObject({ code: 'NOT_FOUND' });
-    await expect(new ChangeSubscription(ctx).execute({ userId: outsider, orgId, plan: 'PRO' })).rejects.toMatchObject({
+    await expect(new ChangeSubscription(ctx).execute({ userId: outsider, orgId, plan: 'STARTER' })).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });
   });

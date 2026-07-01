@@ -43,6 +43,29 @@ describe('Test Lab — feature authoring', () => {
     expect(read.scenarios.map((s) => s.name)).toEqual(['Pay with card', 'Pay with cash']);
   });
 
+  it('summarizes scenario counts with one aggregate query, not one per feature (audit #6 — no N+1)', async () => {
+    await new CreateFeature(ctx).execute({ userId, projectId, path: 'a.feature', content: GHERKIN });
+    await new CreateFeature(ctx).execute({ userId, projectId, path: 'b.feature', content: GHERKIN });
+
+    let perFeatureCalls = 0;
+    let aggregateCalls = 0;
+    const listForFeature = ctx.scenarios.listForFeature.bind(ctx.scenarios);
+    const countByFeature = ctx.scenarios.countByFeature.bind(ctx.scenarios);
+    ctx.scenarios.listForFeature = async (id) => {
+      perFeatureCalls++;
+      return listForFeature(id);
+    };
+    ctx.scenarios.countByFeature = async (ids) => {
+      aggregateCalls++;
+      return countByFeature(ids);
+    };
+
+    const list = await new ListFeatures(ctx).execute({ userId, projectId });
+    expect(list.map((f) => f.scenarioCount)).toEqual([2, 2]);
+    expect(aggregateCalls).toBe(1);
+    expect(perFeatureCalls).toBe(0);
+  });
+
   it('re-parses scenarios when the content is edited (AC-FEAT-04)', async () => {
     const f = await new CreateFeature(ctx).execute({ userId, projectId, path: 'a.feature', content: GHERKIN });
     const updated = await new UpdateFeature(ctx).execute({

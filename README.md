@@ -42,9 +42,18 @@ adversarially reviewed, and integrated only when fully green.
 **Coverage:** ~340 unit/integration tests · 94 BDD acceptance scenarios · 6 Playwright browser tests · CI +
 CodeQL + secret-scan green · 0 security alerts.
 
+**Slice 7 — Look & feel (in progress, branch `feat/look-and-feel`):** a high-fidelity re-skin of every view
+(dark by default + light theme, responsive), building UI and real functionality together. Done: Login,
+Register, Pricing, Dashboard, Knowledge (+ real per-org document upload). Next: Test Lab, Integrations and
+Subscription re-skins, then the blocked/new views.
+
+**Live status board:** [`docs/research/feature-status.md`](docs/research/feature-status.md) — one glance at
+what's shipped vs. functional-but-unskinned vs. missing/blocked.
+
 **What's next (not built yet):** real test-execution orchestration (DAG canvas + workers), a real Claude
-"Brain" (replacing the deterministic stub), per-org private document uploads, more integration types, password
-reset, SSO, and real Stripe billing. See [`docs/research/decisions-log.md`](docs/research/decisions-log.md).
+"Brain" (replacing the deterministic stub), Reports over real runs, more integration types, password reset,
+SSO, and real Stripe billing. Tracked on the board above; rationale in
+[`docs/research/decisions-log.md`](docs/research/decisions-log.md).
 
 > ⚠️ **The 4 AI/external ports (Brain, TestKernel, PaymentProvider, RepoProvider) currently run deterministic
 > offline _stubs_, not the real services.** This is intentional — it keeps the whole app testable without a

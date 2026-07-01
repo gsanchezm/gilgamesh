@@ -5,6 +5,7 @@ import {
   DeterministicBrain,
   DeterministicKernel,
   type KnowledgeChunkRepository,
+  type KnowledgeDocumentRepository,
   KnowledgeRetriever,
   MockPaymentProvider,
   MockRepoProvider,
@@ -14,6 +15,7 @@ import {
   InMemoryFeatureRepository,
   InMemoryIntegrationRepository,
   InMemoryKnowledgeChunkRepository,
+  InMemoryKnowledgeDocumentRepository,
   InMemoryMembershipRepository,
   InMemoryOrgRepository,
   InMemoryProjectRepository,
@@ -93,6 +95,8 @@ import { TOKENS } from './tokens';
         toolBindings: ToolBindingRepository,
         subscriptions: SubscriptionRepository,
         audit: AuditLogRepository,
+        knowledge: KnowledgeChunkRepository,
+        knowledgeDocuments: KnowledgeDocumentRepository,
       ) =>
         new InMemoryUnitOfWork({
           users,
@@ -110,6 +114,8 @@ import { TOKENS } from './tokens';
           toolBindings,
           subscriptions,
           audit,
+          knowledge,
+          knowledgeDocuments,
         }),
       inject: [
         TOKENS.Users,
@@ -127,6 +133,8 @@ import { TOKENS } from './tokens';
         TOKENS.ToolBindings,
         TOKENS.Subscriptions,
         TOKENS.Audit,
+        TOKENS.Knowledge,
+        TOKENS.KnowledgeDocuments,
       ],
     },
     { provide: TOKENS.Hasher, useValue: new Argon2PasswordHasher() },
@@ -137,6 +145,7 @@ import { TOKENS } from './tokens';
     { provide: TOKENS.Kernel, useValue: new DeterministicKernel() },
     { provide: TOKENS.Payment, useValue: new MockPaymentProvider() },
     { provide: TOKENS.Knowledge, useValue: new InMemoryKnowledgeChunkRepository() },
+    { provide: TOKENS.KnowledgeDocuments, useValue: new InMemoryKnowledgeDocumentRepository() },
     {
       provide: TOKENS.KnowledgeRetrieval,
       useFactory: (brain: AgentBrainPort, knowledge: KnowledgeChunkRepository) =>
@@ -172,6 +181,7 @@ import { TOKENS } from './tokens';
     TOKENS.Kernel,
     TOKENS.Payment,
     TOKENS.Knowledge,
+    TOKENS.KnowledgeDocuments,
     TOKENS.KnowledgeRetrieval,
     TOKENS.Integrations,
     TOKENS.RepoProvider,

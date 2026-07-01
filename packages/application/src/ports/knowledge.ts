@@ -1,16 +1,24 @@
-import type { KnowledgeChunkRecord } from './records';
+import type { KnowledgeChunkRecord, KnowledgeDocumentRecord } from './records';
 
 export interface ScoredChunk {
   chunk: KnowledgeChunkRecord;
   score: number;
 }
 
-/** Persistence for the global shared knowledge base (pgvector in prod; in-memory cosine in tests). */
+/** Persistence for knowledge chunks (pgvector in prod; in-memory cosine in tests). */
 export interface KnowledgeChunkRepository {
   upsertMany(chunks: KnowledgeChunkRecord[]): Promise<void>;
-  /** Cosine-similarity top-k over the whole shared collection. */
+  /** Cosine-similarity top-k over the GLOBAL shared corpus only (orgId IS NULL) — never per-org chunks. */
   search(queryEmbedding: number[], k: number): Promise<ScoredChunk[]>;
+  /** Size of the GLOBAL shared corpus (orgId IS NULL). */
   count(): Promise<number>;
+}
+
+/** Persistence for per-org uploaded knowledge documents (slice 7). */
+export interface KnowledgeDocumentRepository {
+  create(doc: KnowledgeDocumentRecord): Promise<void>;
+  /** Newest-first, tenant-scoped to the org. */
+  listForOrg(orgId: string): Promise<KnowledgeDocumentRecord[]>;
 }
 
 /** Source provenance for a retrieved chunk — always carried so generated artifacts are attributable (S5-D). */

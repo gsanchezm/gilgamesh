@@ -21,6 +21,11 @@
   --font-display: 'Marcellus', Georgia, serif;
   --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  /* Radii (handoff §4.6) — theme-independent; light inherits these. */
+  --radius-control: 10px; /* inputs, buttons */
+  --radius-card: 14px; /* cards */
+  --radius-panel: 5px; /* large cards / panels */
+  --radius-pill: 20px; /* chips, badges, pills */
 }
 
 [data-theme='light'] {
@@ -48,6 +53,570 @@
     transform: scale(1.5);
     opacity: 0.25;
   }
+}
+
+/* Voice bars (push-to-talk). */
+@keyframes gxwave {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+/* Message / node entry. */
+@keyframes gxin {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Typing cursor. */
+@keyframes gxblink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Canvas connection flow. */
+@keyframes gxdash {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+
+/* Loading spinner. */
+@keyframes gxspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Soft green halo of the active state. */
+@keyframes gxbreathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(47, 143, 91, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(47, 143, 91, 0.12);
+  }
+}
+
+/* Gentle float for the login-hero orbiting tool chips. */
+@keyframes gxfloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Slow ambient sway for the login-hero double helix. */
+@keyframes gxsway {
+  0%,
+  100% {
+    transform: translateX(-9px);
+  }
+  50% {
+    transform: translateX(9px);
+  }
+}
+
+/* Agent avatar (handoff §5 anatomy): family-colored frame → inset portrait → status dot. */
+.gx-avatar {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 24%;
+  flex: none;
+}
+.gx-avatar__portrait {
+  position: absolute;
+  inset: 2.5px;
+  border-radius: 22%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background-image: linear-gradient(160deg, #16294e, #0b1a36);
+  background-size: cover;
+  background-position: center top;
+}
+.gx-avatar__glyph {
+  font-family: var(--font-display);
+  color: #e7c877;
+  line-height: 1;
+}
+.gx-avatar__dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  padding: 2px;
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+/* ---- Small primitives ------------------------------------------------------ */
+.gx-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+.gx-badge {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.gx-badge--accent {
+  color: var(--accent);
+  border-color: rgba(201, 161, 78, 0.35);
+  background: var(--accent-soft);
+}
+.gx-badge--muted {
+  color: var(--muted);
+  background: transparent;
+}
+.gx-iconbtn {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--field);
+  color: var(--text);
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+.gx-iconbtn:hover {
+  filter: brightness(1.12);
+}
+.gx-iconbtn--mic {
+  color: var(--accent);
+  border-color: rgba(201, 161, 78, 0.35);
+}
+
+/* ---- App shell ------------------------------------------------------------- */
+.gx-shell {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  min-height: 100vh;
+}
+.gx-shell__main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.gx-shell__content {
+  flex: 1;
+  min-width: 0;
+  padding: 28px 32px;
+  background: var(--bg);
+  overflow-x: hidden;
+}
+
+/* ---- Sidebar --------------------------------------------------------------- */
+.gx-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 236px;
+  background: var(--sidebar);
+  border-right: 1px solid var(--border);
+  padding: 16px 12px;
+  gap: 8px;
+  /* The sidebar stays dark (navy) in BOTH themes (handoff §6.4 / capture 05). Pin the token values
+     to their dark variants so child text, dividers and accents remain legible on it in light mode —
+     otherwise var(--text) flips to navy and the agent names vanish against the navy sidebar. */
+  --text: #eaf0fa;
+  --muted: #8597b4;
+  --border: rgba(255, 255, 255, 0.09);
+  --accent: #e7c877;
+  --accent-soft: rgba(201, 161, 78, 0.15);
+}
+.gx-sidebar[data-collapsed='true'] {
+  width: 68px;
+}
+.gx-sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 14px;
+}
+.gx-sidebar__mark {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 50%;
+  background-color: #0a1730;
+  background-size: cover;
+  background-position: center;
+  border: 1px solid rgba(201, 161, 78, 0.5);
+}
+.gx-sidebar__brandtext {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.gx-sidebar__logo {
+  font-family: var(--font-display);
+  font-size: 17px;
+  letter-spacing: 0.16em;
+  color: #e7c877;
+  line-height: 1;
+}
+.gx-sidebar__tagline {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.22em;
+  color: var(--muted);
+}
+.gx-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gx-sidebar__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-control);
+  color: #c4d0e4;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.gx-sidebar__item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.gx-sidebar__item[data-active='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.gx-sidebar__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.gx-sidebar[data-collapsed='true'] .gx-sidebar__item {
+  justify-content: center;
+}
+.gx-sidebar__agents {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  overflow-y: auto;
+}
+.gx-sidebar__agentshead {
+  padding: 0 8px;
+}
+.gx-sidebar__agentlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gx-sidebar__agent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+.gx-sidebar__agent:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.gx-sidebar__agentname {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--text);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gx-sidebar__foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 8px;
+}
+.gx-sidebar__collapse,
+.gx-sidebar__logout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-control);
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  cursor: pointer;
+}
+.gx-sidebar__collapse:hover,
+.gx-sidebar__logout:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+/* ---- Topbar ---------------------------------------------------------------- */
+.gx-topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.gx-projswitch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--field);
+  cursor: pointer;
+  flex: none;
+}
+.gx-projswitch__mark {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.gx-projswitch__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+}
+.gx-projswitch__name {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+}
+.gx-projswitch__sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+.gx-topbar__search {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--field);
+  color: var(--muted);
+}
+.gx-topbar__search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+}
+.gx-topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+.gx-usermenu {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid rgba(201, 161, 78, 0.4);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* ---- Card + toggle --------------------------------------------------------- */
+.gx-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 16px;
+}
+.gx-toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  flex: none;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: var(--track);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.gx-toggle[data-on='true'] {
+  background: var(--green);
+  border-color: transparent;
+}
+.gx-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+.gx-toggle[data-on='true']::after {
+  transform: translateX(18px);
+}
+
+/* ---- Agent card (dashboard) ----------------------------------------------- */
+.gx-agentcard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 16px;
+  transition: opacity 0.15s ease;
+}
+.gx-agentcard[data-enabled='false'] {
+  opacity: 0.6;
+}
+.gx-agentcard__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.gx-agentcard__tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--field);
+  min-width: 0;
+}
+.gx-agentcard__tooltag {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+.gx-agentcard__toolname {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gx-agentcard__id {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+.gx-agentcard__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.gx-agentcard__name {
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: var(--text);
+}
+.gx-agentcard__role {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+.gx-agentcard__culture {
+  font-size: 12px;
+  color: var(--muted);
+}
+.gx-agentcard__cta {
+  display: flex;
+  gap: 8px;
+}
+.gx-agentcard__cta .gx-btn {
+  flex: 1;
 }
 
 /* Buttons */

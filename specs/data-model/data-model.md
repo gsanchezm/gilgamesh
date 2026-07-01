@@ -401,12 +401,12 @@ Indexes: **U(orgId, key)** (left-prefix = org_id index). Cascade from Org; SetNu
 |---|---|---|
 | id | uuid | PK |
 | orgId | uuid | **U FK→Org** (one per org) |
-| plan | Plan | `TEAM`\|`PRO`\|`ENTERPRISE` |
+| plan | Plan | `FREE`\|`STARTER`\|`GROWTH`\|`SCALE` |
 | billingCycle | BillingCycle | `MONTHLY`\|`ANNUAL` |
-| seats | int | |
+| seats | int | Active workspaces (legacy column name). |
 | status | SubscriptionStatus | `TRIALING`\|`ACTIVE`\|`PAST_DUE`\|`CANCELED` |
-| runMinutesQuota | int | |
-| runMinutesUsed | int | default 0 (per-org metering) |
+| runMinutesQuota | int | Monthly execution quota (legacy column name). |
+| runMinutesUsed | int | Monthly executions used (legacy column name); default 0 (per-org metering). |
 | providerCustomerId? / providerSubscriptionId? | text | mock provider now |
 | currentPeriodEnd? | timestamptz | (no createdAt/updatedAt per §2) |
 

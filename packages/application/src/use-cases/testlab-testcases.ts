@@ -27,6 +27,8 @@ export interface TestCaseView {
 
 const AUTHORS = ['OWNER', 'ADMIN', 'MEMBER'] as const;
 const PRIORITIES: TestCasePriority[] = ['HIGH', 'MEDIUM', 'LOW'];
+/** Bounded retries for the derive-key/insert race on the unique (projectId, key) constraint (audit #7). */
+const MAX_KEY_RETRIES = 8;
 
 interface TestCaseDeps {
   testCases: TestCaseRepository;
@@ -130,27 +132,37 @@ export class CreateTestCase {
     const prefix = await resolveSlicePrefix(this.deps, project.id, input.sliceId);
     if (input.assignedAgentId) await requireAgentInOrg(this.deps, project.orgId, input.assignedAgentId);
 
-    const existing = await this.deps.testCases.listForProject(project.id);
-    const now = this.deps.clock.now();
-    const rec: TestCaseRecord = {
-      id: this.deps.ids.next(),
-      orgId: project.orgId,
-      projectId: project.id,
-      sliceId: input.sliceId || null,
-      key: nextKey(existing, prefix),
-      title,
-      steps: input.steps ?? '',
-      data: input.data ?? '',
-      expected: input.expected ?? '',
-      priority: input.priority,
-      status: 'NOTRUN',
-      assignedAgentId: input.assignedAgentId || null,
-      createdAt: now,
-      updatedAt: now,
-    };
-    await this.deps.testCases.create(rec);
-    await audit(this.deps, project.orgId, input.userId, 'testcase.created', rec.id, { key: rec.key });
-    return toView(rec);
+    // The key (TC_<prefix>_NNN) is derived from a read of the current max, so two concurrent authors
+    // can compute the same key and collide on the unique (projectId, key) constraint. Re-read and retry
+    // with the next free key on CONFLICT rather than surfacing a 500 (audit #7).
+    for (let attempt = 0; ; attempt++) {
+      const existing = await this.deps.testCases.listForProject(project.id);
+      const now = this.deps.clock.now();
+      const rec: TestCaseRecord = {
+        id: this.deps.ids.next(),
+        orgId: project.orgId,
+        projectId: project.id,
+        sliceId: input.sliceId || null,
+        key: nextKey(existing, prefix),
+        title,
+        steps: input.steps ?? '',
+        data: input.data ?? '',
+        expected: input.expected ?? '',
+        priority: input.priority,
+        status: 'NOTRUN',
+        assignedAgentId: input.assignedAgentId || null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      try {
+        await this.deps.testCases.create(rec);
+      } catch (e) {
+        if (e instanceof ApplicationError && e.code === 'CONFLICT' && attempt < MAX_KEY_RETRIES) continue;
+        throw e;
+      }
+      await audit(this.deps, project.orgId, input.userId, 'testcase.created', rec.id, { key: rec.key });
+      return toView(rec);
+    }
   }
 }
 

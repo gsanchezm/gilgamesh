@@ -24,6 +24,7 @@ export const TOKENS = {
   Kernel: 'TestKernel',
   Payment: 'PaymentProvider',
   Knowledge: 'KnowledgeChunkRepository',
+  KnowledgeDocuments: 'KnowledgeDocumentRepository',
   KnowledgeRetrieval: 'KnowledgeRetrievalPort',
   Integrations: 'IntegrationRepository',
   RepoProvider: 'RepoProvider',

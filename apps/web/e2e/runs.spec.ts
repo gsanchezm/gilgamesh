@@ -17,14 +17,14 @@ test('Test execution: author a feature, run it, and see aggregated results', asy
   await page.goto('/login');
   await page.getByPlaceholder('name@company.com').fill(email);
   await page.getByPlaceholder('••••••••').fill(PASSWORD);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Enter' }).click();
 
   await expect(page.getByText('Name your project')).toBeVisible();
   await page.getByPlaceholder('OmniPizza').fill('OmniPizza');
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(page.getByText('Agent room')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Agent room' })).toBeVisible();
 
   const projectId = /\/projects\/([^/]+)\/agents/.exec(page.url())?.[1];
   expect(projectId).toBeTruthy();

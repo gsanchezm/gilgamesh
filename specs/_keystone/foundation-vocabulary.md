@@ -31,7 +31,7 @@ RunNodeState       = IDLE | QUEUED | RUNNING | DONE_PASS | DONE_FAIL
 ArtifactType       = VIDEO | SCREENSHOT | HAR | LOG | REPORT_HTML
 CaptureMode        = OFF | ON_FAIL | ALWAYS | ON_DEMAND
 IntegrationGroup   = SOURCE_REPOS | PROJECT_TRACKING | TEST_MANAGEMENT | COMMUNICATION | CICD | DEVICES_BROWSERS
-Plan               = TEAM | PRO | ENTERPRISE
+Plan               = FREE | STARTER | GROWTH | SCALE
 BillingCycle       = MONTHLY | ANNUAL
 SubscriptionStatus = TRIALING | ACTIVE | PAST_DUE | CANCELED
 KnowledgeDocStatus = UPLOADED | INDEXING | INDEXED | FAILED
@@ -168,5 +168,7 @@ Real runs require capabilities the owner is still building (decision #5). To avo
 `gha, gitlabci, azpipe, jenkins` (CICD) · `sim, browserstack` (DEVICES_BROWSERS).
 
 ## 9. Pricing (mock) reference for Subscription seeds
-TEAM $199/mo ($166 yr) ≤5 agents/3 lanes/1000 min · PRO $499/mo ($416 yr) 11 agents/10 lanes/10000 min ·
-ENTERPRISE custom unlimited. Annual ≈ 16% off.
+FREE $0 (1 workspace · 2 services · 500 executions) · STARTER $29/mo (unlimited workspaces · 5 services ·
+5,000 executions · 3 users) · GROWTH $99/mo (15 services · 25,000 executions · unlimited users) · SCALE
+$499/mo base includes 10 workspaces + $99/extra workspace (unlimited executions/services, SSO/RBAC/SLA).
+Annual billing charges 10 months (2 months free).

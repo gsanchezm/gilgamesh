@@ -14,6 +14,7 @@ export * from './use-cases/testlab-generate';
 export * from './use-cases/runs';
 export * from './use-cases/subscription';
 export * from './use-cases/knowledge';
+export * from './use-cases/knowledge-documents';
 export * from './use-cases/integrations';
 export * from './brain/stub-brain';
 export * from './kernel/deterministic-kernel';

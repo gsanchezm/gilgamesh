@@ -23,6 +23,7 @@ import {
   PrismaFeatureRepository,
   PrismaIntegrationRepository,
   PrismaKnowledgeChunkRepository,
+  PrismaKnowledgeDocumentRepository,
   PrismaMembershipRepository,
   PrismaOrgRepository,
   PrismaProjectRepository,
@@ -72,6 +73,11 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
       inject: [PrismaService],
     },
     {
+      provide: TOKENS.KnowledgeDocuments,
+      useFactory: (db: PrismaService) => new PrismaKnowledgeDocumentRepository(db),
+      inject: [PrismaService],
+    },
+    {
       provide: TOKENS.KnowledgeRetrieval,
       useFactory: (brain: AgentBrainPort, knowledge: KnowledgeChunkRepository) =>
         new KnowledgeRetriever({ brain, knowledge }),
@@ -111,6 +117,7 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     TOKENS.Kernel,
     TOKENS.Payment,
     TOKENS.Knowledge,
+    TOKENS.KnowledgeDocuments,
     TOKENS.KnowledgeRetrieval,
     TOKENS.Integrations,
     TOKENS.RepoProvider,

@@ -24,7 +24,7 @@ describe('CompleteOnboarding', () => {
     userId = await newUser(ctx, 'ishtar@uruk.io');
   });
 
-  it('bootstraps the tenant on the first project (org, OWNER, 11 agents, TEAM trial, 5 slices, 11 awake bindings)', async () => {
+  it('bootstraps the tenant on the first project (org, OWNER, 11 agents, FREE trial, 5 slices, 11 awake bindings)', async () => {
     const { orgId, projectId, slug } = await onboard.execute({
       userId,
       projectName: 'OmniPizza',
@@ -37,9 +37,10 @@ describe('CompleteOnboarding', () => {
     expect(await ctx.memberships.findRole(orgId, userId)).toBe('OWNER');
     expect(await ctx.agents.listForOrg(orgId)).toHaveLength(11);
     const sub = await ctx.subscriptions.findByOrg(orgId);
-    expect(sub?.plan).toBe('TEAM');
+    expect(sub?.plan).toBe('FREE');
     expect(sub?.status).toBe('TRIALING');
-    expect(sub?.seats).toBe(5);
+    expect(sub?.seats).toBe(1);
+    expect(sub?.runMinutesQuota).toBe(500);
     expect((await ctx.projects.findById(projectId))?.format).toBe('BDD');
     expect(await ctx.slices.listForProject(projectId)).toHaveLength(5);
     const bindings = await ctx.toolBindings.listForProject(projectId);

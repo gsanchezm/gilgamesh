@@ -178,12 +178,15 @@ export class ListFeatures {
   }): Promise<FeatureSummaryView[]> {
     const { project } = await requireProjectAccess(this.deps, input.userId, input.projectId);
     const features = await this.deps.features.listForProject(project.id, input.sliceId);
-    const out: FeatureSummaryView[] = [];
-    for (const f of features) {
-      const scenarios = await this.deps.scenarios.listForFeature(f.id);
-      out.push({ id: f.id, name: f.name, path: f.path, sliceId: f.sliceId, scenarioCount: scenarios.length });
-    }
-    return out;
+    // One grouped count for all features instead of a query per feature (audit #6 — no N+1).
+    const counts = await this.deps.scenarios.countByFeature(features.map((f) => f.id));
+    return features.map((f) => ({
+      id: f.id,
+      name: f.name,
+      path: f.path,
+      sliceId: f.sliceId,
+      scenarioCount: counts.get(f.id) ?? 0,
+    }));
   }
 }
 

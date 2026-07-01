@@ -6,6 +6,7 @@ import type { AuthClient } from '../lib/auth-client';
 function fakeClient(overrides?: Partial<AuthClient>): AuthClient {
   return {
     login: vi.fn(async () => ({ activeOrgId: 'org-1' })),
+    register: vi.fn(async () => ({ userId: 'u-1' })),
     me: vi.fn(async () => null),
     logout: vi.fn(async () => {}),
     ...overrides,
@@ -22,7 +23,7 @@ describe('LoginScreen', () => {
     const client = fakeClient();
     render(<LoginScreen authClient={client} onSuccess={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enter' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain('valid email');
     expect(client.login).not.toHaveBeenCalled();
@@ -34,7 +35,7 @@ describe('LoginScreen', () => {
     render(<LoginScreen authClient={client} onSuccess={onSuccess} />);
 
     fillCredentials('gil@example.com', 'correct horse battery');
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enter' }));
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledWith({ activeOrgId: 'org-1' }));
     expect(client.login).toHaveBeenCalledWith({
@@ -52,7 +53,7 @@ describe('LoginScreen', () => {
     render(<LoginScreen authClient={client} onSuccess={vi.fn()} />);
 
     fillCredentials('gil@example.com', 'wrong-password');
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enter' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain('Invalid email');
   });

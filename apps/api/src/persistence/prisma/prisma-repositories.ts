@@ -10,6 +10,8 @@ import type {
   IntegrationRepository,
   KnowledgeChunkRecord,
   KnowledgeChunkRepository,
+  KnowledgeDocumentRecord,
+  KnowledgeDocumentRepository,
   MembershipRecord,
   MembershipRepository,
   ScoredChunk,
@@ -38,6 +40,7 @@ import type {
   UserRecord,
   UserRepository,
 } from '@gilgamesh/application';
+import { ApplicationError } from '@gilgamesh/application';
 import { Prisma, type RepoProvider } from '@prisma/client';
 
 export class PrismaUserRepository implements UserRepository {
@@ -218,6 +221,15 @@ export class PrismaScenarioRepository implements ScenarioRepository {
   listForFeature(featureId: string): Promise<ScenarioRecord[]> {
     return this.db.scenario.findMany({ where: { featureId }, orderBy: { order: 'asc' } });
   }
+  async countByFeature(featureIds: string[]): Promise<Map<string, number>> {
+    if (featureIds.length === 0) return new Map();
+    const rows = await this.db.scenario.groupBy({
+      by: ['featureId'],
+      where: { featureId: { in: featureIds } },
+      _count: { _all: true },
+    });
+    return new Map(rows.map((r) => [r.featureId, r._count._all]));
+  }
   async deleteForFeature(featureId: string): Promise<void> {
     await this.db.scenario.deleteMany({ where: { featureId } });
   }
@@ -230,7 +242,16 @@ export class PrismaScenarioRepository implements ScenarioRepository {
 export class PrismaTestCaseRepository implements TestCaseRepository {
   constructor(private readonly db: Prisma.TransactionClient) {}
   async create(rec: TestCaseRecord): Promise<void> {
-    await this.db.testCase.create({ data: rec });
+    try {
+      await this.db.testCase.create({ data: rec });
+    } catch (e) {
+      // Unique (projectId, key) violation → surface a domain CONFLICT so CreateTestCase can retry
+      // with the next free key instead of leaking a 500 (audit #7).
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ApplicationError('CONFLICT', `Test case key "${rec.key}" already exists.`);
+      }
+      throw e;
+    }
   }
   findById(id: string): Promise<TestCaseRecord | null> {
     return this.db.testCase.findUnique({ where: { id } });
@@ -368,27 +389,38 @@ export class PrismaKnowledgeChunkRepository implements KnowledgeChunkRepository 
   constructor(private readonly db: Prisma.TransactionClient) {}
 
   async upsertMany(chunks: KnowledgeChunkRecord[]): Promise<void> {
-    for (const c of chunks) {
-      const vec = `[${c.embedding.join(',')}]`;
-      await this.db.$executeRaw`
-        INSERT INTO knowledge_chunks (id, source, heading_path, section, content, embedding, token_estimate)
-        VALUES (${c.id}, ${c.source}, ${c.headingPath}, ${c.section}, ${c.content}, ${vec}::vector, ${c.tokenEstimate})
+    if (chunks.length === 0) return;
+    // One multi-row INSERT per batch instead of a round-trip per chunk — the full corpus is thousands of
+    // chunks (audit #10). Batched so we stay well under Postgres' 65535 bind-param cap (9 params/row).
+    const BATCH = 500;
+    for (let i = 0; i < chunks.length; i += BATCH) {
+      const rows = chunks.slice(i, i + BATCH).map((c) => {
+        const vec = `[${c.embedding.join(',')}]`;
+        return Prisma.sql`(${c.id}, ${c.orgId ?? null}::uuid, ${c.documentId ?? null}::uuid, ${c.source}, ${c.headingPath}, ${c.section}, ${c.content}, ${vec}::vector, ${c.tokenEstimate})`;
+      });
+      await this.db.$executeRaw(Prisma.sql`
+        INSERT INTO knowledge_chunks (id, org_id, document_id, source, heading_path, section, content, embedding, token_estimate)
+        VALUES ${Prisma.join(rows)}
         ON CONFLICT (id) DO UPDATE SET
+          org_id = EXCLUDED.org_id,
+          document_id = EXCLUDED.document_id,
           source = EXCLUDED.source,
           heading_path = EXCLUDED.heading_path,
           section = EXCLUDED.section,
           content = EXCLUDED.content,
           embedding = EXCLUDED.embedding,
-          token_estimate = EXCLUDED.token_estimate`;
+          token_estimate = EXCLUDED.token_estimate`);
     }
   }
 
   async search(queryEmbedding: number[], k: number): Promise<ScoredChunk[]> {
     const vec = `[${queryEmbedding.join(',')}]`;
+    // Shared corpus only (org_id IS NULL) — per-org uploaded chunks never surface in the global search.
     const rows = await this.db.$queryRaw<KnowledgeSearchRow[]>`
       SELECT id, source, heading_path AS "headingPath", section, content,
              token_estimate AS "tokenEstimate", 1 - (embedding <=> ${vec}::vector) AS score
       FROM knowledge_chunks
+      WHERE org_id IS NULL
       ORDER BY embedding <=> ${vec}::vector, id
       LIMIT ${k}`;
     return rows.map((r) => ({
@@ -406,7 +438,40 @@ export class PrismaKnowledgeChunkRepository implements KnowledgeChunkRepository 
   }
 
   async count(): Promise<number> {
-    return this.db.knowledgeChunk.count();
+    return this.db.knowledgeChunk.count({ where: { orgId: null } });
+  }
+}
+
+/** Per-org uploaded knowledge documents (slice 7). Plain typed-client rows (no vector column here). */
+export class PrismaKnowledgeDocumentRepository implements KnowledgeDocumentRepository {
+  constructor(private readonly db: Prisma.TransactionClient) {}
+
+  async create(doc: KnowledgeDocumentRecord): Promise<void> {
+    await this.db.knowledgeDocument.create({
+      data: {
+        id: doc.id,
+        orgId: doc.orgId,
+        name: doc.name,
+        type: doc.type,
+        chunkCount: doc.chunkCount,
+        createdAt: doc.createdAt,
+      },
+    });
+  }
+
+  async listForOrg(orgId: string): Promise<KnowledgeDocumentRecord[]> {
+    const rows = await this.db.knowledgeDocument.findMany({
+      where: { orgId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      orgId: r.orgId,
+      name: r.name,
+      type: r.type,
+      chunkCount: r.chunkCount,
+      createdAt: r.createdAt,
+    }));
   }
 }
 

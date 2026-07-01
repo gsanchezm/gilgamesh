@@ -2,11 +2,15 @@ import type { ReactNode } from 'react';
 import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { AgentRoomScreen } from '../screens/AgentRoomScreen';
 import { BillingScreen } from '../screens/BillingScreen';
+import { ComingSoonScreen } from '../screens/ComingSoonScreen';
 import { IntegrationsScreen } from '../screens/IntegrationsScreen';
 import { KnowledgeScreen } from '../screens/KnowledgeScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { OnboardingWizard } from '../screens/OnboardingWizard';
+import { PricingScreen } from '../screens/PricingScreen';
+import { RegisterScreen } from '../screens/RegisterScreen';
 import { TestLabScreen } from '../screens/TestLabScreen';
+import { AppLayout } from './AppLayout';
 import { useClients } from './clients';
 import { useSession } from './session';
 
@@ -41,8 +45,38 @@ function LoginRoute() {
         signIn(result.activeOrgId);
         navigate('/onboarding');
       }}
+      onCreate={() => navigate('/register')}
+      onViewPlans={() => navigate('/pricing')}
     />
   );
+}
+
+function RegisterRoute() {
+  const { auth } = useClients();
+  const { signIn, authed, booting } = useSession();
+  const navigate = useNavigate();
+  if (booting) return <Booting />;
+  // An already-authenticated user shouldn't see the signup form.
+  if (authed) return <Navigate to="/onboarding" replace />;
+  return (
+    <RegisterScreen
+      authClient={auth}
+      onSuccess={(company) => {
+        // Register auto-signs-in but creates no Org yet; carry the company to onboarding, where it
+        // becomes the Org name (the tenant is bootstrapped there — spec AC-AUTH-01).
+        signIn(null);
+        navigate('/onboarding', { state: { company } });
+      }}
+      onSignIn={() => navigate('/login')}
+      onViewPlans={() => navigate('/pricing')}
+    />
+  );
+}
+
+function PricingRoute() {
+  const navigate = useNavigate();
+  // Public marketing page: both CTAs enter the funnel (start free → register; sign in → login).
+  return <PricingScreen onStart={() => navigate('/register')} onSignIn={() => navigate('/login')} />;
 }
 
 function OnboardingRoute() {
@@ -59,7 +93,17 @@ function OnboardingRoute() {
 function AgentRoomRoute() {
   const { agents } = useClients();
   const { projectId } = useParams();
-  return <AgentRoomScreen client={agents} projectId={projectId ?? ''} />;
+  const navigate = useNavigate();
+  const pid = projectId ?? '';
+  return (
+    <AgentRoomScreen
+      client={agents}
+      projectId={pid}
+      onGoToCanvas={() => navigate(`/projects/${pid}/orchestrate`)}
+      onOpenAgent={() => navigate(`/projects/${pid}/session`)}
+      onChatAgent={() => navigate(`/projects/${pid}/chat`)}
+    />
+  );
 }
 
 function TestLabRoute() {
@@ -84,7 +128,8 @@ function BillingRoute() {
 
 function KnowledgeRoute() {
   const { knowledge } = useClients();
-  return <KnowledgeScreen client={knowledge} />;
+  const { activeOrgId } = useSession();
+  return <KnowledgeScreen client={knowledge} orgId={activeOrgId ?? ''} />;
 }
 
 export function AppRoutes() {
@@ -92,6 +137,10 @@ export function AppRoutes() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<LoginRoute />} />
+      <Route path="/register" element={<RegisterRoute />} />
+      {/* Public marketing pricing page (capture 03). */}
+      <Route path="/pricing" element={<PricingRoute />} />
+      {/* Onboarding is a standalone stepped flow — outside the app shell. */}
       <Route
         path="/onboarding"
         element={
@@ -100,46 +149,24 @@ export function AppRoutes() {
           </RequireAuth>
         }
       />
+      {/* Authenticated in-app views render inside the sidebar+topbar shell. */}
       <Route
-        path="/projects/:projectId/agents"
         element={
           <RequireAuth>
-            <AgentRoomRoute />
+            <AppLayout />
           </RequireAuth>
         }
-      />
-      <Route
-        path="/projects/:projectId/lab"
-        element={
-          <RequireAuth>
-            <TestLabRoute />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/billing"
-        element={
-          <RequireAuth>
-            <BillingRoute />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/knowledge"
-        element={
-          <RequireAuth>
-            <KnowledgeRoute />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/integrations"
-        element={
-          <RequireAuth>
-            <IntegrationsRoute />
-          </RequireAuth>
-        }
-      />
+      >
+        <Route path="/projects/:projectId/agents" element={<AgentRoomRoute />} />
+        <Route path="/projects/:projectId/lab" element={<TestLabRoute />} />
+        <Route path="/projects/:projectId/orchestrate" element={<ComingSoonScreen title="Orchestration" />} />
+        <Route path="/projects/:projectId/reports" element={<ComingSoonScreen title="Reports" />} />
+        <Route path="/projects/:projectId/chat" element={<ComingSoonScreen title="Chat" />} />
+        <Route path="/projects/:projectId/session" element={<ComingSoonScreen title="Session" />} />
+        <Route path="/billing" element={<BillingRoute />} />
+        <Route path="/knowledge" element={<KnowledgeRoute />} />
+        <Route path="/integrations" element={<IntegrationsRoute />} />
+      </Route>
       <Route path="*" element={<Landing />} />
     </Routes>
   );

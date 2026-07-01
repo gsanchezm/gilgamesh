@@ -52,3 +52,69 @@ describe('Knowledge / RAG API', () => {
     expect((await read(request(server()).get('/knowledge/search').query({ q: '' }))).status).toBe(422);
   });
 });
+
+describe('Per-org knowledge documents API (slice 7)', () => {
+  let member: Auth;
+  let orgId: string;
+
+  beforeAll(async () => {
+    const reg = await request(server())
+      .post('/auth/register')
+      .send({ firstName: 'K', lastName: 'Owner', email: 'kb-owner@uruk.io', password: 'C0rrect-Horse!' });
+    member = authFrom(reg);
+    // Onboarding bootstraps the org; /auth/me then reports its id.
+    await request(server())
+      .post('/projects')
+      .set('Cookie', member.cookie)
+      .set('X-CSRF-Token', member.csrf)
+      .send({ projectName: 'KB Org', format: 'BDD' })
+      .expect(201);
+    const me = await request(server()).get('/auth/me').set('Cookie', member.cookie).expect(200);
+    orgId = me.body.activeOrgId as string;
+  });
+
+  it('uploads a markdown document and lists it', async () => {
+    const up = await request(server())
+      .post(`/orgs/${orgId}/knowledge/documents`)
+      .set('Cookie', member.cookie)
+      .set('X-CSRF-Token', member.csrf)
+      .send({ name: 'design.md', type: 'md', content: '# Test Design\n\nBoundary value analysis picks edges.' });
+    expect(up.status).toBe(201);
+    expect(up.body.chunkCount).toBeGreaterThan(0);
+
+    const list = await request(server())
+      .get(`/orgs/${orgId}/knowledge/documents`)
+      .set('Cookie', member.cookie);
+    expect(list.status).toBe(200);
+    expect(list.body.map((d: { name: string }) => d.name)).toContain('design.md');
+  });
+
+  it('does not leak uploaded chunks into the global shared search', async () => {
+    const res = await read(request(server()).get('/knowledge/search').query({ q: 'boundary value analysis' }));
+    expect(res.status).toBe(200);
+    // Every hit is from the shared corpus (a real source), never the uploaded 'design.md'.
+    expect(res.body.results.every((r: { citation: { source: string } }) => r.citation.source !== 'design.md')).toBe(true);
+  });
+
+  it('requires authentication', async () => {
+    expect((await request(server()).get(`/orgs/${orgId}/knowledge/documents`)).status).toBe(401);
+  });
+
+  it('hides another tenant’s org from a non-member (404)', async () => {
+    const res = await request(server())
+      .post(`/orgs/${orgId}/knowledge/documents`)
+      .set('Cookie', auth.cookie) // the first user is NOT a member of this org
+      .set('X-CSRF-Token', auth.csrf)
+      .send({ name: 'x.md', type: 'md', content: 'hello world' });
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects an unsupported file type (422)', async () => {
+    const res = await request(server())
+      .post(`/orgs/${orgId}/knowledge/documents`)
+      .set('Cookie', member.cookie)
+      .set('X-CSRF-Token', member.csrf)
+      .send({ name: 'x.pdf', type: 'pdf', content: 'hello' });
+    expect(res.status).toBe(422);
+  });
+});

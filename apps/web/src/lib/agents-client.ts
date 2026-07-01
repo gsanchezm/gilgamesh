@@ -1,5 +1,6 @@
 import type { AgentRuntimeStatus, AgentSlot } from '@gilgamesh/domain';
 import { readCsrfToken } from './csrf';
+import { API_BASE, ok } from './http';
 
 export interface AgentRoomAgent {
   slot: AgentSlot;
@@ -36,16 +37,6 @@ export interface AgentsClient {
     patch: { tool?: string; enabled?: boolean },
   ): Promise<AgentRoomAgent>;
   wakeAll(projectId: string): Promise<{ awake: number; total: number }>;
-}
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
-
-async function ok<T>(res: Response, fallback: string): Promise<T> {
-  if (!res.ok) {
-    const problem = (await res.json().catch(() => ({}))) as { detail?: string };
-    throw new Error(problem.detail ?? fallback);
-  }
-  return (await res.json()) as T;
 }
 
 export const httpAgentsClient: AgentsClient = {

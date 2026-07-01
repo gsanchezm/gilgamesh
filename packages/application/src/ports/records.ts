@@ -5,7 +5,7 @@ export type UserStatus = 'ACTIVE' | 'DISABLED';
 export type ProjectFormat = 'BDD' | 'TRADITIONAL';
 export type TestCasePriority = 'HIGH' | 'MEDIUM' | 'LOW';
 export type TestCaseStatus = 'NOTRUN' | 'PASS' | 'FAIL' | 'BLOCKED' | 'SKIPPED';
-export type Plan = 'TEAM' | 'PRO' | 'ENTERPRISE';
+export type Plan = 'FREE' | 'STARTER' | 'GROWTH' | 'SCALE';
 export type BillingCycle = 'MONTHLY' | 'ANNUAL';
 export type SubscriptionStatus = 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
 export type RunStatus = 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED' | 'CANCELED';
@@ -213,17 +213,33 @@ export interface SubscriptionRecord {
 }
 
 /**
- * A chunk of the GLOBAL shared knowledge base (slice 5, owner decision S5-A) — no `orgId`, retrieval is
- * shared across all orgs. The keystone per-org `KnowledgeDoc`/`docId` land with the per-org upload follow-up.
+ * A knowledge-base chunk. The GLOBAL shared corpus (slice 5, owner decision S5-A) has `orgId`/`documentId`
+ * null — retrieval is shared across all orgs. Per-org UPLOADED documents (slice 7) carry both, so they are
+ * tenant-scoped: the shared `search`/`count` exclude them (orgId IS NULL) — no cross-org leak.
  */
 export interface KnowledgeChunkRecord {
   id: string;
+  /** Owning org for an uploaded chunk; null for the global shared corpus. */
+  orgId?: string | null;
+  /** The uploaded document this chunk belongs to; null for the global shared corpus. */
+  documentId?: string | null;
   source: string;
   headingPath: string[];
   section: string;
   content: string;
   embedding: number[];
   tokenEstimate: number;
+}
+
+/** A per-org uploaded knowledge document (slice 7) — its text is chunked/embedded into `KnowledgeChunkRecord`s. */
+export interface KnowledgeDocumentRecord {
+  id: string;
+  orgId: string;
+  name: string;
+  /** File kind: 'md' | 'txt' (real ingest) — PDF/docx parsing is a later, dependency-bearing follow-up. */
+  type: string;
+  chunkCount: number;
+  createdAt: Date;
 }
 
 export interface AuditLogRecord {

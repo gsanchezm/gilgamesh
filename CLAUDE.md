@@ -211,3 +211,34 @@ branch `slice-6-integrations`:
 - **Verified:** typecheck + lint clean · ~340 Docker-free unit/e2e (domain 54 · application 134 · api 80 ·
   web 63 · ui 9) · `test:int` 14 · **BDD 94 scenarios / 738 steps** · **Playwright** smoke + Test Lab + run +
   billing + knowledge + integrations.
+
+## Slice 7 status (Look & feel) — IN PROGRESS (branch `feat/look-and-feel`)
+
+`specs/slices/07-look-and-feel/` — recreate the whole design (`design_handoff_gilgamesh/capturas/`) at
+~100% fidelity, **UI + real functionality in parallel** (stub-behind-a-seam only where a backend is blocked),
+English-only, pre-auth screens always-dark, responsive + native-ready. Review cadence = per-view screenshot.
+**Product board: `docs/research/feature-status.md`.**
+- **Done (committed):** Ph1 tokens/keyframes + `AgentAvatar` + assets · Ph2 `ThemeProvider`+toggle +
+  `Sidebar`/`Topbar`/`AppShell` (in `@gilgamesh/ui`) · Ph3 Dashboard (Agent room) re-skin · Ph4 Login hero
+  (canvas **port** of the prototype's rAF DNA-helix) · Ph5 Register + shared `AuthHero` · Ph6 Pricing (renders
+  the **new 4-tier `PLAN_CATALOG`** in domain; billing-backend migration deferred) · Ph7 Knowledge re-skin +
+  **real per-org document upload** (`KnowledgeDocument` + `orgId`/`documentId` on chunks + migration; shared
+  search filters `orgId IS NULL` = no cross-org leak; `.md`/`.txt` ingest).
+- **Next:** Test Lab re-skin (capture 10, backend exists) → Integrations (11) → Subscription (12, + billing →
+  new 4-tier model migration) → heavy new views.
+- **Blocked / deferred views:** Orchestration (real TOM kernel, keystone §7 `BLOCKED-UNTIL-DELIVERED`) · Chat+voice
+  (real Brain/Claude) · Reports + Session (partially doable over slice-3 `Run`/`RunResult`). PDF/.docx ingest &
+  per-org RAG grounding = follow-ups.
+
+## Audit remediation status (2026-07-01)
+
+Codebase-audit follow-up. Tracking: `docs/research/audit-followup.md` · board: `docs/research/feature-status.md`.
+- **Batch A** — ✅ **merged + pushed to `main`** (auth DTO `@MaxLength` + `INPUT_LIMITS`, deterministic body
+  limit + 413 filter fix, in-memory↔Prisma order parity, cookie-name centralization).
+- **#1/#2/#6/#7/#10/R2** — ✅ done on `feat/look-and-feel` (owner decision: *ride look&feel* to main; `#10` is
+  entangled with slice-7's per-org knowledge schema). Atomic knowledge upload (`UnitOfWork`, document-first) +
+  chunk FKs/indexes; `ListFeatures` `countByFeature` (no N+1); TC-key retry-on-`CONFLICT` (Prisma `P2002`→`CONFLICT`);
+  batch RAG `upsertMany` (`Prisma.join`); shared `apps/web/src/lib/http.ts`. Verified: 409 Docker-free · `test:int`
+  19 · BDD 94 · typecheck · lint.
+- **Bloque 3 (pending owner decision):** rate-limit fail-open policy · per-IP backoff (own slice) · pagination
+  (own slice) · RAG final posture · optimize heavy assets · pin GitHub Actions to SHA.

@@ -33,6 +33,46 @@ describe('httpAuthClient.me', () => {
   });
 });
 
+describe('httpAuthClient.register', () => {
+  it('POSTs to /auth/register with credentials and NO CSRF token, returning the userId', async () => {
+    document.cookie = 'csrf=tok-should-be-ignored';
+    mockFetch(async () => ({ ok: true, status: 201, json: async () => ({ userId: 'u-9' }) }));
+
+    const result = await httpAuthClient.register({
+      firstName: 'Gabriel',
+      lastName: 'Sánchez',
+      email: 'gabriel@acme.com',
+      password: 'correct horse battery',
+    });
+
+    expect(result).toEqual({ userId: 'u-9' });
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    const [url, init] = fetchMock.mock.calls[0] as [string, FetchInit];
+    expect(String(url)).toMatch(/\/auth\/register$/);
+    expect(init.method).toBe('POST');
+    expect(init.credentials).toBe('include');
+    // Register establishes the session — there is no token yet, so no CSRF header is sent.
+    expect(init.headers?.['X-CSRF-Token']).toBeUndefined();
+  });
+
+  it('throws the server detail when registration fails', async () => {
+    mockFetch(async () => ({
+      ok: false,
+      status: 409,
+      json: async () => ({ detail: 'An account with this email already exists.' }),
+    }));
+
+    await expect(
+      httpAuthClient.register({
+        firstName: 'Gabriel',
+        lastName: 'Sánchez',
+        email: 'dup@acme.com',
+        password: 'correct horse battery',
+      }),
+    ).rejects.toThrow('already exists');
+  });
+});
+
 describe('httpAuthClient.logout', () => {
   it('POSTs with the CSRF token + credentials', async () => {
     document.cookie = 'csrf=tok-7';

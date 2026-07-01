@@ -80,11 +80,11 @@ Feature: Onboarding and tenant bootstrap
     And each Agent is unique by (orgId, slot)
 
   @AC-ONB-06 @bootstrap @subscription
-  Scenario: Seeded subscription is a TEAM trial
+  Scenario: Seeded subscription is a FREE trial
     Given I finish onboarding
     When I GET "/orgs/{orgId}/subscription"
-    Then the "SubscriptionView" has plan "TEAM" and status "TRIALING"
-    And it has billingCycle "MONTHLY", seats 5, runMinutesQuota 1000 and runMinutesUsed 0
+    Then the "SubscriptionView" has plan "FREE" and status "TRIALING"
+    And it has billingCycle "MONTHLY", seats 1, runMinutesQuota 500 and runMinutesUsed 0
 
   @AC-ONB-07 @bootstrap @toolbinding
   Scenario: Project creation seeds the tool bindings

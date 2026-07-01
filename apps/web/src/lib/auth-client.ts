@@ -1,4 +1,5 @@
 import { readCsrfToken } from './csrf';
+import { API_BASE } from './http';
 
 export interface LoginInput {
   email: string;
@@ -9,6 +10,18 @@ export interface LoginResult {
   activeOrgId: string | null;
 }
 
+export interface RegisterInput {
+  firstName: string;
+  middleName?: string;
+  lastName: string;
+  email: string;
+  password: string;
+}
+
+export interface RegisterResult {
+  userId: string;
+}
+
 export interface MeResult {
   activeOrgId: string | null;
 }
@@ -16,13 +29,16 @@ export interface MeResult {
 /** Port the UI depends on; the HTTP adapter below is swappable (and mockable in tests). */
 export interface AuthClient {
   login(input: LoginInput): Promise<LoginResult>;
+  /**
+   * Creates a User and auto-signs-in (the server sets the session + csrf cookies). No Org yet —
+   * the tenant is bootstrapped later at onboarding (spec AC-AUTH-01).
+   */
+  register(input: RegisterInput): Promise<RegisterResult>;
   /** Restores the current session from the httpOnly cookie. Resolves null when unauthenticated. */
   me(): Promise<MeResult | null>;
   /** Revokes the current session (server clears the cookie). */
   logout(): Promise<void>;
 }
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
 
 export const httpAuthClient: AuthClient = {
   async login(input) {
@@ -37,6 +53,23 @@ export const httpAuthClient: AuthClient = {
       throw new Error(problem.detail ?? 'Invalid email or password.');
     }
     return (await res.json()) as LoginResult;
+  },
+
+  // Mirrors login (NOT the onboarding client): send credentials so the server can set the session
+  // cookie, but NO X-CSRF-Token — registration establishes the session, so there is no token yet
+  // (the /auth/register controller has no CsrfGuard).
+  async register(input) {
+    const res = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      const problem = (await res.json().catch(() => ({}))) as { detail?: string };
+      throw new Error(problem.detail ?? 'Could not create your account.');
+    }
+    return (await res.json()) as RegisterResult;
   },
 
   async me() {

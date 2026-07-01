@@ -17,27 +17,27 @@ test('Billing: view plan + usage, change plan, mock checkout to ACTIVE', async (
   await page.goto('/login');
   await page.getByPlaceholder('name@company.com').fill(email);
   await page.getByPlaceholder('••••••••').fill(PASSWORD);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Enter' }).click();
 
   await expect(page.getByText('Name your project')).toBeVisible();
   await page.getByPlaceholder('OmniPizza').fill('OmniPizza');
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(page.getByText('Agent room')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Agent room' })).toBeVisible();
 
   // Billing is active-org scoped via the restored session.
   await page.goto('/billing');
   await expect(page.getByRole('heading', { name: 'Billing' })).toBeVisible();
-  await expect(page.getByText(/TEAM · TRIALING/)).toBeVisible();
-  await expect(page.getByText('0 / 1000 minutes used')).toBeVisible();
+  await expect(page.getByText(/Free · TRIALING/)).toBeVisible();
+  await expect(page.getByText('0 / 500 used')).toBeVisible();
 
-  // Change plan -> PRO (quota remaps).
-  await page.getByRole('combobox', { name: 'Plan' }).selectOption('PRO');
-  await page.getByRole('button', { name: 'Change plan' }).click();
-  await expect(page.getByText(/PRO · TRIALING/)).toBeVisible();
+  // Change plan -> Growth (quota remaps).
+  await page.getByRole('combobox', { name: 'Plan' }).selectOption('GROWTH');
+  await page.getByRole('button', { name: 'Save plan' }).click();
+  await expect(page.getByText(/Growth · TRIALING/)).toBeVisible();
 
   // Mock checkout -> confirm activates.
   await page.getByRole('button', { name: 'Checkout' }).click();
-  await expect(page.getByText(/PRO · ACTIVE/)).toBeVisible();
+  await expect(page.getByText(/Growth · ACTIVE/)).toBeVisible();
 });
