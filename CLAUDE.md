@@ -242,3 +242,22 @@ Codebase-audit follow-up. Tracking: `docs/research/audit-followup.md` · board: 
   19 · BDD 94 · typecheck · lint.
 - **Bloque 3 (pending owner decision):** rate-limit fail-open policy · per-IP backoff (own slice) · pagination
   (own slice) · RAG final posture · optimize heavy assets · pin GitHub Actions to SHA.
+
+## Post-slice-7 — integrated on `main` (2026-07-01)
+
+Slice 7 (look&feel) is **merged on `main`** (`b4c3c09`). Two parallel streams were then integrated (green:
+typecheck · 440 unit tests · lint) and **pushed to `origin/main`**:
+- **Reports (capture 08, read-only)** — `summarizeAcrossRuns` (pure domain fold of a project's runs into
+  run-health counts + 1-decimal `ratePct` + `lastRunAt`) + `ReportsScreen` (`{runsClient, projectId}`,
+  reuses the runs client/API; health card + stat cards + recent-runs list). **Route not wired yet**
+  (`/projects/:id/reports`); the capture's per-tool "Tools" breakdown is deferred (slice-3 `RunResult`
+  has no tool/discipline dimension). Spec: `docs/superpowers/specs/2026-07-01-reports-view-design.md`.
+- **PDF/.docx knowledge parsers** — `packages/domain/src/knowledge/parse-document.ts` (+ Knowledge upload
+  now accepts `.pdf`/`.docx`, not just `.md`/`.txt`).
+
+**Preserved, NOT merged:** the **Onboarding wizard re-skin** (Company→`orgName`) is WIP on branch
+`feature/onboarding-reskin` (`5ab3f59`) — **unverified**; finish + verify (SDD→BDD→TDD) before merging.
+
+**Process lesson:** run each parallel stream in its own `pnpm wt` worktree — never share the main working
+dir. Two streams here both appended to `apps/web/src/index.css`, which made scope-committing painful; the
+fix was to extract each stream's work onto its own branch. (See auto-memory `gilgamesh-parallel-worktrees`.)
