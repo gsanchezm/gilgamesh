@@ -1,9 +1,15 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { setInflateSync } from '@gilgamesh/domain';
+import { inflateSync } from 'node:zlib';
 import { createInMemoryContext, type InMemoryContext } from '../testing/in-memory';
 import { ListKnowledgeDocuments, UploadKnowledgeDocument } from './knowledge-documents';
 
 const ORG = 'org-a';
 const USER = 'user-1';
+
+beforeAll(() => {
+  setInflateSync((data) => inflateSync(data));
+});
 
 function seedMember(ctx: InMemoryContext, orgId = ORG, userId = USER) {
   return ctx.memberships.create({
@@ -35,6 +41,33 @@ describe('UploadKnowledgeDocument', () => {
   let ctx: InMemoryContext;
   beforeEach(() => {
     ctx = createInMemoryContext();
+  });
+
+  it('ingests a PDF document successfully', async () => {
+    await seedMember(ctx);
+    const pdfStr =
+      '%PDF-1.4\n' +
+      '1 0 obj\n' +
+      '<< /Length 30 >>\n' +
+      'stream\n' +
+      'BT\n' +
+      '(PDF Text Content) Tj\n' +
+      'ET\n' +
+      'endstream\n' +
+      'endobj\n' +
+      '%%EOF';
+    const base64 = Buffer.from(pdfStr, 'latin1').toString('base64');
+
+    const doc = await uploader(ctx).execute({
+      orgId: ORG,
+      userId: USER,
+      name: 'design.pdf',
+      type: 'pdf',
+      content: base64,
+    });
+
+    expect(doc.name).toBe('design.pdf');
+    expect(doc.chunkCount).toBeGreaterThan(0);
   });
 
   it('ingests the text into per-org chunks and records the document', async () => {

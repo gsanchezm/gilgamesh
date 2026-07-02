@@ -11,7 +11,9 @@ import {
   type UnitOfWork,
   UploadKnowledgeDocument,
 } from '@gilgamesh/application';
+import { setInflateSync } from '@gilgamesh/domain';
 import { Module, type Provider } from '@nestjs/common';
+import { inflateSync } from 'node:zlib';
 import { TOKENS } from '../persistence/tokens';
 import { KnowledgeController, OrgKnowledgeController } from './knowledge.controller';
 import { KnowledgeSeeder } from './knowledge.seeder';
@@ -55,4 +57,8 @@ const providers: Provider[] = [
   controllers: [KnowledgeController, OrgKnowledgeController],
   providers,
 })
-export class KnowledgeModule {}
+export class KnowledgeModule {
+  constructor() {
+    setInflateSync((data) => inflateSync(data));
+  }
+}
