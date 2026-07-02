@@ -1,4 +1,4 @@
-import { chunkText } from '@gilgamesh/domain';
+import { chunkText, parseDocument } from '@gilgamesh/domain';
 import { ApplicationError } from '../errors';
 import type { AgentBrainPort } from '../ports/brain';
 import type { Clock } from '../ports/clock';
@@ -70,7 +70,8 @@ export class UploadKnowledgeDocument {
     const name = input.name.trim();
     if (!name) throw new ApplicationError('VALIDATION', 'A document name is required.');
 
-    const chunks = chunkText(input.content);
+    const parsedContent = parseDocument(input.content, input.type);
+    const chunks = chunkText(parsedContent);
     if (chunks.length === 0) {
       throw new ApplicationError('VALIDATION', 'The document has no indexable text.');
     }

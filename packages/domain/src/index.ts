@@ -10,4 +10,5 @@ export * from './billing/plans';
 export * from './pricing/plan-catalog';
 export * from './knowledge/rag';
 export * from './knowledge/chunk-text';
+export * from './knowledge/parse-document';
 export * from './integrations/integrations';

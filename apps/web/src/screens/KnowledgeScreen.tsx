@@ -13,7 +13,7 @@ const DEMO = {
     'value per class gives good coverage with far fewer test cases.',
 };
 
-const TEXT_FILE = /\.(md|markdown|txt)$/i;
+const ALLOWED_FILES = /\.(md|markdown|txt|pdf|docx)$/i;
 
 export interface KnowledgeScreenProps {
   client: KnowledgeClient;
@@ -66,12 +66,42 @@ export function KnowledgeScreen({ client, orgId }: KnowledgeScreenProps) {
   async function handleFiles(files: FileList | null) {
     const file = files?.[0];
     if (!file) return;
-    if (!TEXT_FILE.test(file.name)) {
-      setUploadError('Only .md and .txt files are supported for now — PDF/.docx parsing is coming.');
+    if (!ALLOWED_FILES.test(file.name)) {
+      setUploadError('Only .pdf, .docx, .md, and .txt files are supported.');
       return;
     }
-    const content = await file.text();
-    await ingest(file.name, /\.txt$/i.test(file.name) ? 'txt' : 'md', content);
+
+    let type = 'txt';
+    if (/\.(md|markdown)$/i.test(file.name)) {
+      type = 'md';
+    } else if (/\.pdf$/i.test(file.name)) {
+      type = 'pdf';
+    } else if (/\.docx$/i.test(file.name)) {
+      type = 'docx';
+    }
+
+    let content = '';
+    if (type === 'pdf' || type === 'docx') {
+      try {
+        content = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = () => {
+            const result = reader.result as string;
+            const commaIdx = result.indexOf(',');
+            resolve(commaIdx !== -1 ? result.slice(commaIdx + 1) : result);
+          };
+          reader.onerror = (err) => reject(err);
+        });
+      } catch (err) {
+        setUploadError('Failed to read file.');
+        return;
+      }
+    } else {
+      content = await file.text();
+    }
+
+    await ingest(file.name, type, content);
   }
 
   function onDrop(e: DragEvent) {
@@ -143,7 +173,7 @@ export function KnowledgeScreen({ client, orgId }: KnowledgeScreenProps) {
         <input
           ref={fileRef}
           type="file"
-          accept=".md,.markdown,.txt,text/markdown,text/plain"
+          accept=".md,.markdown,.txt,text/markdown,text/plain,.pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           hidden
           onChange={(e) => void handleFiles(e.target.files)}
         />

@@ -109,12 +109,21 @@ describe('Per-org knowledge documents API (slice 7)', () => {
     expect(res.status).toBe(404);
   });
 
-  it('rejects an unsupported file type (422)', async () => {
+  it('accepts PDF and DOCX files', async () => {
     const res = await request(server())
       .post(`/orgs/${orgId}/knowledge/documents`)
       .set('Cookie', member.cookie)
       .set('X-CSRF-Token', member.csrf)
       .send({ name: 'x.pdf', type: 'pdf', content: 'hello' });
+    expect(res.status).toBe(201);
+  });
+
+  it('rejects an unsupported file type (422)', async () => {
+    const res = await request(server())
+      .post(`/orgs/${orgId}/knowledge/documents`)
+      .set('Cookie', member.cookie)
+      .set('X-CSRF-Token', member.csrf)
+      .send({ name: 'x.png', type: 'png', content: 'hello' });
     expect(res.status).toBe(422);
   });
 });

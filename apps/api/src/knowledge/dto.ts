@@ -6,8 +6,8 @@ export class UploadKnowledgeDocumentDto {
   @MaxLength(200)
   name!: string;
 
-  // Real text ingest only for now; PDF/docx parsing (new deps) is a follow-up.
-  @IsIn(['md', 'txt'])
+  // Supported file types: markdown, plain text, PDF, and Word documents.
+  @IsIn(['md', 'txt', 'pdf', 'docx'])
   type!: string;
 
   @IsString()
