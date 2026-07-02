@@ -17,6 +17,7 @@ export class ProjectsController {
   ): Promise<{ orgId: string; projectId: string; slug: string }> {
     return this.onboarding.execute({
       userId,
+      orgName: dto.orgName,
       projectName: dto.projectName,
       format: dto.format,
       repoProvider: dto.repoProvider,
