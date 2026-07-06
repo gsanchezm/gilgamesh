@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { BillingClient, SubscriptionView } from '../lib/billing-client';
+import type { BillingClient, BrainUsageView, SubscriptionView } from '../lib/billing-client';
 import { BillingScreen } from './BillingScreen';
 
 const sub: SubscriptionView = {
@@ -20,9 +20,29 @@ const sub: SubscriptionView = {
   currentPeriodEnd: null,
 };
 
+const zeroUsage: BrainUsageView = {
+  totals: { calls: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreateTokens: 0 },
+  byTier: [],
+  bySurface: [],
+};
+
+const someUsage: BrainUsageView = {
+  totals: { calls: 3, inputTokens: 120, outputTokens: 4567, cacheReadTokens: 0, cacheCreateTokens: 0 },
+  byTier: [
+    { tier: 'HAIKU', calls: 1, inputTokens: 20, outputTokens: 30, cacheReadTokens: 0, cacheCreateTokens: 0 },
+    { tier: 'SONNET', calls: 2, inputTokens: 100, outputTokens: 4537, cacheReadTokens: 0, cacheCreateTokens: 0 },
+  ],
+  bySurface: [
+    { surface: 'CHAT', calls: 1, inputTokens: 60, outputTokens: 4000, cacheReadTokens: 0, cacheCreateTokens: 0 },
+    { surface: 'ROUTER', calls: 1, inputTokens: 20, outputTokens: 30, cacheReadTokens: 0, cacheCreateTokens: 0 },
+    { surface: 'GENERATE', calls: 1, inputTokens: 40, outputTokens: 537, cacheReadTokens: 0, cacheCreateTokens: 0 },
+  ],
+};
+
 function fakeClient(overrides?: Partial<BillingClient>): BillingClient {
   return {
     getSubscription: vi.fn(async () => sub),
+    getBrainUsage: vi.fn(async () => zeroUsage),
     changePlan: vi.fn(async (_o, input) => ({
       ...sub,
       plan: input.plan,
@@ -64,6 +84,37 @@ describe('BillingScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Checkout' }));
     await waitFor(() => expect(client.confirmCheckout).toHaveBeenCalledWith('o1'));
     expect(await screen.findByText(/Free · ACTIVE/)).toBeTruthy();
+  });
+
+  it('shows the AI usage empty state at 0 calls (AC-METER-03 edge)', async () => {
+    render(<BillingScreen client={fakeClient()} orgId="o1" />);
+    await screen.findByText(/Free · TRIALING/);
+    expect(screen.getByLabelText('AI usage')).toBeTruthy();
+    expect(await screen.findByText(/No AI calls yet/)).toBeTruthy();
+  });
+
+  it('shows AI usage totals and per-surface rows when the org has calls', async () => {
+    const client = fakeClient({ getBrainUsage: vi.fn(async () => someUsage) });
+    render(<BillingScreen client={client} orgId="o1" />);
+    await screen.findByText(/Free · TRIALING/);
+    expect(client.getBrainUsage).toHaveBeenCalledWith('o1');
+    expect(await screen.findByText(/120 input · 4,567 output tokens/)).toBeTruthy();
+    expect(screen.getByText('3 calls')).toBeTruthy();
+    expect(screen.getByText('CHAT')).toBeTruthy();
+    expect(screen.getByText('ROUTER')).toBeTruthy();
+    expect(screen.getByText('GENERATE')).toBeTruthy();
+    expect(screen.getByText(/HAIKU 1 · SONNET 2/)).toBeTruthy();
+  });
+
+  it('an AI usage failure degrades the card without blanking the billing screen', async () => {
+    const client = fakeClient({
+      getBrainUsage: vi.fn(async () => {
+        throw new Error('Could not load the AI usage.');
+      }),
+    });
+    render(<BillingScreen client={client} orgId="o1" />);
+    expect(await screen.findByText(/Free · TRIALING/)).toBeTruthy();
+    expect(await screen.findByText('Could not load the AI usage.')).toBeTruthy();
   });
 
   it('surfaces a plan-change error without crashing', async () => {

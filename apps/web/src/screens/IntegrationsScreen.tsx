@@ -15,6 +15,7 @@ const GROUP_LABELS: Record<string, string> = {
   PIPELINES: 'Pipelines',
   COMMS: 'Comms',
   TEST_MANAGEMENT: 'Test Management',
+  AI_PROVIDERS: 'AI Providers',
 };
 
 function groupLabel(group: string): string {
@@ -34,6 +35,7 @@ const MONOGRAMS: Record<string, string> = {
   gitlab: 'GL',
   bitbucket: 'BB',
   ado_repos: 'AZ',
+  anthropic: 'AN',
 };
 
 function monogram(key: string, name: string): string {

@@ -20,6 +20,24 @@ export interface SubscriptionView {
   currentPeriodEnd: string | null;
 }
 
+export type BrainTier = 'HAIKU' | 'SONNET' | 'OPUS';
+export type BrainSurface = 'CHAT' | 'ROUTER' | 'GENERATE' | 'EMBED';
+
+export interface BrainUsageTotals {
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreateTokens: number;
+}
+
+/** Keystone v0.3 B1 — `GET /orgs/{orgId}/brain/usage` (per-tier/per-surface aggregate). */
+export interface BrainUsageView {
+  totals: BrainUsageTotals;
+  byTier: ({ tier: BrainTier } & BrainUsageTotals)[];
+  bySurface: ({ surface: BrainSurface } & BrainUsageTotals)[];
+}
+
 export interface BillingClient {
   getSubscription(orgId: string): Promise<SubscriptionView>;
   changePlan(orgId: string, input: { plan: Plan; billingCycle?: BillingCycle }): Promise<SubscriptionView>;
@@ -27,6 +45,7 @@ export interface BillingClient {
   checkout(orgId: string): Promise<{ checkoutUrl: string }>;
   confirmCheckout(orgId: string): Promise<SubscriptionView>;
   cancel(orgId: string): Promise<SubscriptionView>;
+  getBrainUsage(orgId: string): Promise<BrainUsageView>;
 }
 
 const base = (orgId: string) => `/orgs/${orgId}/subscription`;
@@ -38,4 +57,5 @@ export const httpBillingClient: BillingClient = {
   checkout: (orgId) => sendJson('POST', `${base(orgId)}/checkout`, {}, 'Could not start checkout.'),
   confirmCheckout: (orgId) => sendJson('POST', `${base(orgId)}/checkout/confirm`, {}, 'Could not confirm checkout.'),
   cancel: (orgId) => sendJson('POST', `${base(orgId)}/cancel`, {}, 'Could not cancel the subscription.'),
+  getBrainUsage: (orgId) => getJson(`/orgs/${orgId}/brain/usage`, 'Could not load the AI usage.'),
 };

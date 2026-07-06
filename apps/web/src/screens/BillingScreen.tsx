@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { BillingClient, BillingCycle, Plan, SubscriptionView } from '../lib/billing-client';
+import type { BillingClient, BillingCycle, BrainUsageView, Plan, SubscriptionView } from '../lib/billing-client';
 
 export interface BillingScreenProps {
   client: BillingClient;
@@ -29,6 +29,8 @@ function planName(plan: Plan): string {
 
 export function BillingScreen({ client, orgId }: BillingScreenProps) {
   const [sub, setSub] = useState<SubscriptionView | null>(null);
+  const [usage, setUsage] = useState<BrainUsageView | null>(null);
+  const [usageError, setUsageError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [plan, setPlan] = useState<Plan>('FREE');
@@ -44,6 +46,13 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
       setWorkspaces(String(s.seats));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load billing.');
+    }
+    // The AI usage card degrades independently — a usage failure never blanks the billing screen.
+    try {
+      setUsage(await client.getBrainUsage(orgId));
+      setUsageError(null);
+    } catch (err) {
+      setUsageError(err instanceof Error ? err.message : 'Could not load the AI usage.');
     }
   }, [client, orgId]);
 
@@ -154,6 +163,43 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
         <div className="gx-billing__meter" aria-hidden="true">
           <span style={{ width: sub.unlimited ? '100%' : `${usagePct}%` }} />
         </div>
+      </section>
+
+      <section className="gx-billing__panel" aria-label="AI usage">
+        <div className="gx-billing__panelhead">
+          <div>
+            <h2>AI usage</h2>
+            {usage === null ? (
+              <p>{usageError ?? 'Loading AI usage…'}</p>
+            ) : usage.totals.calls === 0 ? (
+              <p>No AI calls yet — chat with the pantheon or generate drafts to see usage here.</p>
+            ) : (
+              <p>
+                {usage.totals.inputTokens.toLocaleString()} input · {usage.totals.outputTokens.toLocaleString()}{' '}
+                output tokens
+              </p>
+            )}
+          </div>
+          {usage !== null && usage.totals.calls > 0 && <span>{usage.totals.calls.toLocaleString()} calls</span>}
+        </div>
+        {usage !== null && usage.totals.calls > 0 && (
+          <>
+            <ul className="gx-billing__aiusage">
+              {usage.bySurface.map((s) => (
+                <li key={s.surface}>
+                  <span>{s.surface}</span>
+                  <strong>{s.calls.toLocaleString()} calls</strong>
+                  <small>
+                    {s.inputTokens.toLocaleString()} in · {s.outputTokens.toLocaleString()} out
+                  </small>
+                </li>
+              ))}
+            </ul>
+            <p className="gx-billing__aitiers">
+              {usage.byTier.map((t) => `${t.tier} ${t.calls.toLocaleString()}`).join(' · ')}
+            </p>
+          </>
+        )}
       </section>
 
       <section className="gx-billing__plans" aria-label="Plan options">

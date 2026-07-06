@@ -6,6 +6,7 @@ import { IntegrationsScreen } from './IntegrationsScreen';
 const catalog: IntegrationView[] = [
   { key: 'github', name: 'GitHub', group: 'SOURCE_REPOS', connected: false, config: {}, connectedAt: null },
   { key: 'gitlab', name: 'GitLab', group: 'SOURCE_REPOS', connected: true, config: {}, connectedAt: '2026-06-30T00:00:00.000Z' },
+  { key: 'anthropic', name: 'Anthropic (Claude)', group: 'AI_PROVIDERS', connected: false, config: {}, connectedAt: null },
 ];
 
 function fakeClient(overrides?: Partial<IntegrationsClient>): IntegrationsClient {
@@ -22,8 +23,40 @@ describe('IntegrationsScreen', () => {
   it('lists the catalog with connected state', async () => {
     render(<IntegrationsScreen client={fakeClient()} orgId="o1" />);
     expect(await screen.findByText('GitHub')).toBeTruthy();
-    expect(screen.getByText('Not connected')).toBeTruthy();
+    expect(screen.getAllByText('Not connected').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Connected')).toBeTruthy();
+  });
+
+  it('renders the AI Providers group from the catalog (AC-BYOK-01)', async () => {
+    render(<IntegrationsScreen client={fakeClient()} orgId="o1" />);
+    expect(await screen.findByText('Anthropic (Claude)')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'AI Providers' })).toBeTruthy();
+    // The API-key prompt reuses the connect flow: sent once, never rendered back.
+    expect(screen.getByLabelText('Token for Anthropic (Claude)')).toBeTruthy();
+  });
+
+  it('connects the anthropic key through the same flow (AC-BYOK-02)', async () => {
+    const client = fakeClient({
+      connect: vi.fn(async (_o, key) => ({
+        key,
+        name: 'Anthropic (Claude)',
+        group: 'AI_PROVIDERS',
+        connected: true,
+        config: {},
+        connectedAt: '2026-07-05T00:00:00.000Z',
+      })),
+    });
+    render(<IntegrationsScreen client={client} orgId="o1" />);
+    await screen.findByText('Anthropic (Claude)');
+    fireEvent.change(screen.getByLabelText('Token for Anthropic (Claude)'), {
+      target: { value: 'sk-ant-test-123' },
+    });
+    const connects = screen.getAllByRole('button', { name: 'Connect' });
+    fireEvent.click(connects[connects.length - 1]!);
+    await waitFor(() => expect(client.connect).toHaveBeenCalledWith('o1', 'anthropic', 'sk-ant-test-123'));
+    // The raw key never renders back into the screen after connecting.
+    await screen.findAllByText('Connected');
+    expect(screen.queryByDisplayValue('sk-ant-test-123')).toBeNull();
   });
 
   it('connects GitHub with a token', async () => {
@@ -31,7 +64,8 @@ describe('IntegrationsScreen', () => {
     render(<IntegrationsScreen client={client} orgId="o1" />);
     await screen.findByText('GitHub');
     fireEvent.change(screen.getByLabelText('Token for GitHub'), { target: { value: 'ghp_abc' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    // Two disconnected cards (github + anthropic) render a Connect button each; github lists first.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Connect' })[0]!);
     await waitFor(() => expect(client.connect).toHaveBeenCalledWith('o1', 'github', 'ghp_abc'));
   });
 
