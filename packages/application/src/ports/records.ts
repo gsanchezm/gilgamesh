@@ -56,6 +56,20 @@ export interface SessionRecord {
   revokedAt: Date | null;
 }
 
+/**
+ * A single-use password-recovery token (keystone §2 `PasswordReset`, v0.4). Only the sha256
+ * `tokenHash` is stored — the raw token exists solely in the email link. `usedAt` is set on
+ * consume (single-use); expiry is 30 minutes (owner decision S12).
+ */
+export interface PasswordResetRecord {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+  usedAt: Date | null;
+  createdAt: Date;
+}
+
 export interface ProjectRecord {
   id: string;
   orgId: string;
