@@ -11,3 +11,4 @@ export * from './google-identity-provider';
 export * from './selecting-identity';
 export * from './redis-sso-state-store';
 export * from './smtp-email';
+export * from './azure-key-vault';
