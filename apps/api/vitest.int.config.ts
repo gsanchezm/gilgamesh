@@ -24,6 +24,8 @@ export default defineConfig({
         'postgresql://gilgamesh:gilgamesh@localhost:5432/gilgamesh?schema=public',
       // S9: the integration suite stays on the deterministic stub brain — no network, ever.
       BRAIN_MODE: 'offline',
+      // S15: the deterministic StubIdentityProvider answers the SSO routes — no Google, ever.
+      SSO_MODE: 'offline',
     },
   },
 });
