@@ -10,3 +10,7 @@ process.env.PAYMENTS_MODE = process.env.PAYMENTS_MODE || 'offline';
 process.env.SSO_MODE = process.env.SSO_MODE || 'offline';
 // Same for mail (S17): the recording stub, even when the machine env carries SMTP_URL.
 process.env.EMAIL_MODE = process.env.EMAIL_MODE || 'offline';
+// Slice 20: the in-memory secret-vault stub — an EXPLICIT opt-in (the selector refuses to boot
+// unconfigured, never a silent stub); never Azure, even when the machine env carries
+// AZURE_KEY_VAULT_URL.
+process.env.VAULT_MODE = process.env.VAULT_MODE || 'offline';

@@ -46,6 +46,9 @@ export default defineConfig({
         SSO_MODE: 'offline',
         // S17: the recording mail stub — never an SMTP connection.
         EMAIL_MODE: 'offline',
+        // S20: the in-memory secret-vault stub — an EXPLICIT opt-in (the selector refuses to
+        // boot unconfigured, never a silent stub); the e2e stack never reaches Azure.
+        VAULT_MODE: 'offline',
       },
     },
     {

@@ -26,6 +26,10 @@ process.env.SSO_MODE = process.env.SSO_MODE || 'offline';
 // of recorded mail via TOKENS.Email and must never open an SMTP connection, even when the
 // developer machine has SMTP_URL set.
 process.env.EMAIL_MODE = process.env.EMAIL_MODE || 'offline';
+// Slice 20: the in-memory secret-vault stub — an EXPLICIT opt-in (security inversion: the
+// selector refuses to boot unconfigured, never a silent stub). The sweep must never reach
+// Azure, even when the developer machine has AZURE_KEY_VAULT_URL set.
+process.env.VAULT_MODE = process.env.VAULT_MODE || 'offline';
 
 module.exports = {
   default: {

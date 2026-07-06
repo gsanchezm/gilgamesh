@@ -12,7 +12,6 @@ import {
   KnowledgeRetriever,
   MockRepoProvider,
   type SecretVault,
-  StubSecretVault,
   type SubscriptionRepository,
   type UnitOfWork,
 } from '@gilgamesh/application';
@@ -26,6 +25,7 @@ import {
   paymentsFromEnv,
   SystemClock,
   Uuid7IdGenerator,
+  vaultFromEnv,
 } from '../../infra';
 import { TOKENS } from '../tokens';
 import { PrismaService } from './prisma.service';
@@ -162,7 +162,11 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
       inject: [PrismaService],
     },
     { provide: TOKENS.RepoProvider, useValue: new MockRepoProvider() },
-    { provide: TOKENS.SecretVault, useValue: new StubSecretVault() },
+    // Provider selection (S20, the S15 security INVERSION): explicit VAULT_MODE=offline → the
+    // in-memory stub (refused under NODE_ENV=production); AZURE_KEY_VAULT_URL → Azure Key Vault;
+    // anything else REFUSES TO BOOT — a silently selected vault stub would hold live BYOK keys
+    // in process memory. Every harness pins VAULT_MODE=offline.
+    { provide: TOKENS.SecretVault, useFactory: () => vaultFromEnv() },
   ],
   exports: [
     PrismaService,
