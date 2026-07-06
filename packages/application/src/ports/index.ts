@@ -6,6 +6,7 @@ export * from './clock';
 export * from './id';
 export * from './brain';
 export * from './email';
+export * from './identity';
 export * from './events';
 export * from './kernel';
 export * from './payment';
