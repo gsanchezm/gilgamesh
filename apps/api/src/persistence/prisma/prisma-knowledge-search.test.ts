@@ -55,7 +55,7 @@ describe('PrismaKnowledgeChunkRepository ANN query shape (audit #8)', () => {
 
   it('searchScoped: same ANN shape with the org/scope predicate inside the inner scan', async () => {
     const { repo, captured } = repoCapturing();
-    await repo.searchScoped({ orgId: 'org-1', slot: 'atlas' }, embedding, 8);
+    await repo.searchScoped({ orgId: 'org-1', slot: 'perf' }, embedding, 8);
 
     expect(captured).toHaveLength(1);
     const { sql, values } = captured[0]!;
