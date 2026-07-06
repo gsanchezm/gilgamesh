@@ -1,7 +1,7 @@
 Feature: Brain — per-org token metering
   Every brain call writes a BrainUsage row (tier, surface, tokens) and the org
-  can see its aggregate. The sweep runs with BRAIN_METER_STUB=1 so metering is
-  observable offline (prod never meters the stub).
+  can see its aggregate. Metering is unconditional — the application layer meters
+  every brain call (stub included), so the sweep observes usage rows offline.
 
   Background:
     Given the API base path is "/api/v1"

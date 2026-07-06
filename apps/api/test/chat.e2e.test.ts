@@ -2,6 +2,8 @@ import type { AgentRepository, MembershipRepository } from '@gilgamesh/applicati
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { randomUUID } from 'node:crypto';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
@@ -140,6 +142,73 @@ describe('Agent Chat API', () => {
       (await mutate(request(server()).post(`/chat/${sessionId}/messages`)).send({ content: 'x'.repeat(4001) }))
         .status,
     ).toBe(422);
+  });
+
+  it('C3 replays and closes when the client is not a live SSE consumer (?replay=1 too)', async () => {
+    const sessionId = await createSession();
+    await mutate(request(server()).post(`/chat/${sessionId}/messages`)).send({ content: 'replay please' });
+
+    // Even a text/event-stream client falls back to replay-and-close with ?replay=1 (harness escape).
+    const events = await read(
+      request(server()).get(`/chat/${sessionId}/events?replay=1`).set('Accept', 'text/event-stream'),
+    );
+    expect(events.status).toBe(200);
+    expect(events.text).toContain('replay please');
+    expect(events.text).toContain('event: DONE');
+  });
+
+  it('C3 live: an SSE client stays open, gets live DELTA/MESSAGE/DONE, and unsubscribes on close (AC-SSE-01)', async () => {
+    const sessionId = await createSession();
+    const httpServer = server() as http.Server;
+    if (!httpServer.address()) await new Promise<void>((resolve) => httpServer.listen(0, () => resolve()));
+    const { port } = httpServer.address() as AddressInfo;
+
+    const chunks: string[] = [];
+    let live!: http.ClientRequest;
+    await new Promise<void>((resolve, reject) => {
+      live = http.get(
+        {
+          host: '127.0.0.1',
+          port,
+          path: `/chat/${sessionId}/events`,
+          headers: { accept: 'text/event-stream', cookie: auth.cookie },
+        },
+        (res) => {
+          expect(res.statusCode).toBe(200);
+          res.setEncoding('utf8');
+          res.on('data', (c: string) => chunks.push(c));
+          resolve(); // headers received => the server has already subscribed to the topic
+        },
+      );
+      live.on('error', reject);
+    });
+
+    const transcript = () => chunks.join('');
+    const until = async (pred: () => boolean) => {
+      const start = Date.now();
+      while (!pred()) {
+        if (Date.now() - start > 5_000) throw new Error(`timed out; transcript so far: ${transcript()}`);
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    };
+
+    const sent = await mutate(request(server()).post(`/chat/${sessionId}/messages`)).send({
+      content: 'hello live',
+    });
+    expect(sent.status).toBe(201);
+
+    await until(() => transcript().includes('event: DONE'));
+    const text = transcript();
+    expect(text).toContain('"hello live"');
+    expect(text).toContain('event: DELTA');
+    expect(text).toContain('event: MESSAGE');
+    expect(text).toContain('"role":"AGENT"');
+
+    // Closing the client must unsubscribe — no handler leaked on the bus (AC-SSE-01).
+    const bus = app.get(TOKENS.Events) as unknown as { handlers: Map<string, Set<unknown>> };
+    expect(bus.handlers.get(`chat:${sessionId}`)?.size ?? 0).toBe(1);
+    live.destroy();
+    await until(() => (bus.handlers.get(`chat:${sessionId}`)?.size ?? 0) === 0);
   });
 
   it('a chat-triggered run rides the standard run path and narrates back (AC-CRUN-01/03)', async () => {

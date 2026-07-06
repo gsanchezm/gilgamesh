@@ -1,7 +1,7 @@
 import {
   type AgentBrainPort,
-  DeterministicBrain,
   DeterministicKernel,
+  InMemoryEventBus,
   type KnowledgeChunkRepository,
   KnowledgeRetriever,
   MockPaymentProvider,
@@ -11,6 +11,8 @@ import {
 import { Global, Module } from '@nestjs/common';
 import {
   Argon2PasswordHasher,
+  brainFromEnv,
+  brainKeyVerifierFromEnv,
   CryptoSessionTokenGenerator,
   SystemClock,
   Uuid7IdGenerator,
@@ -20,6 +22,7 @@ import { PrismaService } from './prisma.service';
 import {
   PrismaAgentRepository,
   PrismaAuditLogRepository,
+  PrismaBrainUsageRepository,
   PrismaChatMessageRepository,
   PrismaChatSessionRepository,
   PrismaFeatureRepository,
@@ -66,7 +69,17 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     { provide: TOKENS.Ids, useValue: new Uuid7IdGenerator() },
     { provide: TOKENS.Tokens, useValue: new CryptoSessionTokenGenerator() },
     { provide: TOKENS.Clock, useValue: new SystemClock() },
-    { provide: TOKENS.Brain, useValue: new DeterministicBrain() },
+    // Provider selection (S9-1): the stub unless BRAIN_MODE/ANTHROPIC_API_KEY select the real
+    // Claude adapter; the key verifier follows the same mode. The EventBus stays in-process
+    // in-memory (one API replica) — a Redis pub/sub swap is wiring-only later.
+    { provide: TOKENS.Brain, useFactory: () => brainFromEnv() },
+    { provide: TOKENS.BrainKeys, useFactory: () => brainKeyVerifierFromEnv() },
+    { provide: TOKENS.Events, useValue: new InMemoryEventBus() },
+    {
+      provide: TOKENS.BrainUsage,
+      useFactory: (db: PrismaService) => new PrismaBrainUsageRepository(db),
+      inject: [PrismaService],
+    },
     { provide: TOKENS.Kernel, useValue: new DeterministicKernel() },
     { provide: TOKENS.Payment, useValue: new MockPaymentProvider() },
     {
@@ -126,6 +139,9 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     TOKENS.Tokens,
     TOKENS.Clock,
     TOKENS.Brain,
+    TOKENS.BrainKeys,
+    TOKENS.BrainUsage,
+    TOKENS.Events,
     TOKENS.Kernel,
     TOKENS.Payment,
     TOKENS.Knowledge,

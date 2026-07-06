@@ -9,6 +9,7 @@ import { OrgsModule } from '../../src/orgs/orgs.module';
 import { PrismaPersistenceModule } from '../../src/persistence/prisma/prisma-persistence.module';
 import { PrismaService } from '../../src/persistence/prisma/prisma.service';
 import { BillingModule } from '../../src/billing/billing.module';
+import { BrainModule } from '../../src/brain/brain.module';
 import { ChatModule } from '../../src/chat/chat.module';
 import { IntegrationsModule } from '../../src/integrations/integrations.module';
 import { KnowledgeModule } from '../../src/knowledge/knowledge.module';
@@ -40,6 +41,7 @@ BeforeAll(async () => {
       KnowledgeModule,
       IntegrationsModule,
       ChatModule,
+      BrainModule,
     ],
     providers: APP_PROVIDERS,
   }).compile();
@@ -66,6 +68,6 @@ Before(async function (this: GilgameshWorld) {
   this.lastProjectId = null;
   this.projectsByName = new Map();
   await db.$executeRawUnsafe(
-    'TRUNCATE orgs, users, memberships, sessions, projects, slices, features, scenarios, test_cases, runs, run_results, agents, tool_bindings, subscriptions, audit_logs, knowledge_chunks, integrations, chat_sessions, chat_messages CASCADE',
+    'TRUNCATE orgs, users, memberships, sessions, projects, slices, features, scenarios, test_cases, runs, run_results, agents, tool_bindings, subscriptions, audit_logs, knowledge_chunks, integrations, chat_sessions, chat_messages, brain_usage CASCADE',
   );
 });

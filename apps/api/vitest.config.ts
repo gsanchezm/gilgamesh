@@ -19,7 +19,8 @@ export default defineConfig({
     exclude: ['**/node_modules/**', '**/dist/**', '**/*.int.test.ts'],
     setupFiles: ['./test/setup.ts'],
     // Sweep e2e re-register users across tests; the 429 path is proven by a dedicated test
-    // that overrides RATE_LIMIT to a tiny value.
-    env: { AUTH_RATE_LIMIT: '1000000' },
+    // that overrides RATE_LIMIT to a tiny value. BRAIN_MODE=offline keeps the suite on the
+    // deterministic stub brain even when the machine env carries ANTHROPIC_API_KEY (S9).
+    env: { AUTH_RATE_LIMIT: '1000000', BRAIN_MODE: 'offline' },
   },
 });

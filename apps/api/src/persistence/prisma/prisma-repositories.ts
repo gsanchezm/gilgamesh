@@ -3,6 +3,8 @@ import type {
   AgentRepository,
   AuditLogRecord,
   AuditLogRepository,
+  BrainUsageRecord,
+  BrainUsageRepository,
   ChatMessageRecord,
   ChatMessageRepository,
   ChatSessionRecord,
@@ -509,6 +511,22 @@ export class PrismaChatMessageRepository implements ChatMessageRepository {
   }
   async setRunId(id: string, runId: string): Promise<void> {
     await this.db.chatMessage.updateMany({ where: { id }, data: { runId } });
+  }
+}
+
+/** Slice 9 — per-org brain-call metering rows (keystone v0.3). Plain typed-client rows. */
+export class PrismaBrainUsageRepository implements BrainUsageRepository {
+  constructor(private readonly db: Prisma.TransactionClient) {}
+  async append(rec: BrainUsageRecord): Promise<void> {
+    await this.db.brainUsage.create({ data: rec });
+  }
+  listForOrg(orgId: string): Promise<BrainUsageRecord[]> {
+    // Chronological; id asc (UUID v7 = time-ordered) breaks same-millisecond createdAt ties —
+    // matches the in-memory adapter's append order (parity, audit batch A).
+    return this.db.brainUsage.findMany({
+      where: { orgId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
   }
 }
 

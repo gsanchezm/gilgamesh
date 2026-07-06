@@ -12,6 +12,10 @@ process.env.DATABASE_URL =
 // Effectively disable the auth rate limit for the acceptance sweep (it re-registers the same
 // user across dozens of scenarios); the 429 behavior is proven by a dedicated e2e instead.
 process.env.AUTH_RATE_LIMIT = process.env.AUTH_RATE_LIMIT || '1000000';
+// Slice 9: force the deterministic stub brain — the sweep never calls the network, even when the
+// developer machine has ANTHROPIC_API_KEY set. Metering is unconditional (the application layer
+// meters every brain call, stub included), so the metering scenarios observe stub usage rows.
+process.env.BRAIN_MODE = process.env.BRAIN_MODE || 'offline';
 
 module.exports = {
   default: {

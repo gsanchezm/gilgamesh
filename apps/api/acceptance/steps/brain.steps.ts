@@ -22,7 +22,7 @@ function patchStreamOnce(world: GilgameshWorld, behavior: 'fail' | { emit: strin
     if (behavior === 'fail') {
       return (async function* () {
         throw new Error('synthetic brain outage');
-        yield { delta: '' }; // eslint-disable-line no-unreachable
+        yield { delta: '' };
       })();
     }
     void req;

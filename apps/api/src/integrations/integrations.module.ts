@@ -1,5 +1,6 @@
 import {
   type AuditLogRepository,
+  type BrainKeyVerifier,
   type Clock,
   ConnectIntegration,
   DisconnectIntegration,
@@ -21,17 +22,18 @@ import { OrgIntegrationsController, ProjectRepoController } from './integrations
 
 const T = TOKENS;
 
-// Connect/Disconnect/List share the same IntegrationDeps bundle.
-const intInject = [T.Integrations, T.Memberships, T.RepoProvider, T.SecretVault, T.Audit, T.Ids, T.Clock];
+// Connect/Disconnect/List share the same IntegrationDeps bundle (S9 adds the AI-key verifier).
+const intInject = [T.Integrations, T.Memberships, T.RepoProvider, T.BrainKeys, T.SecretVault, T.Audit, T.Ids, T.Clock];
 const intDeps = (
   integrations: IntegrationRepository,
   memberships: MembershipRepository,
   repoProvider: RepoProvider,
+  brainKeys: BrainKeyVerifier,
   vault: SecretVault,
   audit: AuditLogRepository,
   ids: IdGenerator,
   clock: Clock,
-) => ({ integrations, memberships, repoProvider, vault, audit, ids, clock });
+) => ({ integrations, memberships, repoProvider, brainKeys, vault, audit, ids, clock });
 
 const providers: Provider[] = [
   { provide: ListIntegrations, useFactory: (...a: Parameters<typeof intDeps>) => new ListIntegrations(intDeps(...a)), inject: intInject },

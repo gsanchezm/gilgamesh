@@ -47,6 +47,20 @@ enum IntegrationGroup {
   COMMUNICATION
   CICD
   DEVICES_BROWSERS
+  AI_PROVIDERS
+}
+
+enum BrainTier {
+  HAIKU
+  SONNET
+  OPUS
+}
+
+enum BrainSurface {
+  CHAT
+  ROUTER
+  GENERATE
+  EMBED
 }
 
 enum AgentSlot {
@@ -125,6 +139,7 @@ model Org {
   knowledgeChunks    KnowledgeChunk[]
   chatSessions ChatSession[]
   chatMessages ChatMessage[]
+  brainUsage   BrainUsage[]
 
   @@map("orgs")
 }
@@ -525,6 +540,25 @@ model ChatMessage {
   @@index([sessionId, createdAt])
   @@index([orgId])
   @@map("chat_messages")
+}
+
+// Slice 9 (keystone v0.3): one metered brain call (tier + surface + token counts), aggregated per
+// org for the usage view. Ids/timestamps app-assigned like the rest of the schema.
+model BrainUsage {
+  id                String       @id @db.Uuid
+  orgId             String       @map("org_id") @db.Uuid
+  tier              BrainTier
+  surface           BrainSurface
+  inputTokens       Int          @map("input_tokens")
+  outputTokens      Int          @map("output_tokens")
+  cacheReadTokens   Int          @map("cache_read_tokens")
+  cacheCreateTokens Int          @map("cache_create_tokens")
+  createdAt         DateTime     @map("created_at")
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt])
+  @@map("brain_usage")
 }
 
 model Integration {

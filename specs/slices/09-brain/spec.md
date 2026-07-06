@@ -117,8 +117,10 @@ schema-validated **registry** shared by stub and real adapter.
 | **AuditLog** | §9 actions. | — |
 
 **Derived (not stored):** the per-org usage aggregate (pure domain fold: totals per tier+surface).
-**Stub behavior:** in `BRAIN_MODE=offline`/no-key, NO `BrainUsage` rows are written (the stub is free) —
-EXCEPT the acceptance suite runs with `BRAIN_METER_STUB=1` so metering is observable offline (see §13).
+**Stub behavior (amended in implementation):** metering is UNCONDITIONAL — the application layer
+meters every brain call, stub included (stub rows carry its deterministic length-based counts), so
+the metering ACs are BDD-verifiable offline with no special flag. The original `BRAIN_METER_STUB=1`
+idea was dropped (see §13).
 
 ---
 
@@ -244,8 +246,9 @@ EXCEPT the acceptance suite runs with `BRAIN_METER_STUB=1` so metering is observ
 - **Streamed-call usage:** the frozen `stream()` yields only `{delta}`; the adapter exposes an OPTIONAL
   slice-level extension (`streamWithUsage`) that also resolves final usage; `SendChatMessage`
   feature-detects it for CHAT metering. Folded into the port at the next keystone major.
-- **`BRAIN_METER_STUB=1`** (acceptance only): meters stub calls so metering ACs are BDD-verifiable
-  offline; prod never meters the stub.
+- **Metering is unconditional** (supersedes the earlier `BRAIN_METER_STUB=1` idea, which was
+  dropped): the application layer meters every brain call — stub included — so the metering ACs
+  are BDD-verifiable offline with no extra flag; stub rows are free length-based counts.
 - **Config env vars:** `ANTHROPIC_API_KEY`, `BRAIN_MODE` (`auto`|`offline`), `BRAIN_SMOKE`, model-id
   overrides per tier.
 

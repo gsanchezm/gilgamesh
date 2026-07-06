@@ -2,14 +2,19 @@ import {
   type ChatMessageView,
   type ChatSessionView,
   CreateChatSession,
+  type EventBus,
   GetChatEvents,
   SendChatMessage,
 } from '@gilgamesh/application';
-import { Body, Controller, Get, HttpCode, Param, Post, Res, UseGuards } from '@nestjs/common';
-import type { Response } from 'express';
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { TOKENS } from '../persistence/tokens';
 import { CreateChatSessionDto, SendChatMessageDto } from './dto';
+
+/** Live-stream heartbeat cadence: an SSE comment line keeps proxies from idling the connection. */
+const HEARTBEAT_MS = 15_000;
 
 @Controller('projects/:projectId/chat')
 @UseGuards(SessionAuthGuard)
@@ -33,6 +38,7 @@ export class ChatController {
   constructor(
     private readonly sendChatMessage: SendChatMessage,
     private readonly getChatEvents: GetChatEvents,
+    @Inject(TOKENS.Events) private readonly bus: EventBus,
   ) {}
 
   @Post(':sessionId/messages')
@@ -47,14 +53,20 @@ export class ChatController {
   }
 
   /**
-   * Keystone C3 — SSE, same pattern as `/runs/{id}/events`. With the synchronous stub núcleo the
-   * stream REPLAYS the session's persisted messages as MESSAGE events and closes with DONE; live
-   * token push lands with the real Brain/Orchestration delivery (spec §13).
+   * Keystone C3 — SSE, same pattern as `/runs/{id}/events`. Slice 9 (AC-SSE-01): replay the
+   * session's persisted messages, then stay SUBSCRIBED to the `chat:{sessionId}` EventBus topic
+   * and push live MESSAGE/DELTA/DONE events with a heartbeat; client disconnect unsubscribes.
+   *
+   * Harness compatibility: supertest/fetch-based clients buffer the body until the stream ENDS,
+   * so a request whose `accept` does not include `text/event-stream` — or that sets `?replay=1` —
+   * keeps the S8 semantics: replay + `DONE` + close. Only a real live client holds the connection.
    */
   @Get(':sessionId/events')
   async events(
     @CurrentUser() userId: string,
     @Param('sessionId') sessionId: string,
+    @Query('replay') replay: string | undefined,
+    @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
     // Authz/tenant checks run BEFORE any byte is written, so failures still map to Problem+json.
@@ -75,7 +87,26 @@ export class ChatController {
       };
       res.write(`event: MESSAGE\ndata: ${JSON.stringify(data)}\n\n`);
     }
-    res.write('event: DONE\ndata: {}\n\n');
-    res.end();
+
+    const wantsLive = (req.headers.accept ?? '').includes('text/event-stream') && replay !== '1';
+    if (!wantsLive) {
+      res.write('event: DONE\ndata: {}\n\n');
+      res.end();
+      return;
+    }
+
+    res.flushHeaders();
+    const unsubscribe = this.bus.subscribe(`chat:${sessionId}`, (e) => {
+      const type = typeof (e as { type?: unknown })?.type === 'string' ? (e as { type: string }).type : 'MESSAGE';
+      res.write(`event: ${type}\ndata: ${JSON.stringify(e)}\n\n`);
+    });
+    const heartbeat = setInterval(() => {
+      res.write(':hb\n\n'); // SSE comment line — ignored by EventSource, keeps the pipe warm
+    }, HEARTBEAT_MS);
+    heartbeat.unref?.();
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      unsubscribe(); // no leaked handler on the bus (AC-SSE-01)
+    });
   }
 }

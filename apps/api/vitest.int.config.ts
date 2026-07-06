@@ -22,6 +22,8 @@ export default defineConfig({
       DATABASE_URL:
         process.env.DATABASE_URL ??
         'postgresql://gilgamesh:gilgamesh@localhost:5432/gilgamesh?schema=public',
+      // S9: the integration suite stays on the deterministic stub brain — no network, ever.
+      BRAIN_MODE: 'offline',
     },
   },
 });

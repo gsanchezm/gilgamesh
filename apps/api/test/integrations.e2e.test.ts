@@ -44,11 +44,43 @@ describe('Integrations API', () => {
     expect((await request(server()).get(`/orgs/${orgId}/integrations`)).status).toBe(401);
   });
 
-  it('lists the SOURCE_REPOS catalog, disconnected initially (AC-INT-01)', async () => {
+  it('lists the SOURCE_REPOS + AI_PROVIDERS catalog, disconnected initially (AC-INT-01, AC-BYOK-01)', async () => {
     const res = await read(request(server()).get(`/orgs/${orgId}/integrations`));
     expect(res.status).toBe(200);
-    expect(res.body.map((i: { key: string }) => i.key)).toEqual(['github', 'gitlab', 'bitbucket', 'ado_repos']);
+    expect(res.body.map((i: { key: string }) => i.key)).toEqual([
+      'github',
+      'gitlab',
+      'bitbucket',
+      'ado_repos',
+      'anthropic',
+    ]);
     expect(res.body.every((i: { connected: boolean }) => i.connected === false)).toBe(true);
+    expect(res.body.find((i: { key: string }) => i.key === 'anthropic').group).toBe('AI_PROVIDERS');
+  });
+
+  it('connects the anthropic BYOK key through the same mutator (AC-BYOK-02/03)', async () => {
+    const key = 'sk-ant-unit-test-key';
+    const res = await mutate(request(server()).patch(`/orgs/${orgId}/integrations/anthropic`)).send({
+      action: 'connect',
+      token: key,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ key: 'anthropic', group: 'AI_PROVIDERS', connected: true });
+    expect(JSON.stringify(res.body)).not.toContain(key);
+
+    const off = await mutate(request(server()).patch(`/orgs/${orgId}/integrations/anthropic`)).send({
+      action: 'disconnect',
+    });
+    expect(off.status).toBe(200);
+    expect(off.body.connected).toBe(false);
+  });
+
+  it('rejects an anthropic key the verifier refuses (422, AC-BYOK-02)', async () => {
+    const res = await mutate(request(server()).patch(`/orgs/${orgId}/integrations/anthropic`)).send({
+      action: 'connect',
+      token: 'invalid',
+    });
+    expect(res.status).toBe(422);
   });
 
   it('rejects import before a repo is connected (AC-INT-08)', async () => {

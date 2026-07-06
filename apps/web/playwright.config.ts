@@ -39,6 +39,8 @@ export default defineConfig({
         AUTH_RATE_LIMIT: '1000000',
         CORS_ORIGINS: '',
         NODE_ENV: 'development',
+        // S9: the browser e2e runs against the deterministic stub brain — no network calls.
+        BRAIN_MODE: 'offline',
       },
     },
     {
