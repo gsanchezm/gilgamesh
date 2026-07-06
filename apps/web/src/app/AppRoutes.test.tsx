@@ -87,6 +87,13 @@ function makeClients(): Clients {
       disconnect: vi.fn(async () => ({ key: 'github', name: 'GitHub', group: 'SOURCE_REPOS', connected: false, config: {}, connectedAt: null })),
       importRepo: vi.fn(async () => ({ imported: 0 })),
     },
+    chat: {
+      createSession: vi.fn(async () => ({ id: 's1', projectId: 'p1', agentId: null, createdAt: '2026-07-05T00:00:00.000Z' })),
+      sendMessage: vi.fn(async () => ({
+        id: 'm1', sessionId: 's1', role: 'USER' as const, agentId: null, content: 'hi', runId: null, at: '2026-07-05T00:00:00.000Z',
+      })),
+      listMessages: vi.fn(async () => []),
+    },
   };
 }
 

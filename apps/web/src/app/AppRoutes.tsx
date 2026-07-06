@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
-import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import { Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AgentRoomScreen } from '../screens/AgentRoomScreen';
 import { BillingScreen } from '../screens/BillingScreen';
+import { ChatScreen } from '../screens/ChatScreen';
 import { ComingSoonScreen } from '../screens/ComingSoonScreen';
 import { IntegrationsScreen } from '../screens/IntegrationsScreen';
 import { KnowledgeScreen } from '../screens/KnowledgeScreen';
@@ -106,6 +107,14 @@ function AgentRoomRoute() {
   );
 }
 
+function ChatRoute() {
+  const { chat } = useClients();
+  const { projectId } = useParams();
+  const [params] = useSearchParams();
+  // `?agent=<agentId>` pins the session to one deity (the tile-pinned entry lands with the Chat re-skin).
+  return <ChatScreen client={chat} projectId={projectId ?? ''} pinnedAgentId={params.get('agent')} />;
+}
+
 function TestLabRoute() {
   const { testlab, runs, integrations } = useClients();
   const { projectId } = useParams();
@@ -161,7 +170,7 @@ export function AppRoutes() {
         <Route path="/projects/:projectId/lab" element={<TestLabRoute />} />
         <Route path="/projects/:projectId/orchestrate" element={<ComingSoonScreen title="Orchestration" />} />
         <Route path="/projects/:projectId/reports" element={<ComingSoonScreen title="Reports" />} />
-        <Route path="/projects/:projectId/chat" element={<ComingSoonScreen title="Chat" />} />
+        <Route path="/projects/:projectId/chat" element={<ChatRoute />} />
         <Route path="/projects/:projectId/session" element={<ComingSoonScreen title="Session" />} />
         <Route path="/billing" element={<BillingRoute />} />
         <Route path="/knowledge" element={<KnowledgeRoute />} />

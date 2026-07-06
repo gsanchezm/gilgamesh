@@ -7,7 +7,8 @@
 > All entity/field/enum/port/path names below are used **verbatim** from the keystone (**v0.2** — this slice
 > depends on the v0.2 Agent Chat amendment: `ChatSession`/`ChatMessage`/`ChatMessageRole`/`KnowledgeScope`/
 > `KnowledgeChunk.scope`/chat routes).
-> v0.1 — 2026-07-05. Status: SPEC — scaffolding only (spec + BDD `.feature`s); implementation not started.
+> v0.2 — 2026-07-05. Status: BUILT — SDD→BDD→TDD green end-to-end on branch `slice-8-agent-chat`
+> (typecheck + lint · 501 Docker-free unit/e2e · `test:int` 19 · **BDD 112 scenarios / 896 steps**).
 > Scope: text chat with the pantheon behind the **deterministic stub brain** (owner decision S8).
 
 ---
@@ -137,7 +138,7 @@ Tenant resolved from session → active `Membership.orgId`; a session/project in
 |---|---------------|---------|-------------|--------------|
 | C1 | `POST /projects/{id}/chat` | Create a `ChatSession` (optional `agentId` pin). | `ChatSessionCreate` | `ChatSessionView` |
 | C2 | `POST /chat/{sessionId}/messages` | Send a `USER` message → route → retrieve → answer (+tools). | `ChatMessageCreate` | `ChatMessageView` (the persisted USER message; the answer arrives on C3) |
-| C3 | `GET /chat/{sessionId}/events` | SSE stream — same pattern as `/runs/{id}/events`: answer deltas, tool outcomes, run narration. | — | SSE of `ChatEvent`* |
+| C3 | `GET /chat/{sessionId}/events` | SSE stream (keystone pattern). **As built:** with the synchronous stub núcleo it REPLAYS the session's persisted messages as `MESSAGE` events and closes with `DONE`; live delta push lands with the real Brain delivery (§13). | — | SSE of `ChatEvent`* |
 
 \* `ChatEvent` (`{ type:'MESSAGE'|'DELTA'|'TOOL'|'RUN_NODE'|'RUN_SUMMARY'|'DONE', … }`) is a named wire DTO
 like `RunEvent` (deviation §13). `ChatSessionCreate/View`, `ChatMessageCreate/View` follow the keystone
@@ -224,7 +225,8 @@ Each AC has a stable id; every Gherkin scenario is tagged with the AC id it veri
   skipped entirely on pinned sessions.
 - **Retrieval:** one tenant-scoped pgvector query, top-k ≤ 8; `KnowledgeChunk.scope` is **indexed** so the
   scope filter does not scan.
-- **SSE:** heartbeat + reconnect semantics identical to `/runs/{id}/events`.
+- **SSE:** the replay stream is bounded by the session's message count and closes deterministically;
+  heartbeat/reconnect semantics arrive with live push (real Brain delivery).
 
 ### 10.2 Security (target OWASP ASVS L2)
 - **Tenant isolation:** every session/message/chunk query filters by the `orgId` resolved from session →
@@ -240,8 +242,10 @@ Each AC has a stable id; every Gherkin scenario is tagged with the AC id it veri
 ### 10.3 Reliability / consistency
 - The `USER` message persists before brain work; a brain/tool failure leaves the USER message + an error
   event on the SSE — no partial `AGENT` rows.
-- `enqueue_run` inherits slice-4 atomicity (quota charge + run write in one `UnitOfWork` transaction);
-  setting `ChatMessage.runId` joins that same transaction.
+- `enqueue_run` inherits slice-4 atomicity (quota charge + run write in one `UnitOfWork` transaction,
+  inside the unchanged `TriggerRun`). **As built:** `ChatMessage.runId` is set immediately after that
+  transaction commits (chat never reaches into the standard path's transaction) — a crash in the
+  narrow window leaves a valid Run without the chat link, never a dangling link.
 - The stub is pure/offline (no `Date.now`/`Math.random`/network): identical inputs → identical outputs.
 
 ---
@@ -304,6 +308,15 @@ Each AC has a stable id; every Gherkin scenario is tagged with the AC id it veri
 - **`SYSTEM` run-summary persistence** — `RunEvent`s stream live (not persisted per-event); only the terminal
   summary persists as a `SYSTEM` `ChatMessage` (history keeps the outcome without duplicating run storage).
 - **Router confidence threshold 0.6** — a named constant in the router use case (spec'd here, not keystone).
+- **C3 replay semantics (as built)** — the first SSE surface in the codebase; it replays persisted
+  messages and closes (`MESSAGE`* + `DONE`). Run narration reaches the stream as the SYSTEM message's
+  content (the run completes synchronously inside the send request via `DeterministicKernel`), which is
+  how AC-CRUN-03 is satisfied today; per-event live push (`DELTA`/`RUN_NODE`) is the Brain/Orchestration
+  follow-up.
+- **Tile-pinned entry (web)** — the Agent room's chat action navigates unpinned for now: the room view
+  exposes slots but not agent ids. `/projects/{id}/chat?agent=<agentId>` already pins; wiring the tile
+  lands with the Chat re-skin (needs agent ids in `ProjectAgentView`). Pinning is fully covered at
+  API/BDD level.
 
 **Open questions (non-blocking; defer):**
 - **Session list / history read endpoints** — the Chat screen's session rail needs `GET` routes the keystone

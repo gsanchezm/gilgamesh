@@ -95,6 +95,7 @@ describe('Knowledge document upload (Prisma · real Postgres) — atomicity + FK
               throw new Error('boom: chunk write failed');
             },
             search: (q, k) => repos.knowledge.search(q, k),
+            searchScoped: (f, q, k) => repos.knowledge.searchScoped(f, q, k),
             count: () => repos.knowledge.count(),
           };
           return work({ ...repos, knowledge } as Repositories);

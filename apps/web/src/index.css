@@ -1430,3 +1430,69 @@ body {
     justify-self: start;
   }
 }
+
+/* ---- Agent Chat (slice 8 — functional núcleo; capture re-skin lands with the Chat view) ---- */
+.gx-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  max-width: 860px;
+  margin: 0 auto;
+  min-height: 100%;
+}
+.gx-chat__empty {
+  color: var(--text-muted, #8b93a7);
+  padding: 24px 0;
+}
+.gx-chat__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+}
+.gx-chat__msg {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 78%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--surface-2, #171c2a);
+  border: 1px solid var(--border, #232a3d);
+}
+.gx-chat__msg--user {
+  align-self: flex-end;
+  background: var(--accent-soft, #1d2740);
+}
+.gx-chat__msg--agent {
+  align-self: flex-start;
+}
+.gx-chat__msg--system {
+  align-self: stretch;
+  max-width: 100%;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.85rem;
+}
+.gx-chat__who {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted, #8b93a7);
+}
+.gx-chat__content {
+  margin: 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.gx-chat__composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+.gx-chat__field {
+  flex: 1;
+}

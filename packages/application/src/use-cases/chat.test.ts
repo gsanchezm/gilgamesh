@@ -1,3 +1,4 @@
+import type { KnowledgeScope } from '@gilgamesh/domain';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { AgentBrainPort, BrainCompleteRequest } from '../ports/brain';
 import { createInMemoryContext, type InMemoryContext } from '../testing/in-memory';
@@ -42,7 +43,7 @@ describe('Agent Chat — sessions, routing, retrieval, tools', () => {
   const makeSession = (pin?: string | null) =>
     new CreateChatSession(ctx).execute({ userId, projectId, agentId: pin ?? undefined });
 
-  async function seedChunk(name: string, scope: string | null, chunkOrgId: string | null = orgId) {
+  async function seedChunk(name: string, scope: KnowledgeScope | null, chunkOrgId: string | null = orgId) {
     const content = `${name}: how should we test this area — curated reference guidance.`;
     const [embedding] = await ctx.brain.embed([content]);
     await ctx.knowledge.upsertMany([
