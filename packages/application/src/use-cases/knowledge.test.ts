@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { AgentBrainPort, EmbeddingKind, KindAwareEmbeddingBrain } from '../ports/brain';
 import { createInMemoryContext, type InMemoryContext } from '../testing/in-memory';
-import { IngestKnowledge, type RawChunk, SearchKnowledge } from './knowledge';
+import { IngestKnowledge, KnowledgeRetriever, type RawChunk, SearchKnowledge } from './knowledge';
 
 const CHUNKS: RawChunk[] = [
   {
@@ -65,5 +66,109 @@ describe('Knowledge / RAG', () => {
     ]);
     const res = await new SearchKnowledge(ctx).execute({ query: 'testing techniques reference', k: 2 });
     expect(res.results.map((r) => r.citation.source)).toEqual(['A', 'B']);
+  });
+});
+
+// ---- S16: EMBED metering + input-kind threading (AC-EMB-04/05/06) --------------------------------
+
+/** Behavior-preserving wrapper that records which embedAs kind each call used. */
+function recordingBrain(ctx: InMemoryContext, kinds: EmbeddingKind[]): AgentBrainPort & KindAwareEmbeddingBrain {
+  return {
+    complete: ctx.brain.complete.bind(ctx.brain),
+    stream: ctx.brain.stream.bind(ctx.brain),
+    embed: ctx.brain.embed.bind(ctx.brain),
+    embedAs: (texts, kind) => {
+      kinds.push(kind);
+      return ctx.brain.embedAs(texts, kind);
+    },
+  };
+}
+
+/** A bare frozen-port brain WITHOUT the embedAs extension (feature-detection fallback path). */
+function bareBrain(ctx: InMemoryContext): AgentBrainPort {
+  return {
+    complete: ctx.brain.complete.bind(ctx.brain),
+    stream: ctx.brain.stream.bind(ctx.brain),
+    embed: ctx.brain.embed.bind(ctx.brain),
+  };
+}
+
+describe('Knowledge EMBED metering (S16)', () => {
+  let ctx: InMemoryContext;
+  let kinds: EmbeddingKind[];
+  const meterOf = (c: InMemoryContext) => ({ brainUsage: c.brainUsage, ids: c.ids, clock: c.clock });
+
+  beforeEach(() => {
+    ctx = createInMemoryContext();
+    kinds = [];
+  });
+
+  it('SearchKnowledge meters ONE EMBED row for the caller org, embedding with the query kind', async () => {
+    await new IngestKnowledge(ctx).execute(CHUNKS);
+    const search = new SearchKnowledge({ knowledge: ctx.knowledge, brain: recordingBrain(ctx, kinds), meter: meterOf(ctx) });
+    const res = await search.execute({ query: 'example mapping cards', orgId: 'org-1' });
+    expect(res.results.length).toBeGreaterThan(0);
+
+    const rows = await ctx.brainUsage.listForOrg('org-1');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ surface: 'EMBED', tier: 'HAIKU', outputTokens: 0 });
+    expect(rows[0]!.inputTokens).toBeGreaterThan(0); // the stub's whitespace-token estimate
+    expect(kinds).toEqual(['query']);
+  });
+
+  it('SearchKnowledge without an orgId stays unmetered (nothing to attribute)', async () => {
+    await new IngestKnowledge(ctx).execute(CHUNKS);
+    const search = new SearchKnowledge({ knowledge: ctx.knowledge, brain: ctx.brain, meter: meterOf(ctx) });
+    await search.execute({ query: 'example mapping cards' });
+    expect(ctx.brainUsage.rows).toHaveLength(0);
+  });
+
+  it('a metering failure NEVER breaks the search (resilience)', async () => {
+    await new IngestKnowledge(ctx).execute(CHUNKS);
+    ctx.brainUsage.append = async () => {
+      throw new Error('usage store down');
+    };
+    const search = new SearchKnowledge({ knowledge: ctx.knowledge, brain: ctx.brain, meter: meterOf(ctx) });
+    const res = await search.execute({ query: 'example mapping cards', orgId: 'org-1' });
+    expect(res.results.length).toBeGreaterThan(0);
+  });
+
+  it('IngestKnowledge embeds with the document kind; unattributed (global) ingest writes NO usage', async () => {
+    const ingest = new IngestKnowledge({ knowledge: ctx.knowledge, brain: recordingBrain(ctx, kinds), meter: meterOf(ctx) });
+    await ingest.execute(CHUNKS);
+    expect(kinds).toEqual(['document']);
+    expect(ctx.brainUsage.rows).toHaveLength(0); // BrainUsage.orgId is frozen non-null (AC-EMB-06)
+  });
+
+  it('IngestKnowledge meters when the call is attributed to an org', async () => {
+    const ingest = new IngestKnowledge({ knowledge: ctx.knowledge, brain: ctx.brain, meter: meterOf(ctx) });
+    await ingest.execute(CHUNKS, { orgId: 'org-7' });
+    const rows = await ctx.brainUsage.listForOrg('org-7');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ surface: 'EMBED', tier: 'HAIKU', outputTokens: 0 });
+  });
+
+  it('KnowledgeRetriever meters scoped grounding for the filter org; unscoped retrieve stays unmetered', async () => {
+    await new IngestKnowledge(ctx).execute(CHUNKS);
+    const retriever = new KnowledgeRetriever({ knowledge: ctx.knowledge, brain: recordingBrain(ctx, kinds), meter: meterOf(ctx) });
+
+    await retriever.retrieve('example mapping', 2);
+    expect(ctx.brainUsage.rows).toHaveLength(0); // no org in scope
+
+    await retriever.retrieveScoped('example mapping', 2, { orgId: 'org-3' });
+    const rows = await ctx.brainUsage.listForOrg('org-3');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ surface: 'EMBED', tier: 'HAIKU' });
+    expect(kinds).toEqual(['query', 'query']); // grounding queries always embed as query
+  });
+
+  it('falls back to the frozen embed() when the brain lacks embedAs (row carries 0 tokens)', async () => {
+    await new IngestKnowledge(ctx).execute(CHUNKS);
+    const search = new SearchKnowledge({ knowledge: ctx.knowledge, brain: bareBrain(ctx), meter: meterOf(ctx) });
+    const res = await search.execute({ query: 'example mapping cards', orgId: 'org-1' });
+    expect(res.results.length).toBeGreaterThan(0); // behavior preserved through the frozen port
+    const rows = await ctx.brainUsage.listForOrg('org-1');
+    expect(rows).toHaveLength(1); // the call still happened -> one row, tokens unknown
+    expect(rows[0]!.inputTokens).toBe(0);
   });
 });
