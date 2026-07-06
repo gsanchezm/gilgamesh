@@ -6,6 +6,7 @@ import type {
   KnowledgeChunkRepository,
   KnowledgeRetrievalPort,
   RetrievedChunk,
+  ScopedRetrievalFilter,
 } from '../ports/knowledge';
 import type { KnowledgeChunkRecord } from '../ports/records';
 
@@ -101,6 +102,16 @@ export class KnowledgeRetriever implements KnowledgeRetrievalPort {
     const [embedding] = await this.deps.brain.embed([q]);
     if (isZeroVector(embedding)) return [];
     const scored = await this.deps.knowledge.search(embedding!, k);
+    return scored.map((s) => ({ content: s.chunk.content, citation: citationOf(s.chunk), score: s.score }));
+  }
+
+  /** Slice-8 chat grounding: same pipeline over the chunks visible to one agent of one org. */
+  async retrieveScoped(query: string, k: number, filter: ScopedRetrievalFilter): Promise<RetrievedChunk[]> {
+    const q = query.trim().slice(0, MAX_QUERY_CHARS);
+    if (!q) return [];
+    const [embedding] = await this.deps.brain.embed([q]);
+    if (isZeroVector(embedding)) return [];
+    const scored = await this.deps.knowledge.searchScoped(filter, embedding!, k);
     return scored.map((s) => ({ content: s.chunk.content, citation: citationOf(s.chunk), score: s.score }));
   }
 }

@@ -1,6 +1,7 @@
-import type { AgentSlot, AgentFamily } from '@gilgamesh/domain';
+import type { AgentSlot, AgentFamily, KnowledgeScope } from '@gilgamesh/domain';
 
 export type Role = 'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER';
+export type ChatMessageRole = 'USER' | 'AGENT' | 'SYSTEM';
 export type UserStatus = 'ACTIVE' | 'DISABLED';
 export type ProjectFormat = 'BDD' | 'TRADITIONAL';
 export type TestCasePriority = 'HIGH' | 'MEDIUM' | 'LOW';
@@ -229,6 +230,11 @@ export interface KnowledgeChunkRecord {
   content: string;
   embedding: number[];
   tokenEstimate: number;
+  /**
+   * Keystone v0.2 per-agent visibility (slice 8): an AgentSlot key = visible only to that agent's
+   * retrieval; `shared` or null/undefined = visible to every agent.
+   */
+  scope?: KnowledgeScope | null;
 }
 
 /** A per-org uploaded knowledge document (slice 7) — its text is chunked/embedded into `KnowledgeChunkRecord`s. */
@@ -239,6 +245,30 @@ export interface KnowledgeDocumentRecord {
   /** File kind: 'md' | 'txt' (real ingest) — PDF/docx parsing is a later, dependency-bearing follow-up. */
   type: string;
   chunkCount: number;
+  createdAt: Date;
+}
+
+/** A chat conversation (keystone v0.2). `agentId` = the pinned agent when opened from a tile; null = routed. */
+export interface ChatSessionRecord {
+  id: string;
+  orgId: string;
+  projectId: string;
+  agentId: string | null;
+  createdById: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** One chat message (keystone v0.2). `runId` links a message that triggered a Run. */
+export interface ChatMessageRecord {
+  id: string;
+  orgId: string;
+  sessionId: string;
+  role: ChatMessageRole;
+  /** The answering/attributed agent for AGENT messages; null for USER/SYSTEM. */
+  agentId: string | null;
+  content: string;
+  runId: string | null;
   createdAt: Date;
 }
 

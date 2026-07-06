@@ -1,6 +1,8 @@
 import type {
   AgentRecord,
   AuditLogRecord,
+  ChatMessageRecord,
+  ChatSessionRecord,
   FeatureRecord,
   IntegrationRecord,
   MembershipRecord,
@@ -145,6 +147,21 @@ export interface SubscriptionRepository {
    * so a concurrent plan/checkout/cancel can't be clobbered (slice-4 review fix).
    */
   chargeRunMinutes(orgId: string, minutes: number): Promise<boolean>;
+}
+
+export interface ChatSessionRepository {
+  create(rec: ChatSessionRecord): Promise<void>;
+  findById(id: string): Promise<ChatSessionRecord | null>;
+  /** Bumps updatedAt when a message lands; a no-op if the session is gone. */
+  touch(id: string, at: Date): Promise<void>;
+}
+
+export interface ChatMessageRepository {
+  create(rec: ChatMessageRecord): Promise<void>;
+  /** Conversation order: createdAt asc, id asc tiebreak (UUID v7 = creation order on same-ms ties). */
+  listForSession(sessionId: string): Promise<ChatMessageRecord[]>;
+  /** Links the triggering message to its Run after the standard run path commits; no-op if gone. */
+  setRunId(id: string, runId: string): Promise<void>;
 }
 
 export interface AuditLogRepository {

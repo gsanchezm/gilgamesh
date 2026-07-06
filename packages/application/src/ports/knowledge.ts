@@ -1,3 +1,4 @@
+import type { AgentSlot } from '@gilgamesh/domain';
 import type { KnowledgeChunkRecord, KnowledgeDocumentRecord } from './records';
 
 export interface ScoredChunk {
@@ -5,11 +6,22 @@ export interface ScoredChunk {
   score: number;
 }
 
+/** Visibility filter for per-agent chat retrieval (slice 8): the tenant + the answering agent's slot. */
+export interface ScopedRetrievalFilter {
+  orgId: string;
+  slot: AgentSlot;
+}
+
 /** Persistence for knowledge chunks (pgvector in prod; in-memory cosine in tests). */
 export interface KnowledgeChunkRepository {
   upsertMany(chunks: KnowledgeChunkRecord[]): Promise<void>;
   /** Cosine-similarity top-k over the GLOBAL shared corpus only (orgId IS NULL) — never per-org chunks. */
   search(queryEmbedding: number[], k: number): Promise<ScoredChunk[]>;
+  /**
+   * Cosine top-k over the chunks VISIBLE to one agent of one org (slice 8): the org's own chunks plus
+   * the global shared corpus (orgId IS NULL), where `scope` = the agent's slot, `shared`, or NULL.
+   */
+  searchScoped(filter: ScopedRetrievalFilter, queryEmbedding: number[], k: number): Promise<ScoredChunk[]>;
   /** Size of the GLOBAL shared corpus (orgId IS NULL). */
   count(): Promise<number>;
 }
@@ -37,4 +49,6 @@ export interface RetrievedChunk {
 /** The RAG grounding seam: `GenerateDrafts` consults this to ground generation in the shared KB (S5-C). */
 export interface KnowledgeRetrievalPort {
   retrieve(query: string, k: number): Promise<RetrievedChunk[]>;
+  /** Slice-8 chat grounding: same pipeline, restricted to the chunks visible to one agent of one org. */
+  retrieveScoped(query: string, k: number, filter: ScopedRetrievalFilter): Promise<RetrievedChunk[]>;
 }

@@ -1,6 +1,8 @@
 import type {
   AgentRepository,
   AuditLogRepository,
+  ChatMessageRepository,
+  ChatSessionRepository,
   FeatureRepository,
   IntegrationRepository,
   MembershipRepository,
@@ -20,6 +22,7 @@ import { cosineSimilarity } from '@gilgamesh/domain';
 import type {
   KnowledgeChunkRepository,
   KnowledgeDocumentRepository,
+  ScopedRetrievalFilter,
   ScoredChunk,
 } from '../ports/knowledge';
 import { KnowledgeRetriever } from '../use-cases/knowledge';
@@ -27,6 +30,8 @@ import type { Repositories, UnitOfWork } from '../ports/unit-of-work';
 import type {
   AgentRecord,
   AuditLogRecord,
+  ChatMessageRecord,
+  ChatSessionRecord,
   FeatureRecord,
   IntegrationRecord,
   KnowledgeChunkRecord,
@@ -352,6 +357,18 @@ export class InMemoryKnowledgeChunkRepository implements KnowledgeChunkRepositor
       .sort((a, b) => b.score - a.score || (a.chunk.id < b.chunk.id ? -1 : a.chunk.id > b.chunk.id ? 1 : 0))
       .slice(0, k);
   }
+  async searchScoped(filter: ScopedRetrievalFilter, queryEmbedding: number[], k: number): Promise<ScoredChunk[]> {
+    return [...this.byId.values()]
+      // Visible to this agent of this org: own-org or global chunks, scoped to the slot/'shared'/NULL.
+      .filter(
+        (chunk) =>
+          (chunk.orgId == null || chunk.orgId === filter.orgId) &&
+          (chunk.scope == null || chunk.scope === 'shared' || chunk.scope === filter.slot),
+      )
+      .map((chunk) => ({ chunk, score: cosineSimilarity(queryEmbedding, chunk.embedding) }))
+      .sort((a, b) => b.score - a.score || (a.chunk.id < b.chunk.id ? -1 : a.chunk.id > b.chunk.id ? 1 : 0))
+      .slice(0, k);
+  }
   async count(): Promise<number> {
     let n = 0;
     for (const c of this.byId.values()) if (c.orgId == null) n += 1;
@@ -368,6 +385,38 @@ export class InMemoryKnowledgeDocumentRepository implements KnowledgeDocumentRep
     return this.rows
       .filter((d) => d.orgId === orgId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : -1));
+  }
+}
+
+export class InMemoryChatSessionRepository implements ChatSessionRepository {
+  private readonly byId = new Map<string, ChatSessionRecord>();
+  async create(rec: ChatSessionRecord): Promise<void> {
+    this.byId.set(rec.id, rec);
+  }
+  async findById(id: string): Promise<ChatSessionRecord | null> {
+    return this.byId.get(id) ?? null;
+  }
+  async touch(id: string, at: Date): Promise<void> {
+    const s = this.byId.get(id);
+    if (s) s.updatedAt = at;
+  }
+}
+
+export class InMemoryChatMessageRepository implements ChatMessageRepository {
+  private readonly rows: ChatMessageRecord[] = [];
+  async create(rec: ChatMessageRecord): Promise<void> {
+    this.rows.push(rec);
+  }
+  async listForSession(sessionId: string): Promise<ChatMessageRecord[]> {
+    // createdAt asc; the stable sort keeps insertion order on same-ms ties (Prisma parity: its
+    // `createdAt asc, id asc` yields creation order too, since UUID v7 ids are time-ordered).
+    return this.rows
+      .filter((m) => m.sessionId === sessionId)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+  async setRunId(id: string, runId: string): Promise<void> {
+    const m = this.rows.find((x) => x.id === id);
+    if (m) m.runId = runId;
   }
 }
 
@@ -408,6 +457,8 @@ export interface InMemoryContext {
   audit: InMemoryAuditLogRepository;
   knowledge: InMemoryKnowledgeChunkRepository;
   knowledgeDocuments: InMemoryKnowledgeDocumentRepository;
+  chatSessions: InMemoryChatSessionRepository;
+  chatMessages: InMemoryChatMessageRepository;
   integrations: InMemoryIntegrationRepository;
   repoProvider: MockRepoProvider;
   vault: StubSecretVault;
@@ -449,6 +500,8 @@ export function createInMemoryContext(): InMemoryContext {
   const brain = new DeterministicBrain();
   return {
     ...repos,
+    chatSessions: new InMemoryChatSessionRepository(),
+    chatMessages: new InMemoryChatMessageRepository(),
     integrations: new InMemoryIntegrationRepository(),
     repoProvider: new MockRepoProvider(),
     vault: new StubSecretVault(),
