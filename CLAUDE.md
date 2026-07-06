@@ -319,3 +319,16 @@ by a 3-angle adversarial review (6 findings fixed; secrets/DI/conventions gates 
   cache, offline seam preserved) · live EventSource in the web
   chat · semantic embeddings (Anthropic has no embeddings API — Voyage decision) · token charging
   (4-tier billing migration) · optional `BRAIN_SMOKE` manual live-key smoke.
+
+
+## Slice 12 status (Auth recovery) — DoD COMPLETE (2026-07-06, on `main`)
+
+`specs/slices/12-auth-recovery/` — forgot/reset password behind the frozen keystone v0.4 vocabulary
+(`PasswordReset` entity, `EmailPort` stub that records mail in-memory, long-frozen §6 routes). Closes
+owner decision S1-B. Built SDD→BDD→TDD (8 scenarios red on 404s first): enumeration-safe generic 202,
+256-bit CSPRNG token stored sha256-only (TTL 30 min, single-use `usedAt` claimed BEFORE the password
+rewrite; weak passwords never consume the token), reset revokes every session, audits without secrets.
+Prisma migration `password_reset`; both wirings bind `PasswordResets`/`Email`; Forgot/Reset screens +
+public routes wired from Login. **Verified (post-merge):** typecheck + lint · 623 Docker-free ·
+`test:int` 19 · **BDD 141 scenarios / 1141 steps** · Playwright 17. Deferred: real SMTP/SES adapter ·
+the @wip rate-limit outline (AC-AUTH-13 pattern).
