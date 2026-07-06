@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { planLimits, priceCents } from './plans';
+import { PLAN_CATALOG } from '../pricing/plan-catalog';
+import { type Plan, planLimits, priceCents } from './plans';
 
 describe('planLimits', () => {
   it('maps each plan to active workspace, service and execution limits', () => {
@@ -39,5 +40,41 @@ describe('priceCents', () => {
   it('prices Scale add-on workspaces beyond the 10 included', () => {
     expect(priceCents('SCALE', 'MONTHLY', 10)).toBe(49900);
     expect(priceCents('SCALE', 'MONTHLY', 12)).toBe(69700);
+  });
+
+  it('prices annual as 10 charged months, workspace-aware for Scale (AC-B4T-03/04)', () => {
+    expect(priceCents('GROWTH', 'ANNUAL')).toBe(8250); // round(9900 * 10 / 12)
+    expect(priceCents('SCALE', 'ANNUAL', 12)).toBe(58083); // round(69700 * 10 / 12)
+  });
+});
+
+// Slice 10 (AC-B4T): PLAN_CATALOG is the SINGLE source of truth — the billing rules
+// derive every number (prices, add-on, limits) from the catalog's structured fields.
+describe('derivation from PLAN_CATALOG (single source)', () => {
+  const UNLIMITED_WORKSPACES = 1_000_000;
+  const UNLIMITED_EXECUTIONS = 1_000_000_000;
+  const cap = (v: number | 'unlimited', c: number) => (v === 'unlimited' ? c : v);
+
+  it('derives every price from the catalog', () => {
+    for (const tier of PLAN_CATALOG) {
+      const plan = tier.id.toUpperCase() as Plan;
+      expect(priceCents(plan, 'MONTHLY')).toBe(tier.monthlyCents);
+      const extra = tier.perExtraWorkspaceCents ?? 0;
+      expect(priceCents(plan, 'MONTHLY', tier.limits.includedWorkspaces + 3)).toBe(
+        tier.monthlyCents + 3 * extra,
+      );
+    }
+  });
+
+  it('derives every limit from the catalog structured limits', () => {
+    for (const tier of PLAN_CATALOG) {
+      const l = planLimits(tier.id.toUpperCase() as Plan);
+      expect(l.runMinutesQuota).toBe(cap(tier.limits.executionsPerMonth, UNLIMITED_EXECUTIONS));
+      expect(l.maxSeats).toBe(cap(tier.limits.workspaces, UNLIMITED_WORKSPACES));
+      expect(l.maxServicesPerWorkspace).toBe(cap(tier.limits.servicesPerWorkspace, UNLIMITED_WORKSPACES));
+      expect(l.maxUsersPerWorkspace).toBe(cap(tier.limits.usersPerWorkspace, UNLIMITED_WORKSPACES));
+      expect(l.includedWorkspaces).toBe(tier.limits.includedWorkspaces);
+      expect(l.unlimited).toBe(tier.limits.executionsPerMonth === 'unlimited');
+    }
   });
 });

@@ -10,6 +10,24 @@
 export type PlanTierId = 'free' | 'starter' | 'growth' | 'scale';
 export type PricingCycle = 'monthly' | 'annual';
 
+/** A structured per-tier limit; 'unlimited' where the tier is uncapped. */
+export type PlanTierLimit = number | 'unlimited';
+
+/**
+ * Structured limits (slice 10) — the machine-readable source the billing domain
+ * (`billing/plans.ts`) derives from. The `features` strings are the marketing copy of
+ * these same numbers; change the two together.
+ */
+export interface PlanTierLimits {
+  /** Active workspaces allowed. */
+  workspaces: PlanTierLimit;
+  servicesPerWorkspace: PlanTierLimit;
+  executionsPerMonth: PlanTierLimit;
+  usersPerWorkspace: PlanTierLimit;
+  /** Workspaces included in the base price (Scale: 10, then perExtraWorkspaceCents each). */
+  includedWorkspaces: number;
+}
+
 export interface PlanTier {
   id: PlanTierId;
   name: string;
@@ -24,11 +42,12 @@ export interface PlanTier {
   /** Preface above the feature list ("Everything in Free, plus"); null for the entry tier. */
   inheritsFromName: string | null;
   features: readonly string[];
+  limits: PlanTierLimits;
 }
 
 /** Annual billing charges 10 months → 2 months free. */
 export const ANNUAL_MONTHS_FREE = 2;
-const ANNUAL_MONTHS_CHARGED = 12 - ANNUAL_MONTHS_FREE;
+export const ANNUAL_MONTHS_CHARGED = 12 - ANNUAL_MONTHS_FREE;
 
 export const PLAN_CATALOG: readonly PlanTier[] = [
   {
@@ -48,6 +67,13 @@ export const PLAN_CATALOG: readonly PlanTier[] = [
       'Basic dashboard',
       '7-day history',
     ],
+    limits: {
+      workspaces: 1,
+      servicesPerWorkspace: 2,
+      executionsPerMonth: 500,
+      usersPerWorkspace: 1,
+      includedWorkspaces: 1,
+    },
   },
   {
     id: 'starter',
@@ -69,6 +95,13 @@ export const PLAN_CATALOG: readonly PlanTier[] = [
       '3 users per workspace',
       '30-day history',
     ],
+    limits: {
+      workspaces: 'unlimited',
+      servicesPerWorkspace: 5,
+      executionsPerMonth: 5_000,
+      usersPerWorkspace: 3,
+      includedWorkspaces: 1,
+    },
   },
   {
     id: 'growth',
@@ -90,6 +123,13 @@ export const PLAN_CATALOG: readonly PlanTier[] = [
       '90-day history',
       'Email support · 48h SLA',
     ],
+    limits: {
+      workspaces: 'unlimited',
+      servicesPerWorkspace: 15,
+      executionsPerMonth: 25_000,
+      usersPerWorkspace: 'unlimited',
+      includedWorkspaces: 1,
+    },
   },
   {
     id: 'scale',
@@ -112,6 +152,13 @@ export const PLAN_CATALOG: readonly PlanTier[] = [
       'Unlimited history',
       'On-premise deploy (roadmap)',
     ],
+    limits: {
+      workspaces: 'unlimited',
+      servicesPerWorkspace: 'unlimited',
+      executionsPerMonth: 'unlimited',
+      usersPerWorkspace: 'unlimited',
+      includedWorkspaces: 10,
+    },
   },
 ];
 
