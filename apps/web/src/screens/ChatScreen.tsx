@@ -108,7 +108,9 @@ export function ChatScreen({
   function openLive(sessionId: string): boolean {
     if (typeof window === 'undefined' || typeof window.EventSource === 'undefined') return false;
     closeLive();
-    const es = new window.EventSource(liveEventsUrl(sessionId));
+    // withCredentials so the session cookie rides a cross-origin API deployment (audit #12;
+    // harmless on the same-origin vite proxy setup).
+    const es = new window.EventSource(liveEventsUrl(sessionId), { withCredentials: true });
     esRef.current = es;
     es.addEventListener('MESSAGE', (ev) => {
       const m = messageFromEvent((ev as MessageEvent<string>).data);

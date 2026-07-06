@@ -67,12 +67,14 @@ function fakeAgents(): AgentsClient {
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
   readonly url: string;
+  readonly init: EventSourceInit | undefined;
   closed = false;
   onerror: ((ev: Event) => unknown) | null = null;
   private readonly listeners = new Map<string, ((ev: MessageEvent<string>) => void)[]>();
 
-  constructor(url: string) {
+  constructor(url: string, init?: EventSourceInit) {
     this.url = url;
+    this.init = init;
     FakeEventSource.instances.push(this);
   }
   addEventListener(type: string, fn: (ev: MessageEvent<string>) => void): void {
@@ -160,6 +162,8 @@ describe('ChatScreen (slice 11 re-skin)', () => {
     expect(chat.createSession).toHaveBeenCalledWith('p1', null);
     const es = FakeEventSource.instances[0]!;
     expect(es.url).toMatch(/\/chat\/s-new\/events\?live=1$/);
+    // The session cookie must ride a cross-origin API deployment (audit #12; harmless same-origin).
+    expect(es.init).toEqual({ withCredentials: true });
 
     act(() => {
       es.emit('DELTA', { type: 'DELTA', delta: 'Thor here — ' });
