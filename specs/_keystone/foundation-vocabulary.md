@@ -4,7 +4,7 @@
 > signatures, and the OpenAPI/schema skeleton. Every foundation artifact MUST adhere to it
 > **verbatim** — same entity names, field names, enum values, IDs, and port signatures.
 > If an artifact needs a name not defined here, it adds it here first (don't invent locally).
-> Authored centrally (full design context). Expansions fan out from this. v0.3 — 2026-07-05.
+> Authored centrally (full design context). Expansions fan out from this. v0.4 — 2026-07-06.
 
 ## 0. Conventions
 - TypeScript everywhere. Package names `@gilgamesh/<name>`.
@@ -46,6 +46,8 @@ KnowledgeScope (key) = <AgentSlot key> | shared   # lowercase keys; nullable on 
 - **User** — id, email(unique, citext), passwordHash(Argon2id), firstName, middleName?, lastName, status(ACTIVE|DISABLED), createdAt, updatedAt. Global (can belong to many Orgs).
 - **Membership** — id, orgId, userId, role:Role, createdAt. Unique(orgId,userId). RBAC join.
 - **Session** — id, userId, tokenHash, expiresAt, ip?, userAgent?, createdAt, revokedAt?. Local-auth sessions.
+- **PasswordReset** — id, userId, tokenHash, expiresAt, usedAt?, createdAt. Single-use recovery token
+  (hash only — the raw token exists only in the email link).
 - **Project** — id, orgId, name, slug, format:ProjectFormat, repoProvider?(github|gitlab|bitbucket|ado), repoFullName?, repoBranch?, repoCommit?, repoLastSyncAt?, createdAt, updatedAt. Unique(orgId,slug).
 - **Slice** — id, orgId, projectId, key, name, order. Vertical slice (Checkout/Login/Catalog/Payments/Imported). Unique(projectId,key).
 - **Feature** — id, orgId, projectId, sliceId?, name, path, content(gherkin text), updatedAt, createdAt. BDD `.feature`.
@@ -143,11 +145,14 @@ interface IdentityProvider {                                // Local(email/pass)
   startLogin?(redirect:string): Promise<{authUrl:string}>;
   completeLogin(input: unknown): Promise<{ userId: string }>;
 }
+interface EmailPort {                                       // stub now (deterministic no-op/log); real SMTP/SES later
+  send(input: { to: string; subject: string; text: string }): Promise<void>;
+}
 interface ArtifactStorage { put(key:string, data:Buffer|NodeJS.ReadableStream, contentType:string): Promise<void>; signedUrl(key:string, ttlSec:number): Promise<string>; }
 interface EventBus { publish(topic:string, e:unknown): Promise<void>; subscribe(topic:string, h:(e:unknown)=>void): () => void; }
 // Repository<T> per aggregate: User, Org, Membership, Session, Project, Slice, Feature, Scenario,
 //   TestCase, Agent, ToolBinding, Run, RunNode, Artifact, Integration, Subscription, KnowledgeDoc,
-//   ChatSession, ChatMessage, BrainUsage, AuditLog.
+//   ChatSession, ChatMessage, BrainUsage, PasswordReset, AuditLog.
 ```
 
 ## 6. OpenAPI v1 — resource & schema skeleton (full bodies expanded by the API-contract artifact)
@@ -161,6 +166,7 @@ Resources (paths): `/auth/{register,login,logout,me,forgot-password,reset-passwo
 `/projects/{id}/knowledge` (POST upload, GET list, DELETE) ·
 `POST /projects/{id}/chat` (create ChatSession) · `POST /chat/{sessionId}/messages` (send message) ·
 `GET /chat/{sessionId}/events` (SSE stream, same pattern as `/runs/{id}/events`) ·
+`GET /projects/{id}/chat` (list ChatSessions, newest-first) · `GET /chat/{sessionId}/messages` (history) ·
 `GET /orgs/{orgId}/brain/usage` (aggregated per-tier/per-surface token usage) ·
 `/orgs/{orgId}/subscription`, `/orgs/{orgId}/subscription/checkout` · `/orgs/{orgId}/audit`.
 Schema names = entity names in §2 + request/response DTOs `*Create`,`*Update`,`*View`,`MeView`(session context: user + memberships + activeOrgId),`ProjectAgentView`(Agent + per-project ToolBinding + derived AgentRuntimeStatus),`RunEvent`,`ReportView`,`Problem`(RFC9457 errors).
@@ -191,6 +197,9 @@ $499/mo base includes 10 workspaces + $99/extra workspace (unlimited executions/
 Annual billing charges 10 months (2 months free).
 
 ## 10. Changelog
+- **v0.4 — 2026-07-06** — Chat read routes + auth-recovery vocabulary: +`GET /projects/{id}/chat` list +
+  `GET /chat/{sessionId}/messages` (§6) · +`PasswordReset` (§2/§5) · +`EmailPort` (§5).
+  Nothing frozen was renamed, removed, or restructured.
 - **v0.3 — 2026-07-05** — Brain amendment: +`AI_PROVIDERS` group + `anthropic` key (§1/§8) ·
   +`BrainSurface` (§1) · +`BrainUsage` (§2/§5) · +`GET /orgs/{orgId}/brain/usage` (§6).
   Nothing frozen was renamed, removed, or restructured.
