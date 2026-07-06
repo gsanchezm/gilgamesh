@@ -23,19 +23,25 @@ import type {
   ToolBindingRepository,
 } from '../ports/repositories';
 import { requireProjectAccess } from './authz';
+import { formatGrounding } from './knowledge';
 import type { RunView } from './runs';
 import type { GeneratedDraftsView } from './testlab-generate';
 import type { TestCaseView } from './testlab-testcases';
 
 const AUTHORS = ['OWNER', 'ADMIN', 'MEMBER'] as const;
-const READERS = ['OWNER', 'ADMIN', 'MEMBER', 'VIEWER'] as const;
 const MAX_MESSAGE_CHARS = 4000;
 /** Below this router confidence the lead (Zeus) answers (spec §routing). */
 const CONFIDENCE_THRESHOLD = 0.6;
 const RETRIEVAL_TOP_K = 4;
+/** Caller-intent anchor for router requests — the stub brain dispatches on this prefix (review S8). */
+export const CHAT_ROUTER_PREFIX = 'You are the Gilgamesh chat router';
 const ROUTER_SYSTEM =
-  'You are the Gilgamesh chat router. Given {"classify": <message>}, respond ONLY with ' +
+  `${CHAT_ROUTER_PREFIX}. Given {"classify": <message>}, respond ONLY with ` +
   '{"slot": <AgentSlot key>, "confidence": <0..1>} — the specialist best suited to answer.';
+// Mirror the direct endpoints' DTO caps (apps/api INPUT_LIMITS): a chat tool call must not widen
+// what POST /test-cases (title ≤ 256) and /test-cases/generate (prompt ≤ 2000) accept (review S8).
+const TOOL_TITLE_MAX = 256;
+const TOOL_PROMPT_MAX = 2000;
 
 export interface ChatSessionView {
   id: string;
@@ -225,7 +231,7 @@ export class SendChatMessage {
       orgId: project.orgId,
       slot: routing.agent.slot,
     });
-    const grounding = retrieved.map((r) => `[${r.citation.source}] ${r.content}`).join('\n\n');
+    const grounding = formatGrounding(retrieved);
     const system = grounding
       ? `${personaPrompt(entry)}\n\nReference context:\n${grounding}`
       : personaPrompt(entry);
@@ -295,7 +301,9 @@ export class SendChatMessage {
       createdAt: now,
     });
 
-    return { message: toView(userMsg), answer: toView(answer) };
+    // Build the returned view from the known outcome — never from in-place record mutation, which
+    // holds in-memory but not under Prisma's updateMany (review S8 parity fix).
+    return { message: toView({ ...userMsg, runId: outcome.runId ?? userMsg.runId }), answer: toView(answer) };
   }
 
   /**
@@ -345,14 +353,24 @@ export class SendChatMessage {
     project: ProjectRecord,
     sessionId: string,
   ): Promise<ToolOutcome> {
-    if (call.tool === 'enqueue_run') {
-      const wanted = String(call.args.featureName ?? '').trim();
-      const features = await this.deps.features.listForProject(project.id);
-      const feature = features.find((f) => f.name.toLowerCase() === wanted.toLowerCase());
-      if (!feature) {
-        return { answerText: `I could not find a feature named "${wanted}" in this project.` };
-      }
-      try {
+    // A tool outside the whitelist is refused, not invoked — no audit row (spec §8 AC-CRUN-04).
+    if (!['enqueue_run', 'create_test_case', 'generate_feature'].includes(call.tool)) {
+      return {
+        answerText: `Tool "${call.tool}" is not available. The chat can only invoke: create_test_case, generate_feature, enqueue_run.`,
+      };
+    }
+    const audited = (targetId: string | null, outcome: string) =>
+      this.auditTool(project.orgId, userId, sessionId, call.tool, targetId, outcome);
+
+    try {
+      if (call.tool === 'enqueue_run') {
+        const wanted = String(call.args.featureName ?? '').trim();
+        const features = await this.deps.features.listForProject(project.id);
+        const feature = features.find((f) => f.name.toLowerCase() === wanted.toLowerCase());
+        if (!feature) {
+          await audited(null, 'TARGET_NOT_FOUND');
+          return { answerText: `I could not find a feature named "${wanted}" in this project.` };
+        }
         const run = await this.deps.tools.triggerRun.execute({
           userId,
           projectId: project.id,
@@ -360,7 +378,7 @@ export class SendChatMessage {
           targetId: feature.id,
           runLabel: 'chat',
         });
-        await this.auditTool(project.orgId, userId, sessionId, call.tool, run.id);
+        await audited(run.id, 'OK');
         const lines = run.results.map((r) => `${r.status} — ${r.name}`).join('\n');
         const counts = `${run.passed} passed, ${run.failed} failed, ${run.skipped} skipped (${run.ratePct}%)`;
         return {
@@ -368,43 +386,39 @@ export class SendChatMessage {
           runId: run.id,
           systemNarration: { runId: run.id, content: `Run ${run.status} — "${feature.name}": ${counts}.\n${lines}` },
         };
-      } catch (e) {
-        // The standard path's own gates (quota, RBAC, target checks) surface as a narrated outcome,
-        // not a chat failure — the USER message is already persisted.
-        if (e instanceof ApplicationError && ['QUOTA_EXCEEDED', 'FORBIDDEN', 'NOT_FOUND'].includes(e.code)) {
-          return { answerText: `Run blocked (${e.code}): ${e.message}` };
-        }
-        throw e;
       }
-    }
 
-    if (call.tool === 'create_test_case') {
-      const title = String(call.args.title ?? '').trim();
-      const tc = await this.deps.tools.createTestCase.execute({
-        userId,
-        projectId: project.id,
-        title: title || 'Untitled from chat',
-        priority: 'MEDIUM',
-      });
-      await this.auditTool(project.orgId, userId, sessionId, call.tool, tc.id);
-      return { answerText: `Created test case ${tc.key}: ${tc.title}. Review it in the Test Lab.` };
-    }
+      if (call.tool === 'create_test_case') {
+        const title = String(call.args.title ?? '').trim().slice(0, TOOL_TITLE_MAX);
+        const tc = await this.deps.tools.createTestCase.execute({
+          userId,
+          projectId: project.id,
+          title: title || 'Untitled from chat',
+          priority: 'MEDIUM',
+        });
+        await audited(tc.id, 'OK');
+        return { answerText: `Created test case ${tc.key}: ${tc.title}. Review it in the Test Lab.` };
+      }
 
-    if (call.tool === 'generate_feature') {
-      const prompt = String(call.args.prompt ?? '').trim();
+      const prompt = String(call.args.prompt ?? '').trim().slice(0, TOOL_PROMPT_MAX);
       const drafts = await this.deps.tools.generateDrafts.execute({ userId, projectId: project.id, prompt });
-      await this.auditTool(project.orgId, userId, sessionId, call.tool, null);
+      await audited(null, 'OK');
       const names = drafts.features.map((f) => f.name).join(', ');
       return {
         answerText:
           `Drafted ${drafts.features.length} feature(s) for review: ${names}. ` +
           'Nothing was persisted — keep what is useful from the Test Lab.',
       };
+    } catch (e) {
+      // The underlying path's own gates (quota, RBAC, conflicts, validation) surface as a narrated
+      // outcome, not a chat failure — the USER message is already persisted. Every attempted
+      // whitelisted call leaves an audit row, blocked or not (spec §9, review S8).
+      if (e instanceof ApplicationError) {
+        await audited(null, e.code);
+        return { answerText: `Tool "${call.tool}" blocked (${e.code}): ${e.message}` };
+      }
+      throw e;
     }
-
-    return {
-      answerText: `Tool "${call.tool}" is not available. The chat can only invoke: create_test_case, generate_feature, enqueue_run.`,
-    };
   }
 
   private async auditTool(
@@ -413,6 +427,7 @@ export class SendChatMessage {
     sessionId: string,
     tool: string,
     targetId: string | null,
+    outcome: string,
   ): Promise<void> {
     await this.deps.audit.append({
       id: this.deps.ids.next(),
@@ -421,7 +436,7 @@ export class SendChatMessage {
       action: 'chat.tool.invoked',
       targetType: 'ChatSession',
       targetId: sessionId,
-      metadata: { tool, targetId },
+      metadata: { tool, targetId, outcome },
       ip: null,
       createdAt: this.deps.clock.now(),
     });
@@ -446,7 +461,8 @@ export class GetChatEvents {
   async execute(input: { userId: string; sessionId: string }): Promise<ChatMessageView[]> {
     const session = await this.deps.chatSessions.findById(input.sessionId);
     if (!session) throw new ApplicationError('NOT_FOUND', 'Chat session not found.');
-    await requireProjectAccess(this.deps, input.userId, session.projectId, [...READERS]);
+    // Chat is MEMBER+ end to end (spec §10.2): a VIEWER may not read conversations either.
+    await requireProjectAccess(this.deps, input.userId, session.projectId, [...AUTHORS]);
     return (await this.deps.chatMessages.listForSession(session.id)).map(toView);
   }
 }

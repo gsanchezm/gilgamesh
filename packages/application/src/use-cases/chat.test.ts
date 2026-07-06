@@ -101,6 +101,10 @@ describe('Agent Chat — sessions, routing, retrieval, tools', () => {
     await expect(
       makeSend().execute({ userId: viewer, sessionId: session.id, content: 'hi' }),
     ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    // Chat is MEMBER+ (spec §10.2): a VIEWER may not read conversations either (review S8).
+    await expect(
+      new GetChatEvents(ctx).execute({ userId: viewer, sessionId: session.id }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
   it('persists the USER message then the AGENT answer, in order (AC-CHAT-02)', async () => {
@@ -230,10 +234,12 @@ describe('Agent Chat — sessions, routing, retrieval, tools', () => {
   it('enqueue_run rides the standard TriggerRun path: run + runId link + SYSTEM summary + audit (AC-CRUN-01/03)', async () => {
     await makeFeature();
     const session = await makeSession();
-    await makeSend().execute({ userId, sessionId: session.id, content: 'run the Checkout feature' });
+    const res = await makeSend().execute({ userId, sessionId: session.id, content: 'run the Checkout feature' });
 
     const runs = await ctx.runs.listForProject(projectId);
     expect(runs).toHaveLength(1);
+    // The 201 view must carry the link in BOTH wirings — never rely on in-memory object mutation (review S8).
+    expect(res.message.runId).toBe(runs[0]!.id);
     expect(runs[0]).toMatchObject({ trigger: 'MANUAL', targetKind: 'FEATURE', createdById: userId });
 
     const rows = await ctx.chatMessages.listForSession(session.id);
@@ -259,6 +265,9 @@ describe('Agent Chat — sessions, routing, retrieval, tools', () => {
     expect(await ctx.runs.listForProject(projectId)).toHaveLength(0);
     const rows = await ctx.chatMessages.listForSession(session.id);
     expect(rows.find((m) => m.role === 'USER')!.runId).toBeNull();
+    // "Each tool call" is audited — including blocked ones (spec §9, review S8).
+    const audit = ctx.audit.rows.find((r) => r.action === 'chat.tool.invoked')!;
+    expect(audit.metadata).toMatchObject({ tool: 'enqueue_run', outcome: 'QUOTA_EXCEEDED' });
   });
 
   it('narrates gracefully when the named feature does not exist', async () => {
@@ -292,6 +301,53 @@ describe('Agent Chat — sessions, routing, retrieval, tools', () => {
     });
     expect(res.answer.content.toLowerCase()).toContain('draft');
     expect(await ctx.features.listForProject(projectId)).toHaveLength(0);
+  });
+
+  it('caps tool args at the direct endpoints\' limits: title ≤ 256, prompt ≤ 2000 (review S8)', async () => {
+    const session = await makeSession();
+    await makeSend().execute({
+      userId,
+      sessionId: session.id,
+      content: `create a test case for ${'x'.repeat(3000)}`,
+    });
+    const cases = await ctx.testCases.listForProject(projectId);
+    expect(cases[0]!.title.length).toBeLessThanOrEqual(256);
+
+    const prompts: string[] = [];
+    const spyTools = {
+      triggerRun: new TriggerRun(ctx),
+      createTestCase: new CreateTestCase(ctx),
+      generateDrafts: {
+        execute: async (i: { userId: string; projectId: string; prompt: string }) => {
+          prompts.push(i.prompt);
+          return new GenerateDrafts(ctx).execute(i);
+        },
+      },
+    };
+    const send = new SendChatMessage({ ...ctx, tools: spyTools });
+    const s2 = await makeSession();
+    await send.execute({ userId, sessionId: s2.id, content: `generate a feature ${'y'.repeat(3000)}` });
+    expect(prompts[0]!.length).toBeLessThanOrEqual(2000);
+  });
+
+  it('narrates a failing authoring tool instead of failing the send (review S8)', async () => {
+    const failingTools = {
+      triggerRun: new TriggerRun(ctx),
+      createTestCase: {
+        execute: async () => {
+          throw new (await import('../errors')).ApplicationError('CONFLICT', 'Key collision.');
+        },
+      },
+      generateDrafts: new GenerateDrafts(ctx),
+    };
+    const send = new SendChatMessage({ ...ctx, tools: failingTools });
+    const session = await makeSession();
+    const res = await send.execute({ userId, sessionId: session.id, content: 'create a test case for cash' });
+    expect(res.answer.content).toContain('CONFLICT');
+    const rows = await ctx.chatMessages.listForSession(session.id);
+    expect(rows.map((m) => m.role)).toEqual(['USER', 'AGENT']);
+    const audit = ctx.audit.rows.find((r) => r.action === 'chat.tool.invoked')!;
+    expect(audit.metadata).toMatchObject({ tool: 'create_test_case', outcome: 'CONFLICT' });
   });
 
   it('refuses a tool outside the whitelist of 3 (AC-CRUN-04)', async () => {

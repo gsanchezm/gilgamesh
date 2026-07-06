@@ -6,6 +6,7 @@ import type { Citation, KnowledgeRetrievalPort } from '../ports/knowledge';
 import type { ProjectFormat, TestCasePriority } from '../ports/records';
 import type { AuditLogRepository, MembershipRepository, ProjectRepository } from '../ports/repositories';
 import { requireProjectAccess } from './authz';
+import { formatGrounding } from './knowledge';
 
 export interface FeatureDraft {
   name: string;
@@ -107,7 +108,7 @@ export class GenerateDrafts {
     // Slice 5: ground the generation in the shared knowledge base (RAG). The stub brain ignores the
     // grounding deterministically; a real brain uses it. Either way the citations flow to the output.
     const retrieved = await this.deps.retrieval.retrieve(prompt, 4);
-    const grounding = retrieved.map((r) => `[${r.citation.source}] ${r.content}`).join('\n\n');
+    const grounding = formatGrounding(retrieved);
 
     const res = await this.deps.brain.complete({
       tier: 'SONNET',

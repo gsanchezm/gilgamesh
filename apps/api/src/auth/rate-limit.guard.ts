@@ -7,16 +7,25 @@ import { RATE_LIMIT_STORE, type RateLimitStore } from './rate-limit-store';
 
 export const RATE_LIMIT = 'RATE_LIMIT';
 
+interface LimitedPath {
+  suffix: string;
+  /** Restrict the throttle to one HTTP method; omitted = any method with this suffix. */
+  method?: string;
+  /** 'suffix' buckets across the dynamic path segment (per IP); 'path' (default) per full path. */
+  bucket?: 'path' | 'suffix';
+}
+
 // Throttled endpoints: auth (AC-AUTH-13 / §10.2; forgot/reset land with slice #7) and the
-// cost-bearing brain calls — AI generate (AC-GEN-04) and chat send (AC-CHAT-06; the '/messages'
-// suffix only matches POST /chat/:sessionId/messages — no other route ends with it).
-const LIMITED_PATHS = [
-  '/auth/login',
-  '/auth/register',
-  '/auth/forgot-password',
-  '/auth/reset-password',
-  '/test-cases/generate',
-  '/messages',
+// cost-bearing brain calls — AI generate (AC-GEN-04) and chat send (AC-CHAT-06).
+const LIMITED_PATHS: LimitedPath[] = [
+  { suffix: '/auth/login' },
+  { suffix: '/auth/register' },
+  { suffix: '/auth/forgot-password' },
+  { suffix: '/auth/reset-password' },
+  { suffix: '/test-cases/generate' },
+  // POST-only so a future GET message-list is not throttled, and bucketed by SUFFIX so minting
+  // fresh sessions cannot mint fresh buckets — the brain-cost limit binds per IP (review S8).
+  { suffix: '/messages', method: 'POST', bucket: 'suffix' },
 ];
 
 /**
@@ -42,16 +51,20 @@ export class RateLimitGuard implements CanActivate {
     // Strip trailing slashes before matching: Express non-strict routing dispatches "/auth/login/"
     // to the same handler, so an un-normalized endsWith would let a trailing slash dodge the bucket.
     const normalizedPath = (req.path || '/').replace(/\/+$/, '') || '/';
-    if (!LIMITED_PATHS.some((p) => normalizedPath.endsWith(p))) return true;
+    const limited = LIMITED_PATHS.find(
+      (p) => normalizedPath.endsWith(p.suffix) && (!p.method || p.method === req.method),
+    );
+    if (!limited) return true;
 
     const ip = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
     const body = req.body as { email?: unknown } | undefined;
     // Normalize identically to the auth use cases (which trim+lowercase) so whitespace-padded
     // variants can't mint fresh buckets for the same account and bypass the throttle.
     const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
-    // Key on the full normalized path (not just the matched suffix) so the parameterized
-    // /projects/:id/test-cases/generate route buckets per (project + IP), not per IP for all tenants.
-    const key = `${normalizedPath}:${ip}:${email}`;
+    // Default: key on the full normalized path so the parameterized /projects/:id/test-cases/generate
+    // route buckets per (project + IP). 'suffix' entries key on the static suffix instead, so a
+    // dynamic segment (e.g. a fresh chat sessionId) cannot mint a fresh bucket.
+    const key = `${limited.bucket === 'suffix' ? limited.suffix : normalizedPath}:${ip}:${email}`;
 
     let hit: { count: number; resetAt: number };
     try {

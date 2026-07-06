@@ -93,5 +93,7 @@ import { ProjectRunsController, RunController } from './runs.controller';
       inject: [T.Runs, T.RunResults, T.Projects, T.Memberships],
     },
   ],
+  // TriggerRun is also the chat tool whitelist's run path (slice 8) — one canonical wiring.
+  exports: [TriggerRun],
 })
 export class RunsModule {}

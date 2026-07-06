@@ -332,6 +332,8 @@ Then('the triggering chat message has its runId set', async function (this: Gilg
   });
   assert.ok(trigger, 'no USER message found');
   assert.equal(trigger.runId, this.notes.get('runId'));
+  // The C2 201 view must carry the link too — pins the in-memory↔Prisma parity fix (review S8).
+  assert.equal(this.response?.body?.runId, this.notes.get('runId'), 'C2 response view lost the run link');
 });
 
 Then('the run trigger is audited', async function (this: GilgameshWorld) {

@@ -7,6 +7,7 @@ import type {
   KnowledgeRetrievalPort,
   RetrievedChunk,
   ScopedRetrievalFilter,
+  ScoredChunk,
 } from '../ports/knowledge';
 import type { KnowledgeChunkRecord } from '../ports/records';
 
@@ -92,26 +93,34 @@ export class SearchKnowledge {
   }
 }
 
+/** Renders retrieved chunks into the grounding block shared by GenerateDrafts and chat (review S8). */
+export function formatGrounding(retrieved: RetrievedChunk[]): string {
+  return retrieved.map((r) => `[${r.citation.source}] ${r.content}`).join('\n\n');
+}
+
 /** The {@link KnowledgeRetrievalPort} adapter `GenerateDrafts` consumes to ground generation. */
 export class KnowledgeRetriever implements KnowledgeRetrievalPort {
   constructor(private readonly deps: KnowledgeDeps) {}
 
-  async retrieve(query: string, k: number): Promise<RetrievedChunk[]> {
-    const q = query.trim().slice(0, MAX_QUERY_CHARS);
-    if (!q) return [];
-    const [embedding] = await this.deps.brain.embed([q]);
-    if (isZeroVector(embedding)) return [];
-    const scored = await this.deps.knowledge.search(embedding!, k);
-    return scored.map((s) => ({ content: s.chunk.content, citation: citationOf(s.chunk), score: s.score }));
+  retrieve(query: string, k: number): Promise<RetrievedChunk[]> {
+    return this.ground(query, (embedding) => this.deps.knowledge.search(embedding, k));
   }
 
   /** Slice-8 chat grounding: same pipeline over the chunks visible to one agent of one org. */
-  async retrieveScoped(query: string, k: number, filter: ScopedRetrievalFilter): Promise<RetrievedChunk[]> {
+  retrieveScoped(query: string, k: number, filter: ScopedRetrievalFilter): Promise<RetrievedChunk[]> {
+    return this.ground(query, (embedding) => this.deps.knowledge.searchScoped(filter, embedding, k));
+  }
+
+  /** One grounding pipeline for both paths: trim/cap → embed → zero-vector guard → cite (review S8). */
+  private async ground(
+    query: string,
+    search: (embedding: number[]) => Promise<ScoredChunk[]>,
+  ): Promise<RetrievedChunk[]> {
     const q = query.trim().slice(0, MAX_QUERY_CHARS);
     if (!q) return [];
     const [embedding] = await this.deps.brain.embed([q]);
     if (isZeroVector(embedding)) return [];
-    const scored = await this.deps.knowledge.searchScoped(filter, embedding!, k);
+    const scored = await search(embedding!);
     return scored.map((s) => ({ content: s.chunk.content, citation: citationOf(s.chunk), score: s.score }));
   }
 }

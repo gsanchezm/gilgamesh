@@ -1,9 +1,10 @@
-import { embedText, slotFromPersonaPrompt, type AgentSlot } from '@gilgamesh/domain';
+import { AGENT_ROSTER, embedText, type AgentSlot } from '@gilgamesh/domain';
 import type {
   AgentBrainPort,
   BrainCompleteRequest,
   BrainCompleteResult,
 } from '../ports/brain';
+import { CHAT_ROUTER_PREFIX } from '../use-cases/chat';
 
 /**
  * Deterministic, offline {@link AgentBrainPort} stub: no network, no randomness — the real Claude
@@ -19,11 +20,14 @@ export class DeterministicBrain implements AgentBrainPort {
   async complete(req: BrainCompleteRequest): Promise<BrainCompleteResult> {
     const last = req.messages[req.messages.length - 1]?.content ?? '';
 
-    const classify = classifyText(last);
-    if (classify !== null) return result(last, JSON.stringify(classifyChat(classify)));
-
-    const slot = slotFromPersonaPrompt(req.system);
-    if (slot) return result(last, chatAnswer(slot, last));
+    // Dispatch on CALLER intent — the system prompt's anchored prefix — never on user or grounding
+    // content (review S8: a chat message that happens to be {"classify"} JSON, or RAG grounding
+    // containing persona-like text, must not change which branch answers).
+    if (req.system.startsWith(CHAT_ROUTER_PREFIX)) {
+      return result(last, JSON.stringify(classifyChat(classifyPayload(last))));
+    }
+    const persona = AGENT_ROSTER.find((e) => req.system.startsWith(`You are ${e.deityName},`));
+    if (persona) return result(last, chatAnswer(persona.slot, last));
 
     return this.legacyDrafts(last);
   }
@@ -81,14 +85,15 @@ function result(input: string, text: string): BrainCompleteResult {
   return { text, usage: { inputTokens: input.length, outputTokens: text.length } };
 }
 
-/** Extracts the router's `{"classify": <text>}` payload, or null for any other request shape. */
-function classifyText(last: string): string | null {
+/** Extracts the router's `{"classify": <text>}` payload; falls back to the raw message text. */
+function classifyPayload(last: string): string {
   try {
     const v = JSON.parse(last) as { classify?: unknown };
-    return typeof v === 'object' && v !== null && typeof v.classify === 'string' ? v.classify : null;
+    if (typeof v === 'object' && v !== null && typeof v.classify === 'string') return v.classify;
   } catch {
-    return null;
+    /* raw text */
   }
+  return last;
 }
 
 /** Keyword rules standing in for the real HAIKU classifier — first match wins, else low-confidence lead. */

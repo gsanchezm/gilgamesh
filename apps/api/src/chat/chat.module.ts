@@ -14,29 +14,23 @@ import {
   type KnowledgeRetrievalPort,
   type MembershipRepository,
   type ProjectRepository,
-  type RunRepository,
-  type RunResultRepository,
-  type ScenarioRepository,
   SendChatMessage,
-  type SliceRepository,
-  type SubscriptionRepository,
-  type TestCaseRepository,
-  type TestKernel,
-  ToolBindingRepository,
+  type ToolBindingRepository,
   TriggerRun,
-  type UnitOfWork,
 } from '@gilgamesh/application';
 import { Module } from '@nestjs/common';
 import { TOKENS as T } from '../persistence/tokens';
+import { RunsModule } from '../runs/runs.module';
+import { TestLabModule } from '../testlab/testlab.module';
 import { ChatController, ProjectChatController } from './chat.controller';
 
 /**
- * Wires the Agent Chat use cases (slice 8) to the bound ports. The tool whitelist hands
- * SendChatMessage its OWN instances of the EXISTING use cases (TriggerRun / CreateTestCase /
- * GenerateDrafts) so a chat-invoked action follows exactly the standard path — RBAC, quota
- * and audit included.
+ * Wires the Agent Chat use cases (slice 8) to the bound ports. The tool whitelist injects the
+ * CANONICAL use-case instances exported by RunsModule/TestLabModule — a chat-invoked action follows
+ * exactly the standard path (RBAC, quota, audit) and can never drift from it (review S8).
  */
 @Module({
+  imports: [RunsModule, TestLabModule],
   controllers: [ProjectChatController, ChatController],
   providers: [
     {
@@ -67,14 +61,9 @@ import { ChatController, ProjectChatController } from './chat.controller';
         audit: AuditLogRepository,
         ids: IdGenerator,
         clock: Clock,
-        uow: UnitOfWork,
-        kernel: TestKernel,
-        runs: RunRepository,
-        runResults: RunResultRepository,
-        scenarios: ScenarioRepository,
-        testCases: TestCaseRepository,
-        subscriptions: SubscriptionRepository,
-        slices: SliceRepository,
+        triggerRun: TriggerRun,
+        createTestCase: CreateTestCase,
+        generateDrafts: GenerateDrafts,
       ) =>
         new SendChatMessage({
           chatSessions,
@@ -89,34 +78,7 @@ import { ChatController, ProjectChatController } from './chat.controller';
           audit,
           ids,
           clock,
-          tools: {
-            triggerRun: new TriggerRun({
-              uow,
-              kernel,
-              runs,
-              runResults,
-              features,
-              scenarios,
-              testCases,
-              subscriptions,
-              projects,
-              memberships,
-              audit,
-              ids,
-              clock,
-            }),
-            createTestCase: new CreateTestCase({
-              testCases,
-              slices,
-              agents,
-              projects,
-              memberships,
-              audit,
-              ids,
-              clock,
-            }),
-            generateDrafts: new GenerateDrafts({ brain, retrieval, projects, memberships, audit, ids, clock }),
-          },
+          tools: { triggerRun, createTestCase, generateDrafts },
         }),
       inject: [
         T.ChatSessions,
@@ -131,14 +93,9 @@ import { ChatController, ProjectChatController } from './chat.controller';
         T.Audit,
         T.Ids,
         T.Clock,
-        T.UnitOfWork,
-        T.Kernel,
-        T.Runs,
-        T.RunResults,
-        T.Scenarios,
-        T.TestCases,
-        T.Subscriptions,
-        T.Slices,
+        TriggerRun,
+        CreateTestCase,
+        GenerateDrafts,
       ],
     },
     {

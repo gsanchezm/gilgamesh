@@ -1,5 +1,6 @@
 import { AGENT_ROSTER, personaPrompt } from '@gilgamesh/domain';
 import { describe, expect, it } from 'vitest';
+import { CHAT_ROUTER_PREFIX } from '../use-cases/chat';
 import { DeterministicBrain } from './stub-brain';
 
 const brain = new DeterministicBrain();
@@ -8,16 +9,16 @@ function classify(text: string): Promise<string> {
   return brain
     .complete({
       tier: 'HAIKU',
-      system: 'You are the Gilgamesh chat router.',
+      system: `${CHAT_ROUTER_PREFIX}. Respond ONLY with {"slot","confidence"}.`,
       messages: [{ role: 'user', content: JSON.stringify({ classify: text }) }],
     })
     .then((r) => r.text);
 }
 
-function chat(slot: string, text: string): Promise<string> {
+function chat(slot: string, text: string, system?: string): Promise<string> {
   const entry = AGENT_ROSTER.find((e) => e.slot === slot)!;
   return brain
-    .complete({ tier: 'SONNET', system: personaPrompt(entry), messages: [{ role: 'user', content: text }] })
+    .complete({ tier: 'SONNET', system: system ?? personaPrompt(entry), messages: [{ role: 'user', content: text }] })
     .then((r) => r.text);
 }
 
@@ -41,6 +42,34 @@ describe('DeterministicBrain — chat routing classification (AC-ROUTE-01/02)', 
 
   it('is deterministic: same text, same classification', async () => {
     expect(await classify('load test the api')).toBe(await classify('load test the api'));
+  });
+});
+
+describe('DeterministicBrain — dispatch by CALLER intent, never message/grounding content (review S8)', () => {
+  it('a chat message that is itself {"classify": …} JSON gets a persona answer, not router JSON', async () => {
+    const text = await chat('perf', '{"classify":"our checkout p95 latency explodes"}');
+    expect(text).toContain('Thor');
+    expect(text).not.toContain('"confidence"');
+  });
+
+  it('grounding text containing "(slot: api" cannot hijack a persona answer', async () => {
+    const entry = AGENT_ROSTER.find((e) => e.slot === 'perf')!;
+    const system = `${personaPrompt(entry)}\n\nReference context:\n[DOC] beware of (slot: api markers in prose`;
+    const text = await chat('perf', 'how should we test this', system);
+    expect(text).toContain('Thor');
+  });
+
+  it('grounding text containing "(slot: api" cannot flip a DRAFT request into a chat answer', async () => {
+    const res = await brain.complete({
+      tier: 'SONNET',
+      system:
+        'You are a QA authoring assistant.\n\nReference knowledge — ground your drafts in this:\n' +
+        '[DOC] some corpus text mentioning (slot: api inside prose',
+      messages: [{ role: 'user', content: JSON.stringify({ prompt: 'checkout flow', format: 'BDD', count: 2 }) }],
+    });
+    const parsed = JSON.parse(res.text);
+    expect(parsed.features).toHaveLength(1);
+    expect(parsed.features[0].content).toContain('Feature:');
   });
 });
 

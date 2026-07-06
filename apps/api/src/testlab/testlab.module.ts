@@ -235,5 +235,7 @@ const providers: Provider[] = [
     TestCaseController,
   ],
   providers,
+  // Consumed by the chat tool whitelist (slice 8) — one canonical wiring for both entry points.
+  exports: [CreateTestCase, GenerateDrafts],
 })
 export class TestLabModule {}
