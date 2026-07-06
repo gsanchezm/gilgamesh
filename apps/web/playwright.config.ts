@@ -41,6 +41,8 @@ export default defineConfig({
         NODE_ENV: 'development',
         // S9: the browser e2e runs against the deterministic stub brain — no network calls.
         BRAIN_MODE: 'offline',
+        // S17: the recording mail stub — never an SMTP connection.
+        EMAIL_MODE: 'offline',
       },
     },
     {

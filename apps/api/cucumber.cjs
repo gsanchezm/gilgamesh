@@ -16,6 +16,10 @@ process.env.AUTH_RATE_LIMIT = process.env.AUTH_RATE_LIMIT || '1000000';
 // developer machine has ANTHROPIC_API_KEY set. Metering is unconditional (the application layer
 // meters every brain call, stub included), so the metering scenarios observe stub usage rows.
 process.env.BRAIN_MODE = process.env.BRAIN_MODE || 'offline';
+// Slice 17: force the recording mail stub — the sweep's auth-recovery scenarios read tokens out
+// of recorded mail via TOKENS.Email and must never open an SMTP connection, even when the
+// developer machine has SMTP_URL set.
+process.env.EMAIL_MODE = process.env.EMAIL_MODE || 'offline';
 
 module.exports = {
   default: {
