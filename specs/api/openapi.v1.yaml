@@ -2373,8 +2373,8 @@ components:
 
     Subscription:
       type: object
-      description: Org subscription (mock billing now). Unique(orgId).
-      required: [id, orgId, plan, billingCycle, seats, status, runMinutesQuota, runMinutesUsed]
+      description: Org subscription (Stripe or deterministic mock). Unique(orgId).
+      required: [id, orgId, plan, billingCycle, seats, status, runMinutesQuota, runMinutesUsed, brainTokensQuota, brainTokensUsed]
       properties:
         id: { type: string, format: uuid }
         orgId: { type: string, format: uuid }
@@ -2384,6 +2384,10 @@ components:
         status: { $ref: '#/components/schemas/SubscriptionStatus' }
         runMinutesQuota: { type: integer }
         runMinutesUsed: { type: integer }
+        # Slice 14 (keystone v0.6): monthly AI Brain token allowance. Billable = input + output
+        # tokens (cache read/create excluded); exhausted -> QUOTA_EXCEEDED 402 (narrated in chat).
+        brainTokensQuota: { type: integer }
+        brainTokensUsed: { type: integer }
         providerCustomerId: { type: string }
         providerSubscriptionId: { type: string }
         currentPeriodEnd: { type: string, format: date-time }
