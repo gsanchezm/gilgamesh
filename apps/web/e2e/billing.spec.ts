@@ -31,6 +31,8 @@ test('Billing: view plan + usage, change plan, mock checkout to ACTIVE', async (
   await expect(page.getByRole('heading', { name: 'Billing' })).toBeVisible();
   await expect(page.getByText(/Free · TRIALING/)).toBeVisible();
   await expect(page.getByText('0 / 500 used')).toBeVisible();
+  // Slice 14: the AI token allowance meter (FREE seeds 100k/mo).
+  await expect(page.getByText('0 / 100,000 AI tokens used')).toBeVisible();
 
   // Change plan -> Growth (quota remaps).
   await page.getByRole('combobox', { name: 'Plan' }).selectOption('GROWTH');

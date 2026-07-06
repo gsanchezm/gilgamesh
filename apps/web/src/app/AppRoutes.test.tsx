@@ -66,7 +66,8 @@ function makeClients(): Clients {
       const sub = {
         plan: 'FREE' as const, status: 'TRIALING', billingCycle: 'MONTHLY' as const, seats: 1, maxSeats: 1,
         maxServicesPerWorkspace: 2, maxUsersPerWorkspace: 1, includedWorkspaces: 1,
-        unlimited: false, runMinutesQuota: 500, runMinutesUsed: 0, priceCents: 0,
+        unlimited: false, runMinutesQuota: 500, runMinutesUsed: 0,
+        brainTokensQuota: 100000, brainTokensUsed: 0, brainTokensUnlimited: false, priceCents: 0,
         providerCustomerId: null, currentPeriodEnd: null,
       };
       return {

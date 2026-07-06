@@ -15,6 +15,9 @@ const sub: SubscriptionView = {
   unlimited: false,
   runMinutesQuota: 500,
   runMinutesUsed: 120,
+  brainTokensQuota: 100000,
+  brainTokensUsed: 25000,
+  brainTokensUnlimited: false,
   priceCents: 0,
   providerCustomerId: null,
   currentPeriodEnd: null,
@@ -108,6 +111,31 @@ describe('BillingScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Checkout' }));
     await waitFor(() => expect(client.confirmCheckout).toHaveBeenCalledWith('o1'));
     expect(await screen.findByText(/Free · ACTIVE/)).toBeTruthy();
+  });
+
+  // ---- Slice 14: the AI token allowance meter (AC-TOKB) ----
+
+  it('shows the AI token quota meter with used/quota and percentage (AC-TOKB-01)', async () => {
+    render(<BillingScreen client={fakeClient()} orgId="o1" />);
+    await screen.findByText(/Free · TRIALING/);
+    expect(screen.getByText('25,000 / 100,000 AI tokens used')).toBeTruthy();
+    expect(screen.getByText('25%')).toBeTruthy();
+  });
+
+  it('shows the unlimited AI token state on SCALE (AC-TOKB-06)', async () => {
+    const scaleSub: SubscriptionView = {
+      ...sub,
+      plan: 'SCALE',
+      unlimited: true,
+      brainTokensQuota: 1000000000,
+      brainTokensUsed: 1234567,
+      brainTokensUnlimited: true,
+    };
+    render(<BillingScreen client={fakeClient({ getSubscription: vi.fn(async () => scaleSub) })} orgId="o1" />);
+    await screen.findByText(/Scale · TRIALING/);
+    expect(screen.getByText('1,234,567 AI tokens used · unlimited')).toBeTruthy();
+    // Both the executions and the token meters read Unlimited on Scale.
+    expect(screen.getAllByText('Unlimited').length).toBeGreaterThanOrEqual(2);
   });
 
   it('shows the AI usage empty state at 0 calls (AC-METER-03 edge)', async () => {

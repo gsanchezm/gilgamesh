@@ -121,6 +121,11 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
     if (!sub || sub.unlimited) return 0;
     return Math.min(100, Math.round((sub.runMinutesUsed / sub.runMinutesQuota) * 100));
   }, [sub]);
+  // S14: the AI token allowance meter (quota lives on the subscription, not the usage endpoint).
+  const aiTokensPct = useMemo(() => {
+    if (!sub || sub.brainTokensUnlimited) return 0;
+    return Math.min(100, Math.round((sub.brainTokensUsed / sub.brainTokensQuota) * 100));
+  }, [sub]);
 
   const changePlan = () => action(() => client.changePlan(orgId, { plan, billingCycle: cycle }));
   const saveWorkspaces = () => action(() => client.updateSeats(orgId, Number(workspaces)));
@@ -243,6 +248,20 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
             </p>
           </>
         )}
+        {/* S14: the monthly token allowance meter — billable tokens (input + output) vs the plan quota. */}
+        <div className="gx-billing__panelhead">
+          <div>
+            <p>
+              {sub.brainTokensUnlimited
+                ? `${sub.brainTokensUsed.toLocaleString()} AI tokens used · unlimited`
+                : `${sub.brainTokensUsed.toLocaleString()} / ${sub.brainTokensQuota.toLocaleString()} AI tokens used`}
+            </p>
+          </div>
+          <span>{sub.brainTokensUnlimited ? 'Unlimited' : `${aiTokensPct}%`}</span>
+        </div>
+        <div className="gx-billing__meter" aria-hidden="true">
+          <span style={{ width: sub.brainTokensUnlimited ? '100%' : `${aiTokensPct}%` }} />
+        </div>
       </section>
 
       <section className="gx-billing__panel" aria-label="Invoices">

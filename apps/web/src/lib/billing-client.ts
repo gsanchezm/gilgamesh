@@ -15,6 +15,11 @@ export interface SubscriptionView {
   unlimited: boolean;
   runMinutesQuota: number;
   runMinutesUsed: number;
+  /** Monthly AI Brain token allowance (slice 14, keystone v0.6). */
+  brainTokensQuota: number;
+  brainTokensUsed: number;
+  /** True on SCALE — token blocking is bypassed (metering isn't). */
+  brainTokensUnlimited: boolean;
   priceCents: number;
   providerCustomerId: string | null;
   currentPeriodEnd: string | null;
