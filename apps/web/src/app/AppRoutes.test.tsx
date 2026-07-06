@@ -28,6 +28,8 @@ function makeClients(): Clients {
       register: vi.fn(async () => ({ userId: 'u-1' })),
       me: vi.fn(async () => null),
       logout: vi.fn(async () => {}),
+      forgotPassword: vi.fn(async () => {}),
+      resetPassword: vi.fn(async () => {}),
     },
     onboarding: { createProject: vi.fn(async () => ({ projectId: 'p-1', slug: 'omnipizza' })) },
     agents: {
@@ -202,6 +204,56 @@ describe('AppRoutes', () => {
     // The agent-room view loaded inside the shell. Assert the screen's unique subtitle (the nav
     // rail now also has an "Agent room" label, so that text alone is no longer unique).
     expect(await screen.findByText('1 agents · OmniPizza')).toBeTruthy();
+  });
+
+  it('navigates login → forgot-password and submits the recovery request (AC-REC-05)', async () => {
+    const clients = makeClients();
+    renderApp(clients, '/login');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Forgot your password?' }));
+    expect(await screen.findByRole('heading', { name: 'Forgot password' })).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText('name@company.com'), {
+      target: { value: 'ishtar@uruk.io' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Send reset link/ }));
+
+    expect(
+      (await screen.findByRole('status')).textContent,
+    ).toContain('If an account exists for that email, a reset link is on its way.');
+    expect(clients.auth.forgotPassword).toHaveBeenCalledWith({ email: 'ishtar@uruk.io' });
+
+    // Back to sign in completes the loop.
+    fireEvent.click(screen.getByRole('button', { name: 'Back to sign in' }));
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
+  });
+
+  it('serves /reset-password?token=… publicly and posts the token with the new password (AC-REC-05)', async () => {
+    const clients = makeClients();
+    renderApp(clients, '/reset-password?token=raw-tok-1');
+
+    expect(await screen.findByRole('heading', { name: 'Reset password' })).toBeTruthy();
+    const inputs = screen.getAllByPlaceholderText('••••••••');
+    fireEvent.change(inputs[0]!, { target: { value: 'N3w-Passphrase!!' } });
+    fireEvent.change(inputs[1]!, { target: { value: 'N3w-Passphrase!!' } });
+    fireEvent.click(screen.getByRole('button', { name: /Set new password/ }));
+
+    expect((await screen.findByRole('status')).textContent).toContain('Your password has been reset');
+    expect(clients.auth.resetPassword).toHaveBeenCalledWith({
+      token: 'raw-tok-1',
+      newPassword: 'N3w-Passphrase!!',
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to sign in' }));
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
+  });
+
+  it('shows the invalid-link state at /reset-password without a token and offers a new request', async () => {
+    renderApp(makeClients(), '/reset-password');
+
+    expect((await screen.findByRole('alert')).textContent).toContain('invalid or has expired');
+    fireEvent.click(screen.getByRole('button', { name: 'Request a new link' }));
+    expect(await screen.findByRole('heading', { name: 'Forgot password' })).toBeTruthy();
   });
 
   it('renders the Reports view for an authed session at /projects/:projectId/reports', async () => {
