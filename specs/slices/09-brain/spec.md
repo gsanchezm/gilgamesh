@@ -7,7 +7,9 @@
 > All entity/field/enum/port/path names below are used **verbatim** from the keystone (**v0.3** — this slice
 > depends on the v0.3 Brain amendment: `AI_PROVIDERS`/`anthropic`, `BrainSurface`, `BrainUsage`,
 > `GET /orgs/{orgId}/brain/usage`).
-> v0.1 — 2026-07-05. Status: SPEC — scaffolding (spec + BDD `.feature`s); implementation cycle started.
+> v0.2 — 2026-07-06. Status: BUILT — SDD→BDD→TDD green end-to-end on branch `slice-9-brain`
+> (typecheck + lint · 570 Docker-free unit/e2e · `test:int` 19 · **BDD 133 scenarios / 1063 steps** ·
+> Playwright 17), hardened by a 3-angle adversarial review (6 findings fixed; secrets/DI gates clean).
 > Scope: real Claude adapter behind the frozen `AgentBrainPort` + BYOK + metering + live chat SSE + tool
 > registry (owner decisions S9-1..6).
 
