@@ -14,6 +14,7 @@ export * from './use-cases/testlab-testcases';
 export * from './use-cases/testlab-generate';
 export * from './use-cases/runs';
 export * from './use-cases/subscription';
+export * from './use-cases/invoices';
 export * from './use-cases/chat';
 export * from './use-cases/chat-tools';
 export * from './use-cases/brain-usage';
@@ -23,6 +24,7 @@ export * from './use-cases/integrations';
 export * from './brain/stub-brain';
 export * from './email/stub-email';
 export * from './kernel/deterministic-kernel';
+export * from './payment/apply-payment-event';
 export * from './payment/mock-payment-provider';
 export * from './integrations/mock-repo-provider';
 // In-memory repository adapters: used as the temporary persistence wiring until the

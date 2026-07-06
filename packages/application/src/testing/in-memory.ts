@@ -6,6 +6,7 @@ import type {
   ChatSessionRepository,
   FeatureRepository,
   IntegrationRepository,
+  InvoiceRepository,
   MembershipRepository,
   OrgRepository,
   PasswordResetRepository,
@@ -37,6 +38,7 @@ import type {
   ChatSessionRecord,
   FeatureRecord,
   IntegrationRecord,
+  InvoiceRecord,
   KnowledgeChunkRecord,
   KnowledgeDocumentRecord,
   MembershipRecord,
@@ -57,6 +59,7 @@ import type {
 } from '../ports/records';
 import { DeterministicBrain } from '../brain/stub-brain';
 import { DeterministicKernel } from '../kernel/deterministic-kernel';
+import { ApplyPaymentEvent } from '../payment/apply-payment-event';
 import { MockPaymentProvider } from '../payment/mock-payment-provider';
 import { MockRepoProvider, StubBrainKeyVerifier, StubSecretVault } from '../integrations/mock-repo-provider';
 import type { EventBus } from '../ports/events';
@@ -366,6 +369,45 @@ export class InMemorySubscriptionRepository implements SubscriptionRepository {
     sub.runMinutesUsed += minutes;
     return true;
   }
+  async findByProviderCustomerId(providerCustomerId: string): Promise<SubscriptionRecord | null> {
+    for (const s of this.byOrg.values()) if (s.providerCustomerId === providerCustomerId) return s;
+    return null;
+  }
+}
+
+export class InMemoryInvoiceRepository implements InvoiceRepository {
+  private readonly byId = new Map<string, InvoiceRecord>();
+  async listForOrg(orgId: string): Promise<InvoiceRecord[]> {
+    return [...this.byId.values()]
+      .filter((i) => i.orgId === orgId)
+      // Newest-first; id desc tiebreak mirrors the Prisma ordering so same-ms rows don't diverge.
+      .sort(
+        (a, b) =>
+          b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+      );
+  }
+  async upsertByProviderInvoiceId(rec: InvoiceRecord): Promise<void> {
+    const existing = rec.providerInvoiceId
+      ? [...this.byId.values()].find((i) => i.providerInvoiceId === rec.providerInvoiceId)
+      : undefined;
+    if (!existing) {
+      this.byId.set(rec.id, { ...rec });
+      return;
+    }
+    // Mirror the Prisma upsert: only the lifecycle fields change; id/orgId/createdAt are preserved
+    // so webhook redelivery can never duplicate a row or move it across orgs.
+    this.byId.set(existing.id, {
+      ...existing,
+      status: rec.status,
+      amountCents: rec.amountCents,
+      currency: rec.currency,
+      periodStart: rec.periodStart,
+      periodEnd: rec.periodEnd,
+      hostedInvoiceUrl: rec.hostedInvoiceUrl,
+      pdfUrl: rec.pdfUrl,
+      updatedAt: rec.updatedAt,
+    });
+  }
 }
 
 export class InMemoryKnowledgeChunkRepository implements KnowledgeChunkRepository {
@@ -533,6 +575,7 @@ export interface InMemoryContext {
   agents: InMemoryAgentRepository;
   toolBindings: InMemoryToolBindingRepository;
   subscriptions: InMemorySubscriptionRepository;
+  invoices: InMemoryInvoiceRepository;
   audit: InMemoryAuditLogRepository;
   knowledge: InMemoryKnowledgeChunkRepository;
   knowledgeDocuments: InMemoryKnowledgeDocumentRepository;
@@ -575,11 +618,15 @@ export function createInMemoryContext(): InMemoryContext {
     agents: new InMemoryAgentRepository(),
     toolBindings: new InMemoryToolBindingRepository(),
     subscriptions: new InMemorySubscriptionRepository(),
+    invoices: new InMemoryInvoiceRepository(),
     audit: new InMemoryAuditLogRepository(),
     knowledge,
     knowledgeDocuments,
   };
   const brain = new DeterministicBrain();
+  const uow = new InMemoryUnitOfWork(repos);
+  const clock = new FakeClock();
+  const ids = new SeqIdGenerator();
   return {
     ...repos,
     passwordResets: new InMemoryPasswordResetRepository(),
@@ -592,14 +639,20 @@ export function createInMemoryContext(): InMemoryContext {
     integrations: new InMemoryIntegrationRepository(),
     repoProvider: new MockRepoProvider(),
     vault: new StubSecretVault(),
-    uow: new InMemoryUnitOfWork(repos),
-    clock: new FakeClock(),
-    ids: new SeqIdGenerator(),
+    uow,
+    clock,
+    ids,
     hasher: new FakePasswordHasher(),
     tokens: new FakeTokenGenerator(),
     brain,
     kernel: new DeterministicKernel(),
-    payment: new MockPaymentProvider(),
+    // Deterministic offline payments (slice 13): confirm/webhooks persist Invoice rows via the
+    // shared ApplyPaymentEvent seam, exactly like the production in-memory wiring.
+    payment: new MockPaymentProvider({
+      events: new ApplyPaymentEvent({ uow, ids, clock }),
+      invoices: repos.invoices,
+      subscriptions: repos.subscriptions,
+    }),
     retrieval: new KnowledgeRetriever({ knowledge, brain }),
   };
 }

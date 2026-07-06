@@ -6,6 +6,7 @@ import type {
   ChatSessionRecord,
   FeatureRecord,
   IntegrationRecord,
+  InvoiceRecord,
   MembershipRecord,
   OrgRecord,
   PasswordResetRecord,
@@ -158,6 +159,19 @@ export interface SubscriptionRepository {
    * so a concurrent plan/checkout/cancel can't be clobbered (slice-4 review fix).
    */
   chargeRunMinutes(orgId: string, minutes: number): Promise<boolean>;
+  /** Resolves the tenant behind a provider webhook (slice 13): Stripe `customer` → org. */
+  findByProviderCustomerId(providerCustomerId: string): Promise<SubscriptionRecord | null>;
+}
+
+export interface InvoiceRepository {
+  /** Newest-first (createdAt desc, id desc tiebreak) — the org's billing history view. */
+  listForOrg(orgId: string): Promise<InvoiceRecord[]>;
+  /**
+   * Atomic create-or-update keyed on the UNIQUE providerInvoiceId — idempotent webhook redelivery
+   * (Stripe retries). The update path touches only status/amount/currency/period/urls/updatedAt;
+   * id, orgId and createdAt are preserved, so a row can never move across orgs.
+   */
+  upsertByProviderInvoiceId(rec: InvoiceRecord): Promise<void>;
 }
 
 export interface ChatSessionRepository {

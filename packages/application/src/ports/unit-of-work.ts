@@ -3,6 +3,7 @@ import type {
   AgentRepository,
   AuditLogRepository,
   FeatureRepository,
+  InvoiceRepository,
   MembershipRepository,
   OrgRepository,
   ProjectRepository,
@@ -36,6 +37,7 @@ export interface Repositories {
   agents: AgentRepository;
   toolBindings: ToolBindingRepository;
   subscriptions: SubscriptionRepository;
+  invoices: InvoiceRepository;
   audit: AuditLogRepository;
   knowledge: KnowledgeChunkRepository;
   knowledgeDocuments: KnowledgeDocumentRepository;

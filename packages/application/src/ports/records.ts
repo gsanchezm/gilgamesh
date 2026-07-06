@@ -215,6 +215,30 @@ export interface ToolBindingRecord {
   updatedAt: Date;
 }
 
+/** Keystone §1 v0.5 — mirrors the provider's (Stripe) invoice lifecycle. */
+export type InvoiceStatus = 'DRAFT' | 'OPEN' | 'PAID' | 'VOID' | 'UNCOLLECTIBLE';
+
+/**
+ * A provider-lifecycle invoice (keystone §2 v0.5). Written by PaymentProvider webhooks (Stripe)
+ * or deterministically by the mock; `GET /orgs/{orgId}/invoices` reads this local store (S13-C).
+ */
+export interface InvoiceRecord {
+  id: string;
+  orgId: string;
+  /** The provider's id (e.g. Stripe `in_…`); unique when present. */
+  providerInvoiceId: string | null;
+  status: InvoiceStatus;
+  amountCents: number;
+  /** Lowercase ISO-4217 (keystone §2); default `usd`. */
+  currency: string;
+  periodStart: Date | null;
+  periodEnd: Date | null;
+  hostedInvoiceUrl: string | null;
+  pdfUrl: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface SubscriptionRecord {
   id: string;
   orgId: string;
