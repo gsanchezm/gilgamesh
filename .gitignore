@@ -21,3 +21,6 @@ test-results/
 rag/
 
 design_handoff_gilgamesh/
+
+# Claude Code personal settings (auto-approve rules for external agent CLIs) — never commit
+.claude/settings.local.json
