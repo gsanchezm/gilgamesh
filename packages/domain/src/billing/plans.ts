@@ -24,11 +24,16 @@ export interface PlanLimits {
   maxUsersPerWorkspace: number;
   includedWorkspaces: number;
   unlimited: boolean;
+  /** Monthly AI Brain token allowance (keystone §9, slice 14) — `Subscription.brainTokensQuota`. */
+  brainTokensQuota: number;
+  /** True when the tier's AI token allowance is uncapped (SCALE) — blocking is bypassed, metering isn't. */
+  brainTokensUnlimited: boolean;
 }
 
 // Storage caps for 'unlimited' (both fit Postgres int4); the `unlimited` flag is the real signal.
 const UNLIMITED_CAP = 1_000_000;
 const UNLIMITED_EXECUTIONS_CAP = 1_000_000_000;
+const UNLIMITED_TOKENS_CAP = 1_000_000_000;
 
 const capped = (limit: PlanTierLimit, cap: number): number => (limit === 'unlimited' ? cap : limit);
 
@@ -40,6 +45,8 @@ function deriveLimits(tier: PlanTier): PlanLimits {
     maxUsersPerWorkspace: capped(tier.limits.usersPerWorkspace, UNLIMITED_CAP),
     includedWorkspaces: tier.limits.includedWorkspaces,
     unlimited: tier.limits.executionsPerMonth === 'unlimited',
+    brainTokensQuota: capped(tier.limits.aiTokensPerMonth, UNLIMITED_TOKENS_CAP),
+    brainTokensUnlimited: tier.limits.aiTokensPerMonth === 'unlimited',
   };
 }
 

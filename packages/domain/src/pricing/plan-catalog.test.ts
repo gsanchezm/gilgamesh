@@ -54,6 +54,14 @@ describe('PLAN_CATALOG', () => {
     expect(planTier('growth').perExtraWorkspaceCents).toBeUndefined();
   });
 
+  // Slice 14 (AC-TOKB-01): the keystone §9 AI Brain token allowances live ONCE, here.
+  it('grants each tier its monthly AI Brain token allowance (keystone §9)', () => {
+    expect(planTier('free').limits.aiTokensPerMonth).toBe(100_000);
+    expect(planTier('starter').limits.aiTokensPerMonth).toBe(2_000_000);
+    expect(planTier('growth').limits.aiTokensPerMonth).toBe(10_000_000);
+    expect(planTier('scale').limits.aiTokensPerMonth).toBe('unlimited');
+  });
+
   it('gives every tier a CTA and every paid tier an "everything in X" preface', () => {
     expect(planTier('free').ctaLabel.length).toBeGreaterThan(0);
     expect(planTier('free').inheritsFromName).toBeNull();

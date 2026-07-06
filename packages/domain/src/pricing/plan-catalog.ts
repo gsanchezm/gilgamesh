@@ -24,6 +24,11 @@ export interface PlanTierLimits {
   servicesPerWorkspace: PlanTierLimit;
   executionsPerMonth: PlanTierLimit;
   usersPerWorkspace: PlanTierLimit;
+  /**
+   * Monthly AI Brain token allowance (keystone §9, slice 14): billable = input + output tokens
+   * (cache read/create excluded) across all org-attributed surfaces (CHAT/ROUTER/GENERATE/EMBED).
+   */
+  aiTokensPerMonth: PlanTierLimit;
   /** Workspaces included in the base price (Scale: 10, then perExtraWorkspaceCents each). */
   includedWorkspaces: number;
 }
@@ -72,6 +77,7 @@ export const PLAN_CATALOG: readonly PlanTier[] = [
       servicesPerWorkspace: 2,
       executionsPerMonth: 500,
       usersPerWorkspace: 1,
+      aiTokensPerMonth: 100_000,
       includedWorkspaces: 1,
     },
   },
@@ -100,6 +106,7 @@ export const PLAN_CATALOG: readonly PlanTier[] = [
       servicesPerWorkspace: 5,
       executionsPerMonth: 5_000,
       usersPerWorkspace: 3,
+      aiTokensPerMonth: 2_000_000,
       includedWorkspaces: 1,
     },
   },
@@ -128,6 +135,7 @@ export const PLAN_CATALOG: readonly PlanTier[] = [
       servicesPerWorkspace: 15,
       executionsPerMonth: 25_000,
       usersPerWorkspace: 'unlimited',
+      aiTokensPerMonth: 10_000_000,
       includedWorkspaces: 1,
     },
   },
@@ -157,6 +165,7 @@ export const PLAN_CATALOG: readonly PlanTier[] = [
       servicesPerWorkspace: 'unlimited',
       executionsPerMonth: 'unlimited',
       usersPerWorkspace: 'unlimited',
+      aiTokensPerMonth: 'unlimited',
       includedWorkspaces: 10,
     },
   },

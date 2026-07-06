@@ -26,6 +26,14 @@ describe('planLimits', () => {
       unlimited: true,
     });
   });
+
+  // Slice 14 (AC-TOKB-01): the keystone §9 AI token allowances, derived — never re-stated.
+  it('maps each plan to its monthly AI Brain token allowance', () => {
+    expect(planLimits('FREE')).toMatchObject({ brainTokensQuota: 100_000, brainTokensUnlimited: false });
+    expect(planLimits('STARTER')).toMatchObject({ brainTokensQuota: 2_000_000, brainTokensUnlimited: false });
+    expect(planLimits('GROWTH')).toMatchObject({ brainTokensQuota: 10_000_000, brainTokensUnlimited: false });
+    expect(planLimits('SCALE')).toMatchObject({ brainTokensQuota: 1_000_000_000, brainTokensUnlimited: true });
+  });
 });
 
 describe('priceCents', () => {
@@ -53,6 +61,7 @@ describe('priceCents', () => {
 describe('derivation from PLAN_CATALOG (single source)', () => {
   const UNLIMITED_WORKSPACES = 1_000_000;
   const UNLIMITED_EXECUTIONS = 1_000_000_000;
+  const UNLIMITED_TOKENS = 1_000_000_000;
   const cap = (v: number | 'unlimited', c: number) => (v === 'unlimited' ? c : v);
 
   it('derives every price from the catalog', () => {
@@ -75,6 +84,9 @@ describe('derivation from PLAN_CATALOG (single source)', () => {
       expect(l.maxUsersPerWorkspace).toBe(cap(tier.limits.usersPerWorkspace, UNLIMITED_WORKSPACES));
       expect(l.includedWorkspaces).toBe(tier.limits.includedWorkspaces);
       expect(l.unlimited).toBe(tier.limits.executionsPerMonth === 'unlimited');
+      // Slice 14: the AI token allowance derives from the same structured limits (single source).
+      expect(l.brainTokensQuota).toBe(cap(tier.limits.aiTokensPerMonth, UNLIMITED_TOKENS));
+      expect(l.brainTokensUnlimited).toBe(tier.limits.aiTokensPerMonth === 'unlimited');
     }
   });
 });
