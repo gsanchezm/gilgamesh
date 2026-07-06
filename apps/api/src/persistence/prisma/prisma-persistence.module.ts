@@ -1,6 +1,9 @@
 import {
   type AgentBrainPort,
+  type BrainUsageRepository,
+  type Clock,
   DeterministicKernel,
+  type IdGenerator,
   InMemoryEventBus,
   type IntegrationRepository,
   type KnowledgeChunkRepository,
@@ -108,9 +111,15 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     },
     {
       provide: TOKENS.KnowledgeRetrieval,
-      useFactory: (brain: AgentBrainPort, knowledge: KnowledgeChunkRepository) =>
-        new KnowledgeRetriever({ brain, knowledge }),
-      inject: [TOKENS.Brain, TOKENS.Knowledge],
+      // S16: scoped grounding meters EMBED BrainUsage rows for the filter org.
+      useFactory: (
+        brain: AgentBrainPort,
+        knowledge: KnowledgeChunkRepository,
+        brainUsage: BrainUsageRepository,
+        ids: IdGenerator,
+        clock: Clock,
+      ) => new KnowledgeRetriever({ brain, knowledge, meter: { brainUsage, ids, clock } }),
+      inject: [TOKENS.Brain, TOKENS.Knowledge, TOKENS.BrainUsage, TOKENS.Ids, TOKENS.Clock],
     },
     {
       provide: TOKENS.ChatSessions,

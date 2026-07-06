@@ -1,5 +1,6 @@
 import {
   type AgentBrainPort,
+  type BrainUsageRepository,
   type Clock,
   type IdGenerator,
   IngestKnowledge,
@@ -21,17 +22,18 @@ import { KnowledgeSeeder } from './knowledge.seeder';
 const T = TOKENS;
 
 const providers: Provider[] = [
+  // S16: the knowledge pipeline meters EMBED BrainUsage rows (surface EMBED) per org-attributable call.
   {
     provide: SearchKnowledge,
-    useFactory: (knowledge: KnowledgeChunkRepository, brain: AgentBrainPort) =>
-      new SearchKnowledge({ knowledge, brain }),
-    inject: [T.Knowledge, T.Brain],
+    useFactory: (knowledge: KnowledgeChunkRepository, brain: AgentBrainPort, brainUsage: BrainUsageRepository, ids: IdGenerator, clock: Clock) =>
+      new SearchKnowledge({ knowledge, brain, meter: { brainUsage, ids, clock } }),
+    inject: [T.Knowledge, T.Brain, T.BrainUsage, T.Ids, T.Clock],
   },
   {
     provide: IngestKnowledge,
-    useFactory: (knowledge: KnowledgeChunkRepository, brain: AgentBrainPort) =>
-      new IngestKnowledge({ knowledge, brain }),
-    inject: [T.Knowledge, T.Brain],
+    useFactory: (knowledge: KnowledgeChunkRepository, brain: AgentBrainPort, brainUsage: BrainUsageRepository, ids: IdGenerator, clock: Clock) =>
+      new IngestKnowledge({ knowledge, brain, meter: { brainUsage, ids, clock } }),
+    inject: [T.Knowledge, T.Brain, T.BrainUsage, T.Ids, T.Clock],
   },
   {
     provide: UploadKnowledgeDocument,
@@ -41,8 +43,9 @@ const providers: Provider[] = [
       memberships: MembershipRepository,
       ids: IdGenerator,
       clock: Clock,
-    ) => new UploadKnowledgeDocument({ uow, brain, memberships, ids, clock }),
-    inject: [T.UnitOfWork, T.Brain, T.Memberships, T.Ids, T.Clock],
+      brainUsage: BrainUsageRepository,
+    ) => new UploadKnowledgeDocument({ uow, brain, memberships, ids, clock, meter: { brainUsage, ids, clock } }),
+    inject: [T.UnitOfWork, T.Brain, T.Memberships, T.Ids, T.Clock, T.BrainUsage],
   },
   {
     provide: ListKnowledgeDocuments,
