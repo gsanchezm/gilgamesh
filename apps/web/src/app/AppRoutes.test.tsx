@@ -163,6 +163,15 @@ describe('AppRoutes', () => {
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
   });
 
+  it('surfaces the SSO back-channel notice on /login?sso=unavailable (slice 15, AC-SSO-10)', async () => {
+    renderApp(makeClients(), '/login?sso=unavailable');
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Google sign-in is not available on this server yet.');
+    // The Google entry itself is a real link to the API start route.
+    const google = screen.getByRole('link', { name: 'Google' });
+    expect(google.getAttribute('href')).toBe('/api/v1/auth/sso/google/start');
+  });
+
   it('registers then continues into onboarding carrying the Company (AC-ONB-14)', async () => {
     const clients = makeClients();
     renderApp(clients, '/register');

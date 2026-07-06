@@ -4,15 +4,27 @@ import { AuthHero } from './AuthHero';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Full-page navigation (not fetch): the OAuth dance is a top-level redirect chain, and the
+// session lands as an httpOnly Set-Cookie on the callback's 302 back into the SPA.
+export const GOOGLE_SSO_START_URL = '/api/v1/auth/sso/google/start';
+
+// `?sso=` rides the server's redirect back to /login (slice 15): friendly English notices.
+const SSO_NOTICES: Record<string, string> = {
+  unavailable: 'Google sign-in is not available on this server yet. Use your email and password.',
+  failed: 'Google sign-in did not complete. Try again or use your email and password.',
+};
+
 export interface LoginScreenProps {
   authClient: AuthClient;
   onSuccess: (result: LoginResult) => void;
   onForgot?: () => void;
   onCreate?: () => void;
   onViewPlans?: () => void;
+  /** Raw `?sso=` query value (`unavailable` | `failed`) from the SSO redirect back-channel. */
+  sso?: string | null;
 }
 
-export function LoginScreen({ authClient, onSuccess, onForgot, onCreate, onViewPlans }: LoginScreenProps) {
+export function LoginScreen({ authClient, onSuccess, onForgot, onCreate, onViewPlans, sso }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -103,10 +115,15 @@ export function LoginScreen({ authClient, onSuccess, onForgot, onCreate, onViewP
           <div className="gx-auth__divider">
             <span>or continue with</span>
           </div>
+          {sso && SSO_NOTICES[sso] ? (
+            <p role="alert" className="gx-login__error">
+              {SSO_NOTICES[sso]}
+            </p>
+          ) : null}
           <div className="gx-auth__providers">
-            <button type="button" className="gx-btn gx-btn--secondary" disabled title="Coming soon">
+            <a className="gx-btn gx-btn--secondary" href={GOOGLE_SSO_START_URL}>
               Google
-            </button>
+            </a>
             <button type="button" className="gx-btn gx-btn--secondary" disabled title="Coming soon">
               SSO · SAML
             </button>

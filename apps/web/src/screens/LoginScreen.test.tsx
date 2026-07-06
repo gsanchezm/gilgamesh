@@ -67,4 +67,33 @@ describe('LoginScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show' }));
     expect(pwd.type).toBe('text');
   });
+
+  // ---- SSO entry (slice 15, AC-SSO-10) ----------------------------------------------
+
+  it('renders Google as a real full-page link to the SSO start route; SAML stays disabled', () => {
+    render(<LoginScreen authClient={fakeClient()} onSuccess={vi.fn()} />);
+    const google = screen.getByRole('link', { name: 'Google' });
+    expect(google.getAttribute('href')).toBe('/api/v1/auth/sso/google/start');
+    const saml = screen.getByRole('button', { name: 'SSO · SAML' }) as HTMLButtonElement;
+    expect(saml.disabled).toBe(true);
+  });
+
+  it('shows the friendly notice when the server redirected back with ?sso=unavailable', async () => {
+    render(<LoginScreen authClient={fakeClient()} onSuccess={vi.fn()} sso="unavailable" />);
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Google sign-in is not available on this server yet.',
+    );
+  });
+
+  it('shows the retry notice when the server redirected back with ?sso=failed', async () => {
+    render(<LoginScreen authClient={fakeClient()} onSuccess={vi.fn()} sso="failed" />);
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Google sign-in did not complete.',
+    );
+  });
+
+  it('ignores an unknown ?sso= value (no stray alert)', () => {
+    render(<LoginScreen authClient={fakeClient()} onSuccess={vi.fn()} sso="whatever" />);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
 });
