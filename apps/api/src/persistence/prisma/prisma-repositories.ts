@@ -445,14 +445,20 @@ export class PrismaKnowledgeChunkRepository implements KnowledgeChunkRepository 
 
   async searchScoped(filter: ScopedRetrievalFilter, queryEmbedding: number[], k: number): Promise<ScoredChunk[]> {
     const vec = `[${queryEmbedding.join(',')}]`;
-    // Visible to one agent of one org (slice 8): the org's own chunks plus the global shared corpus,
-    // where scope is the agent's slot, 'shared', or NULL. The scope column is indexed (keystone v0.2).
+    // Visible within one org: the org's own chunks plus the global shared corpus, where scope is
+    // 'shared' or NULL — plus the agent's slot when the filter carries one (slice-8 chat). Without a
+    // slot (agent-agnostic grounding) agent-scoped chunks stay private to that agent's chat.
+    // The scope column is indexed (keystone v0.2). Parameterized via Prisma.sql — no string interpolation.
+    const scopePredicate =
+      filter.slot != null
+        ? Prisma.sql`(scope IS NULL OR scope = 'shared' OR scope = ${filter.slot})`
+        : Prisma.sql`(scope IS NULL OR scope = 'shared')`;
     const rows = await this.db.$queryRaw<KnowledgeSearchRow[]>`
       SELECT id, source, heading_path AS "headingPath", section, content,
              token_estimate AS "tokenEstimate", 1 - (embedding <=> ${vec}::vector) AS score
       FROM knowledge_chunks
       WHERE (org_id IS NULL OR org_id = ${filter.orgId}::uuid)
-        AND (scope IS NULL OR scope = 'shared' OR scope = ${filter.slot})
+        AND ${scopePredicate}
       ORDER BY embedding <=> ${vec}::vector, id
       LIMIT ${k}`;
     return rows.map((r) => ({
