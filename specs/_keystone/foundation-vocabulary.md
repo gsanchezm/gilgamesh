@@ -4,7 +4,7 @@
 > signatures, and the OpenAPI/schema skeleton. Every foundation artifact MUST adhere to it
 > **verbatim** — same entity names, field names, enum values, IDs, and port signatures.
 > If an artifact needs a name not defined here, it adds it here first (don't invent locally).
-> Authored centrally (full design context). Expansions fan out from this. v0.2 — 2026-07-05.
+> Authored centrally (full design context). Expansions fan out from this. v0.3 — 2026-07-05.
 
 ## 0. Conventions
 - TypeScript everywhere. Package names `@gilgamesh/<name>`.
@@ -30,12 +30,13 @@ RunNodeKind        = DISPATCH | STAGE | CONSOLIDATE
 RunNodeState       = IDLE | QUEUED | RUNNING | DONE_PASS | DONE_FAIL
 ArtifactType       = VIDEO | SCREENSHOT | HAR | LOG | REPORT_HTML
 CaptureMode        = OFF | ON_FAIL | ALWAYS | ON_DEMAND
-IntegrationGroup   = SOURCE_REPOS | PROJECT_TRACKING | TEST_MANAGEMENT | COMMUNICATION | CICD | DEVICES_BROWSERS
+IntegrationGroup   = SOURCE_REPOS | PROJECT_TRACKING | TEST_MANAGEMENT | COMMUNICATION | CICD | DEVICES_BROWSERS | AI_PROVIDERS
 Plan               = FREE | STARTER | GROWTH | SCALE
 BillingCycle       = MONTHLY | ANNUAL
 SubscriptionStatus = TRIALING | ACTIVE | PAST_DUE | CANCELED
 KnowledgeDocStatus = UPLOADED | INDEXING | INDEXED | FAILED
 BrainTier          = HAIKU | SONNET | OPUS
+BrainSurface       = CHAT | ROUTER | GENERATE | EMBED   # where a brain call originated (metering dimension)
 ChatMessageRole    = USER | AGENT | SYSTEM
 KnowledgeScope (key) = <AgentSlot key> | shared   # lowercase keys; nullable on KnowledgeChunk
 ```
@@ -65,6 +66,9 @@ KnowledgeScope (key) = <AgentSlot key> | shared   # lowercase keys; nullable on 
   routed per message), createdById, createdAt, updatedAt.
 - **ChatMessage** — id, orgId, sessionId, role:ChatMessageRole, agentId?(the answering/attributed agent),
   content(text), runId?(links a message that triggered a Run), createdAt.
+- **BrainUsage** — id, orgId, tier:BrainTier, surface:BrainSurface, inputTokens(int), outputTokens(int),
+  cacheReadTokens(int=0), cacheCreateTokens(int=0), createdAt. Per-call token metering (indexed
+  orgId+createdAt); aggregated per org for the usage view. Billing hookup = the 4-tier billing migration.
 - **AuditLog** — id, orgId, actorUserId?, action, targetType, targetId?, metadata(json), ip?, createdAt. Sensitive-action audit.
 
 ## 3. Canonical agent roster (DESKTOP prototype — decided) + per-role tool options (Strategy)
@@ -143,7 +147,7 @@ interface ArtifactStorage { put(key:string, data:Buffer|NodeJS.ReadableStream, c
 interface EventBus { publish(topic:string, e:unknown): Promise<void>; subscribe(topic:string, h:(e:unknown)=>void): () => void; }
 // Repository<T> per aggregate: User, Org, Membership, Session, Project, Slice, Feature, Scenario,
 //   TestCase, Agent, ToolBinding, Run, RunNode, Artifact, Integration, Subscription, KnowledgeDoc,
-//   ChatSession, ChatMessage, AuditLog.
+//   ChatSession, ChatMessage, BrainUsage, AuditLog.
 ```
 
 ## 6. OpenAPI v1 — resource & schema skeleton (full bodies expanded by the API-contract artifact)
@@ -157,6 +161,7 @@ Resources (paths): `/auth/{register,login,logout,me,forgot-password,reset-passwo
 `/projects/{id}/knowledge` (POST upload, GET list, DELETE) ·
 `POST /projects/{id}/chat` (create ChatSession) · `POST /chat/{sessionId}/messages` (send message) ·
 `GET /chat/{sessionId}/events` (SSE stream, same pattern as `/runs/{id}/events`) ·
+`GET /orgs/{orgId}/brain/usage` (aggregated per-tier/per-surface token usage) ·
 `/orgs/{orgId}/subscription`, `/orgs/{orgId}/subscription/checkout` · `/orgs/{orgId}/audit`.
 Schema names = entity names in §2 + request/response DTOs `*Create`,`*Update`,`*View`,`MeView`(session context: user + memberships + activeOrgId),`ProjectAgentView`(Agent + per-project ToolBinding + derived AgentRuntimeStatus),`RunEvent`,`ReportView`,`Problem`(RFC9457 errors).
 Cross-cutting: every request resolves tenant from session→`orgId`; every list/detail filters by `orgId`; `Problem+json` errors; cursor pagination; rate-limit headers.
@@ -176,7 +181,8 @@ Real runs require capabilities the owner is still building (decision #5). To avo
 ## 8. Stable integration keys (Integration.key)
 `github, gitlab, bitbucket, ado_repos` (SOURCE_REPOS) · `jira, ado_boards` (PROJECT_TRACKING) ·
 `testrail, xray, zephyr` (TEST_MANAGEMENT) · `slack, teams` (COMMUNICATION) ·
-`gha, gitlabci, azpipe, jenkins` (CICD) · `sim, browserstack` (DEVICES_BROWSERS).
+`gha, gitlabci, azpipe, jenkins` (CICD) · `sim, browserstack` (DEVICES_BROWSERS) ·
+`anthropic` (AI_PROVIDERS).
 
 ## 9. Pricing (mock) reference for Subscription seeds
 FREE $0 (1 workspace · 2 services · 500 executions) · STARTER $29/mo (unlimited workspaces · 5 services ·
@@ -185,6 +191,9 @@ $499/mo base includes 10 workspaces + $99/extra workspace (unlimited executions/
 Annual billing charges 10 months (2 months free).
 
 ## 10. Changelog
+- **v0.3 — 2026-07-05** — Brain amendment: +`AI_PROVIDERS` group + `anthropic` key (§1/§8) ·
+  +`BrainSurface` (§1) · +`BrainUsage` (§2/§5) · +`GET /orgs/{orgId}/brain/usage` (§6).
+  Nothing frozen was renamed, removed, or restructured.
 - **v0.2 — 2026-07-05** — Agent Chat (text) amendment: +`ChatSession`/`ChatMessage` (§2) ·
   +`ChatMessageRole`/`KnowledgeScope` (§1) · `KnowledgeChunk.scope?` (§2) · +chat routes (§6) ·
   +Chat repositories (§5). Nothing frozen was renamed, removed, or restructured.
