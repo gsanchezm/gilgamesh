@@ -34,7 +34,8 @@ export interface RequestPasswordResetDeps {
  * ALWAYS resolves silently — the caller answers the same generic 202 whether or not the account
  * exists. Only for an existing ACTIVE account: mint a crypto-random token, persist ONLY its hash
  * with a 30-minute expiry, dispatch the raw-token link via EmailPort, audit auth.reset.requested
- * (metadata never carries the token/link).
+ * (metadata never carries the token/link). Both paths do the same token compute and never await
+ * delivery, so response latency can't enumerate accounts (audit #5).
  */
 export class RequestPasswordReset {
   constructor(private readonly deps: RequestPasswordResetDeps) {}
@@ -42,8 +43,12 @@ export class RequestPasswordReset {
   async execute(input: { email: string }): Promise<void> {
     const email = input.email.trim().toLowerCase();
     const user = await this.deps.users.findByEmail(email);
-    // Unknown or DISABLED: no row, no mail, no audit — indistinguishable from the outside.
-    if (!user || user.status !== 'ACTIVE') return;
+    if (!user || user.status !== 'ACTIVE') {
+      // Unknown or DISABLED: no row, no mail, no audit — but the SAME token work as the real
+      // path (generated, discarded), so the two paths stay computationally indistinguishable.
+      this.deps.tokens.generate();
+      return;
+    }
 
     const now = this.deps.clock.now();
     const { token, tokenHash } = this.deps.tokens.generate();
@@ -56,18 +61,24 @@ export class RequestPasswordReset {
       createdAt: now,
     });
 
-    await this.deps.email.send({
-      to: user.email,
-      subject: 'Reset your Gilgamesh password',
-      text: [
-        'We received a request to reset your Gilgamesh password.',
-        '',
-        'Open this link to choose a new one (valid for 30 minutes, single use):',
-        `/reset-password?token=${token}`,
-        '',
-        "If you didn't request this, you can safely ignore this email.",
-      ].join('\n'),
-    });
+    // Fire-and-forget: awaiting a real SMTP round-trip would make the known-account path
+    // measurably slower than the unknown one. Failures are swallowed WITHOUT logging — a
+    // delivery log line would carry the address; enumeration-safety outranks delivery
+    // observability here.
+    void this.deps.email
+      .send({
+        to: user.email,
+        subject: 'Reset your Gilgamesh password',
+        text: [
+          'We received a request to reset your Gilgamesh password.',
+          '',
+          'Open this link to choose a new one (valid for 30 minutes, single use):',
+          `/reset-password?token=${token}`,
+          '',
+          "If you didn't request this, you can safely ignore this email.",
+        ].join('\n'),
+      })
+      .catch(() => {});
 
     await this.deps.audit.append({
       id: this.deps.ids.next(),

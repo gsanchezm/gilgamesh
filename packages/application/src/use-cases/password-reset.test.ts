@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createInMemoryContext,
   InMemoryPasswordResetRepository,
@@ -67,6 +67,38 @@ describe('RequestPasswordReset (AC-AUTH-10 / AC-REC-01 / AC-REC-03)', () => {
     expect(ctx.passwordResets.rows).toHaveLength(0);
     expect(ctx.email.sent).toHaveLength(0);
     expect(ctx.audit.rows.some((r) => r.action === 'auth.reset.requested')).toBe(false);
+  });
+
+  it('resolves without awaiting the email dispatch (a slow SMTP must not delay the 202)', async () => {
+    // An email port whose promise NEVER settles — with a real SMTP adapter this is the
+    // latency that would otherwise enumerate accounts (audit #5).
+    const hangingEmail = { send: () => new Promise<void>(() => {}) };
+    const slow = new RequestPasswordReset({ ...ctx, email: hangingEmail });
+
+    const outcome = await Promise.race([
+      slow.execute({ email: 'ishtar@uruk.io' }).then(() => 'resolved' as const),
+      new Promise<'hung'>((resolve) => setTimeout(() => resolve('hung'), 100)),
+    ]);
+    expect(outcome).toBe('resolved');
+    // The reset row still landed even though delivery is in flight.
+    expect(ctx.passwordResets.rows).toHaveLength(1);
+  });
+
+  it('swallows email dispatch failures (delivery must never signal account existence)', async () => {
+    const failingEmail = { send: () => Promise.reject(new Error('smtp down')) };
+    const failing = new RequestPasswordReset({ ...ctx, email: failingEmail });
+    await expect(failing.execute({ email: 'ishtar@uruk.io' })).resolves.toBeUndefined();
+  });
+
+  it('performs the same token work whether or not the account exists (audit #5)', async () => {
+    const generate = vi.spyOn(ctx.tokens, 'generate');
+    await requestReset.execute({ email: 'ishtar@uruk.io' });
+    const knownPathCalls = generate.mock.calls.length;
+    expect(knownPathCalls).toBeGreaterThan(0);
+
+    generate.mockClear();
+    await requestReset.execute({ email: 'nobody@nowhere.test' });
+    expect(generate.mock.calls.length).toBe(knownPathCalls);
   });
 
   it('mints nothing for a DISABLED account (a reset must not resurrect it)', async () => {
