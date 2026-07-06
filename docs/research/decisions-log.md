@@ -530,3 +530,25 @@ divergent `refactor/audit-hardening` branch. Reconciled + executed SDD/TDD, all 
   un worktree a la vez · merges secuenciales con re-test · review adversarial antes de cada merge ·
   worktrees SIEMPRE anunciados · fusion points esperados: `AppRoutes.tsx(.test)` (logout/SSO),
   `LoginScreen` (SSO), wirings de persistencia (Stripe/Invoice), `index.css` (regiones por stream).
+
+### Resultado del programa v2 (2026-07-06 PM) — TODO merged en `main`
+
+- **Integración secuencial** (FF, gates serializados por worktree): S18 logout → S17 email → S16
+  embeddings → S15 SSO → S13 Stripe. **Post-merge: typecheck · lint · 801 Docker-free (domain 104 ·
+  application 300 · ui 25 · api 224 · web 148) · int 19 · BDD 182/1517 · Playwright 18.** Corpus RAG
+  re-ingerido (2,657 chunks léxicos 1024) tras la migración destructiva; worktrees eliminados.
+- **Hallazgo honesto S18:** el control de logout YA existía end-to-end (shell slice-7) — los docs
+  estaban stale; el slice quedó como verificación + cobertura (4 tests + logout.spec). Notas stale
+  corregidas en CLAUDE.md (S1-B y delta S11).
+- **Desviación de seguridad aceptada (S15):** config ausente ≠ stub (sería bypass de auth) — stub
+  solo con `SSO_MODE=offline` explícito y rehusado bajo `NODE_ENV=production`.
+- **Fusion points reales:** pines offline en los 4 harnesses (BRAIN/SSO/EMAIL/PAYMENTS_MODE) ·
+  imports de ambos wirings de persistencia · `infra/index.ts` · lockfile (stripe+jose+nodemailer) —
+  todos resueltos conservando ambos lados.
+- **Lecciones de proceso (nuevas):** (1) los gates de stack requieren SERVIDORES FRESCOS — Playwright
+  `reuseExistingServer` reutiliza silenciosamente el api/vite stale de otro worktree (matar
+  3001/5173 primero); así se detectó que el "verde" de S15 en browser corrió contra la app de S16 —
+  cubierto porque el árbol final (S13) re-corrió la suite completa. (2) `test:int`/`test:bdd` NO
+  aplican migraciones — `db:deploy` manual antes del gate. (3) Un run matado a mitad de BDD puede
+  dejar estado que hace fallar el siguiente sweep una vez (pasó 2/2 después). (4) Flake Playwright
+  observado 1 vez en chat.spec (timing SSE de narración); el BDD cubre ese camino determinísticamente.

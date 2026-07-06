@@ -96,9 +96,9 @@ All Definition-of-Done blockers are met and verified green:
 - **Web session** — `GET /auth/me` restore on load (the SPA can't read the httpOnly cookie) + client CSRF
   double-submit on every mutation; `logout()` client method in place.
 
-**Deferred (owner decision S1-B, see `docs/research/decisions-log.md`):** forgot/reset-password +
-EmailPort (AC-AUTH-10/11/12 → slice 7); disabled Google/SSO login controls (AC-AUTH-15 → follow-up); the
-logout UI control. **CI/quality gates wired + green** (`.github/workflows/`): `ci.yml` (ESLint
+**Deferred (owner decision S1-B, see `docs/research/decisions-log.md`) — ALL CLOSED:** forgot/reset-password +
+EmailPort (closed by slice 12); disabled Google/SSO login controls (AC-AUTH-15, closed by slice 15); the
+logout UI control (shipped by the slice-7 shell; verified + covered by slice 18). **CI/quality gates wired + green** (`.github/workflows/`): `ci.yml` (ESLint
 boundaries + react-hooks · typecheck · Docker-free tests · integration + BDD on Postgres/Redis · Playwright) ·
 `codeql.yml` (SAST, 0 alerts) · `secret-scan.yml` (gitleaks) · `dependabot.yml`. Plus `domain`/`application`
 architecture fitness tests. **Remaining gates (follow-up):** bundle-size, k6 perf, contract tests.
@@ -361,4 +361,57 @@ O(n²) replay-per-send; one-shot resync fallback); tile Chat action deep-links `
 **Verified:** typecheck + lint · 653 Docker-free · `test:int` 19 · **BDD 160 scenarios / 1318
 steps** · **Playwright 18** · fidelity screenshot vs `capturas/07-chat-voz.png` approved by the
 owner. Known deltas (all prior owner decisions): no mic copy (voice deferred), no "View session"
-button (Session view blocked on timeline data), no sidebar Log out (S1 deferral).
+button (Session view blocked on timeline data). (The "no sidebar Log out" delta once noted here was
+stale — the control shipped with the slice-7 shell; slice 18 verified + covered it.)
+
+## Programa paralelo v2 — S13+S15+S16+S17+S18 — DoD COMPLETE (2026-07-06, on `main`)
+
+Five streams built in parallel worktrees (announced: `slice-13-stripe`, `slice-15-sso`,
+`feat-semantic-embeddings`, `feat-email-adapter`, `feat-logout-ui`), each SDD→BDD→TDD by a Claude
+subagent, adversarially reviewed, then integrated with SERIALIZED stack gates and sequential FF
+merges. **Keystone v0.5 first, in series** (`207d10b`): +`Invoice`/`InvoiceStatus` + invoice/webhook
+routes + SSO routes + **BREAKING owner-approved** `KnowledgeChunk.embedding` vector(1536)→vector(1024).
+
+- **S13 Stripe payments** (`specs/slices/13-stripe-payments/`) — official `stripe` SDK behind the
+  extended `PaymentProvider` port (added `listInvoices`/`handleWebhook` per keystone §5);
+  `paymentsFromEnv` selector (`PAYMENTS_MODE=offline` or no `STRIPE_SECRET_KEY` → mock — ALL suites
+  offline); Checkout Session priced from `PLAN_CATALOG` (annual = 10 charged months); webhooks
+  signature-verified over RAW bytes (`configureBodyParser` gained an `express.raw` branch for
+  `/billing/webhooks`, same 413 limit); `ApplyPaymentEvent` UoW-atomic seam shared by mock+Stripe
+  (`INVOICE_WEBHOOK_EFFECTS`: finalized→OPEN, paid→PAID+ACTIVE, payment_failed→PAST_DUE…); Prisma
+  `Invoice` + migration `invoices`; `GET /orgs/:orgId/invoices` (member; non-member 404) +
+  `POST /billing/webhooks/:provider` (unauthenticated, signed); BillingScreen Invoices panel.
+  Env: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_SUCCESS_URL/CANCEL_URL`, `PAYMENTS_MODE`.
+- **S15 SSO / Google (AC-AUTH-15)** (`specs/slices/15-sso-google/`) — keystone §5 `IdentityProvider`
+  implemented verbatim + `SessionIssuingIdentityProvider` extension; Google OIDC code flow (PKCE S256 +
+  state + nonce, single-use server-held `SsoStateStore`, `jose` JWKS id_token verification);
+  `CompleteSsoLogin` login-or-register (verified email only; new user gets an UNUSABLE Argon2id
+  password — the column stays NOT NULL); routes `GET /auth/sso/:provider/start|callback` (rate-limited;
+  all failures collapse to one indistinguishable `302 /login?sso=failed`); LoginScreen Google entry +
+  `?sso=` notices. SECURITY INVERSION vs the brain pattern: missing config ≠ stub (auth bypass) —
+  the stub needs explicit `SSO_MODE=offline` and refuses `NODE_ENV=production`.
+  Env: `GOOGLE_CLIENT_ID/SECRET`, optional `GOOGLE_REDIRECT_URL`, `SSO_MODE`.
+- **S16 semantic embeddings (Voyage)** (`specs/slices/16-semantic-embeddings/`) — `EMBED_DIM`
+  1536→1024; `VoyageBrainEmbedder` (fetch, `voyage-4`, `input_type` query/document, explicit
+  `output_dimension`, batches + 1 retry, the key never leaks) behind the S16 optional `embedAs` port
+  extension (frozen `embed()` untouched); `SelectingBrain` routes embeddings independently of the
+  Anthropic key (BYOK chat never forks the shared embedding space); EMBED `BrainUsage` metering
+  (tier HAIKU, org-attributed; global corpus ingest unmetered by design); DESTRUCTIVE migration
+  `embedding_vector_1024` (wipes chunks+documents; the seeder re-seeds, `ingest:corpus` reloads —
+  Voyage-capable when `VOYAGE_API_KEY` is set). Env: `VOYAGE_API_KEY`, `VOYAGE_MODEL`.
+- **S17 SMTP email** (`specs/slices/17-email-smtp/`) — `SmtpEmail` (nodemailer over an injected
+  transport seam) behind the frozen `EmailPort`; `emailFromEnv` (`EMAIL_MODE=offline` or no
+  `SMTP_URL` → the S12 recording stub); transport errors re-thrown credential-scrubbed (URL +
+  password raw/decoded, NO `cause` chaining). Env: `SMTP_URL`, `EMAIL_FROM`, `EMAIL_MODE`.
+- **S18 logout UI** (`specs/slices/18-logout-ui/`) — honest verification slice: the control already
+  existed end-to-end (slice-7 shell); added the missing coverage only (API e2e revocation+CSRF,
+  router-level web units, Playwright `logout.spec.ts`).
+- **Verified (post-merge on `main`):** typecheck + lint · **801 Docker-free** (domain 104 ·
+  application 300 · ui 25 · api 224 · web 148) · `test:int` 19 · **BDD 182 scenarios / 1517 steps** ·
+  **Playwright 18**. All four harnesses pin `BRAIN_MODE/SSO_MODE/EMAIL_MODE/PAYMENTS_MODE=offline`.
+- **Process notes:** stack gates must run against FRESH servers — `reuseExistingServer` can silently
+  reuse a stale api/vite pair from another worktree (kill 3001/5173 first); apply new Prisma
+  migrations to the shared dev DB (`db:deploy`) BEFORE `test:int`/`test:bdd`; one chat SSE Playwright
+  flake observed (narration timing) — BDD covers that path deterministically.
+- **Deferred:** token-billing (slice 14, SEQUENTIAL after Stripe) · Stripe portal/proration/refunds ·
+  Voyage BYOK (§8 amendment) · Redis `SsoStateStore` (multi-replica) · voice STT/TTS.

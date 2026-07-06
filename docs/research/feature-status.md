@@ -56,7 +56,7 @@ Real vs. stub-behind-a-port. Swapping a stub for the real adapter is a future sl
 - [ ] Test execution + results — 🔵 `DeterministicKernel` stub (real TOM/chaos-proxy kernel pending)
 - [x] AI brain (chat · routing · draft generation) — ✅ **real `ClaudeBrain` adapter on `main` (slice 9)** behind `SelectingBrain`: real answers with `ANTHROPIC_API_KEY` (or org BYOK — call-time resolution pending `SecretVault.get()`), deterministic stub offline/CI; per-org `BrainUsage` metering + usage view + tool registry + live C3 SSE (`?live=1`)
 - [x] RAG embeddings — ✅ **real Voyage `voyage-4` semantic embeddings (slice 16)** behind the frozen `AgentBrainPort.embed` + the `embedAs(texts, kind)` extension: 1024-dim `vector(1024)` column (keystone v0.5 BREAKING; destructive migration + re-ingest), real with `VOYAGE_API_KEY`, deterministic lexical FNV-1a 1024-dim offline/CI; EMBED `BrainUsage` metering (Voyage BYOK deferred)
-- [ ] Payments / checkout — 🔵 `MockPaymentProvider` (real Stripe + invoices/webhooks deferred)
+- [x] Payments / checkout — ✅ **real Stripe (slice 13)** behind the extended `PaymentProvider` port: Checkout Sessions priced from `PLAN_CATALOG`, signature-verified webhooks over raw bytes → `Invoice` rows + subscription status (`ApplyPaymentEvent`, UoW-atomic), Invoices panel in Billing; `PAYMENTS_MODE=offline`/no `STRIPE_SECRET_KEY` → deterministic mock (CI offline). Portal/proration/refunds deferred
 
 ## 3) Missing / deferred (with the blocker)
 
@@ -65,8 +65,8 @@ Real vs. stub-behind-a-port. Swapping a stub for the real adapter is a future sl
 - [x] **Reports** — ✅ read-only over slice-3 `Run`/`RunResult`, **route wired** at `/projects/:id/reports`; per-tool "Tools" breakdown deferred (needs a tool/discipline dimension on `RunResult`)
 - [ ] **Session replay (web/android)** — 🔴 needs per-action timeline data slice-3 doesn't persist yet
 - [ ] **Mobile app (Expo)** — 🔴 not started
-- [x] **Forgot / reset password + Email** — ✅ slice 12 on `main`: enumeration-safe 202, sha256-only 30-min single-use token, reset revokes all sessions, `EmailPort` stub (real SMTP/SES later); Forgot/Reset screens wired
-- [ ] **Google / SSO login** — 🔴 controls disabled (AC-AUTH-15)
+- [x] **Forgot / reset password + Email** — ✅ slice 12 on `main`: enumeration-safe 202, sha256-only 30-min single-use token, reset revokes all sessions, `EmailPort` **real SMTP adapter on `main` (slice 17)** — nodemailer via `SMTP_URL`, credential-scrubbed errors, recording stub offline/CI; Forgot/Reset screens wired
+- [x] **Google / SSO login** — ✅ **slice 15 on `main`** (AC-AUTH-15 closed): Google OIDC (PKCE+state/nonce single-use, `jose` JWKS) behind the frozen `IdentityProvider`; login-or-register with unusable password; unconfigured → button degrades (`?sso=unavailable`); stub only via explicit `SSO_MODE=offline` (refused in production). SAML still disabled
 - [x] **Per-org RAG grounding** — ✅ on `main`: `GenerateDrafts` grounds on the org's own chunks (scope `shared`/NULL) + the global corpus via slot-optional `retrieveScoped`; agent-scoped chunks stay private to their agent's chat
 - [x] **PDF / .docx ingest** — ✅ on `main` (`parse-document`); Knowledge now ingests `.md`/`.txt`/`.pdf`/`.docx`
 - [x] **Billing → new 4-tier model** — ✅ on `main` (subscription migrated to 4-tier + `/billing` re-skinned to capture 12)
