@@ -4,7 +4,8 @@ Feature: Secret vault — real Azure Key Vault behind the frozen SecretVault por
   stub needs an EXPLICIT VAULT_MODE=offline (refused under NODE_ENV=production) and missing
   config is a boot error, never a silent stub. The secretRef contract is unchanged:
   put(scope) returns vault://<scope>; the Key Vault secret NAME is the deterministic
-  injective encoding of the scope (alnum verbatim, every other byte -> "-hh" hex).
+  encoding of the scope (lowercase alnum verbatim, every other byte -> "-hh" hex),
+  injective against Key Vault's case-INSENSITIVE name namespace.
   The default sweep runs pinned VAULT_MODE=offline, so the executable scenario below proves
   the factory-bound stub keeps the slice-6/9 contract; boot-selector behavior is @wip
   (unit-tested — a boot refusal cannot answer an HTTP request) and the live Azure round-trip

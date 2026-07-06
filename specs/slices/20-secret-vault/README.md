@@ -88,17 +88,22 @@ and `SelectingBrain.resolveOrgBrain` parses the `vault://` prefix back off and c
 `get(<scope>)`. Stub-written rows therefore resolve against the real vault and vice versa —
 only the storage backend differs.
 
-**Key Vault secret names** only allow `[0-9a-zA-Z-]` (1–127 chars), but scopes contain `/`
-(always) and `_` (`ado_repos`). `encodeVaultSecretName` maps a scope **deterministically and
-injectively** (two distinct scopes can NEVER collide into one secret name — a collision would
-cross-write tenants' secrets):
+**Key Vault secret names** only allow `[0-9a-zA-Z-]` (1–127 chars) **and the namespace is
+case-INSENSITIVE** (Microsoft docs), but scopes contain `/` (always) and `_` (`ado_repos`).
+`encodeVaultSecretName` maps a scope **deterministically and injectively — in KV's
+case-insensitive namespace** (two distinct scopes can NEVER collide into one secret name — a
+collision would cross-write tenants' secrets):
 
-- `0-9 a-z A-Z` pass through verbatim;
-- **every other character** (including `-` and `/`) is escaped as `-hh` per UTF-8 byte
-  (two lowercase hex digits): `-` → `-2d`, `/` → `-2f`, `_` → `-5f`.
+- strictly lowercase `0-9 a-z` pass through verbatim;
+- **every other character** — including `-`, `/` and UPPERCASE letters — is escaped as `-hh`
+  per UTF-8 byte (two lowercase hex digits): `-` → `-2d`, `/` → `-2f`, `_` → `-5f`, `A` → `-41`.
+  Uppercase is escaped, NOT case-folded: folding `A`→`a` would collide with a literal `a` at
+  the string level, and passing `A-Z` through would collide inside KV's case-insensitive
+  namespace (e.g. scopes `a-2D` and `a-2d` would both land on the KV secret `a-2d2d`).
 
-Injectivity: escapes are the ONLY source of `-` in the output, and every escape is exactly
-`-hh`, so the encoding is prefix-free and reversible. Example:
+Injectivity: escapes are the ONLY source of `-` in the output, every escape is exactly `-hh`,
+and the output alphabet is strictly `[0-9a-z-]` — so KV's case-insensitive equality collapses
+to string equality and the encoding is prefix-free and reversible. Example:
 
 ```
 scope  f81d4fae-7dec-11d0-a765-00a0c91e6bf6/anthropic
@@ -129,8 +134,8 @@ scope, or one encoding past 127 chars, throws a `KeyVaultError` naming the scope
   `encodeVaultSecretName(scope)` and returns `vault://<scope>` (the stub's exact contract);
   `get(scope)` reads through the same encoding and returns the value; a missing secret
   (HTTP 404 / `SecretNotFound`) returns `null`, never throws. The mapping is deterministic,
-  injective, and emits only `[0-9a-zA-Z-]` (§2); invalid results (empty / >127) throw without
-  any secret in the message.
+  injective **against KV's case-insensitive namespace**, and emits only strictly lowercase
+  `[0-9a-z-]` (§2); invalid results (empty / >127) throw without any secret in the message.
 - **AC-VAULT-05 (no secret leak)** Any client failure surfaces as a rejected promise carrying
   a fresh `KeyVaultError` whose message NEVER contains the secret value (asserted against a
   client error that echoes it back), never chains the original via `cause`, and keeps the

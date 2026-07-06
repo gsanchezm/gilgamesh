@@ -11,8 +11,9 @@ import { SecretClient } from '@azure/keyvault-secrets';
  * The `secretRef` contract is UNCHANGED from the stub: `put(scope)` returns `vault://<scope>`
  * (scope = `<orgId>/<integration key>`, built by ConnectIntegration and parsed back by the BYOK
  * resolver) — stub-written rows resolve against the real vault and vice versa. Key Vault secret
- * NAMES only allow `[0-9a-zA-Z-]`, so {@link encodeVaultSecretName} maps the scope
- * deterministically AND injectively (see its doc — a collision would cross-write tenants).
+ * NAMES only allow `[0-9a-zA-Z-]` AND the namespace is case-INSENSITIVE, so
+ * {@link encodeVaultSecretName} maps the scope deterministically AND injectively onto a strictly
+ * lowercase alphabet (see its doc — a collision would cross-write tenants).
  *
  * Secret values are treated per the S17 scrub rule: any client failure propagates as a fresh
  * {@link KeyVaultError} with the value `[redacted]` and NO `cause` chaining; the adapter never logs.
@@ -56,11 +57,17 @@ function messageOf(e: unknown): string {
 }
 
 /**
- * Deterministic, INJECTIVE scope → Key Vault secret-name mapping. `[0-9a-zA-Z]` pass through
- * verbatim; every other character (including `-` and `/`) is escaped as `-hh` per UTF-8 byte
- * (two lowercase hex digits): `-`→`-2d`, `/`→`-2f`, `_`→`-5f`. Escapes are the only source of
- * `-` in the output and each is exactly `-hh`, so the encoding is reversible — two distinct
- * scopes can never collide into one secret name (which would cross-write tenants' secrets).
+ * Deterministic, INJECTIVE scope → Key Vault secret-name mapping. Key Vault object names are
+ * case-INSENSITIVE, so the passthrough class is strictly LOWERCASE `[0-9a-z]`; every other
+ * character — including `-`, `/` and UPPERCASE letters — is escaped as `-hh` per UTF-8 byte
+ * (two lowercase hex digits): `-`→`-2d`, `/`→`-2f`, `_`→`-5f`, `A`→`-41`. Uppercase is escaped,
+ * NOT case-folded: folding `A`→`a` would collide with a literal `a`, and passing `A` through
+ * would collide with `a` inside KV's case-insensitive namespace (e.g. scopes `a-2D` vs `a-2d`
+ * would both become the secret `a-2d2d` there). Escapes are the only source of `-` in the
+ * output, each is exactly `-hh`, and the output alphabet is strictly `[0-9a-z-]` — so
+ * case-insensitive equality collapses to string equality and the encoding stays reversible:
+ * two distinct scopes can never collide into one secret name (which would cross-write
+ * tenants' secrets).
  *
  * Example: `f81d4fae-…6bf6/anthropic` → `f81d4fae-2d…6bf6-2fanthropic`.
  *
@@ -70,7 +77,7 @@ function messageOf(e: unknown): string {
 export function encodeVaultSecretName(scope: string): string {
   let name = '';
   for (const ch of scope) {
-    if (/[0-9a-zA-Z]/.test(ch)) name += ch;
+    if (/[0-9a-z]/.test(ch)) name += ch;
     else for (const byte of Buffer.from(ch, 'utf8')) name += `-${byte.toString(16).padStart(2, '0')}`;
   }
   if (name.length === 0 || name.length > MAX_SECRET_NAME_LENGTH) {

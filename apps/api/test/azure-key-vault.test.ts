@@ -94,12 +94,30 @@ describe('scope → secret-name mapping (AC-VAULT-04)', () => {
     expect(encodeVaultSecretName('ado_repos')).toBe('ado-5frepos');
   });
 
-  it('only ever emits Key Vault-legal characters', () => {
-    expect(encodeVaultSecretName(`${ORG_ID}/ado_repos`)).toMatch(/^[0-9a-zA-Z-]+$/);
+  it('only ever emits strictly lowercase Key Vault-legal characters (the namespace is case-insensitive)', () => {
+    expect(encodeVaultSecretName(`${ORG_ID}/ado_repos`)).toMatch(/^[0-9a-z-]+$/);
+    expect(encodeVaultSecretName('OrgX/GitHub')).toMatch(/^[0-9a-z-]+$/);
   });
 
-  it('is injective where naive dash-collapsing would collide', () => {
-    const names = ['a/b', 'a-b', 'a_b', 'a--b', 'ab'].map(encodeVaultSecretName);
+  it('escapes uppercase per UTF-8 byte instead of passing it through or case-folding it', () => {
+    expect(encodeVaultSecretName('A')).toBe('-41'); // not 'A' (KV case-insensitive) and not 'a' (literal collision)
+    expect(encodeVaultSecretName('aB')).toBe('a-42');
+  });
+
+  it('is injective in Key Vault\'s case-INSENSITIVE namespace, where naive collapsing/passthrough would collide', () => {
+    const scopes = [
+      'a/b', // escape targets…
+      'a-b',
+      'a_b',
+      'a--b',
+      'ab',
+      'a-2fb', // literal scope equal to encode('a/b') — collides if "-" ever passes through
+      'a-2D', // vs 'a-2d': uppercase passthrough would collide case-insensitively (a-2d2D ~ a-2d2d)
+      'a-2d',
+      'A', // vs 'a': case-folding would collide at the string level
+      'a',
+    ];
+    const names = scopes.map((s) => encodeVaultSecretName(s).toLowerCase()); // KV compares case-insensitively
     expect(new Set(names).size).toBe(names.length);
   });
 
