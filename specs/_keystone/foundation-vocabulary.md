@@ -4,7 +4,7 @@
 > signatures, and the OpenAPI/schema skeleton. Every foundation artifact MUST adhere to it
 > **verbatim** — same entity names, field names, enum values, IDs, and port signatures.
 > If an artifact needs a name not defined here, it adds it here first (don't invent locally).
-> Authored centrally (full design context). Expansions fan out from this. v0.5 — 2026-07-06.
+> Authored centrally (full design context). Expansions fan out from this. v0.6 — 2026-07-06.
 
 ## 0. Conventions
 - TypeScript everywhere. Package names `@gilgamesh/<name>`.
@@ -60,7 +60,7 @@ KnowledgeScope (key) = <AgentSlot key> | shared   # lowercase keys; nullable on 
 - **RunNode** — id, orgId, runId, key, kind:RunNodeKind, agentId?, tool?, feature?, sliceId?, level(int), deps(string[]), state:RunNodeState, passed?, failed?, skipped?, durationMs?, startedAt?, finishedAt?. DAG node.
 - **Artifact** — id, orgId, runId, runNodeId?, type:ArtifactType, storageKey, contentType, sizeBytes, capturedAt, meta(json). Blob via signed expiring URL (never public).
 - **Integration** — id, orgId, key(stable, §8), group:IntegrationGroup, connected(bool), secretRef?(Key Vault ref — NEVER raw token), config(json non-secret), connectedById?, connectedAt?. Unique(orgId,key).
-- **Subscription** — id, orgId(unique), plan:Plan, billingCycle:BillingCycle, seats(int), status:SubscriptionStatus, runMinutesQuota(int), runMinutesUsed(int), providerCustomerId?, providerSubscriptionId?, currentPeriodEnd?. Mock provider now.
+- **Subscription** — id, orgId(unique), plan:Plan, billingCycle:BillingCycle, seats(int), status:SubscriptionStatus, runMinutesQuota(int), runMinutesUsed(int), brainTokensQuota(int), brainTokensUsed(int), providerCustomerId?, providerSubscriptionId?, currentPeriodEnd?. Stripe or deterministic mock (PAYMENTS_MODE).
 - **Invoice** — id, orgId, providerInvoiceId?(unique — the provider's id, e.g. Stripe `in_…`), status:InvoiceStatus,
   amountCents(int), currency(lowercase ISO-4217, default `usd`), periodStart?, periodEnd?, hostedInvoiceUrl?,
   pdfUrl?, createdAt, updatedAt. Written by PaymentProvider webhooks (Stripe) or deterministically by the mock.
@@ -76,7 +76,10 @@ KnowledgeScope (key) = <AgentSlot key> | shared   # lowercase keys; nullable on 
   content(text), runId?(links a message that triggered a Run), createdAt.
 - **BrainUsage** — id, orgId, tier:BrainTier, surface:BrainSurface, inputTokens(int), outputTokens(int),
   cacheReadTokens(int=0), cacheCreateTokens(int=0), createdAt. Per-call token metering (indexed
-  orgId+createdAt); aggregated per org for the usage view. Billing hookup = the 4-tier billing migration.
+  orgId+createdAt); aggregated per org for the usage view. Billing hookup = S14: billable tokens
+  (inputTokens + outputTokens; cache read/create EXCLUDED) charge Subscription.brainTokensUsed
+  atomically per call; quota exhausted → QUOTA_EXCEEDED (402; on chat surfaces narrated in-chat,
+  never a 500).
 - **AuditLog** — id, orgId, actorUserId?, action, targetType, targetId?, metadata(json), ip?, createdAt. Sensitive-action audit.
 
 ## 3. Canonical agent roster (DESKTOP prototype — decided) + per-role tool options (Strategy)
@@ -198,15 +201,25 @@ Real runs require capabilities the owner is still building (decision #5). To avo
 `github, gitlab, bitbucket, ado_repos` (SOURCE_REPOS) · `jira, ado_boards` (PROJECT_TRACKING) ·
 `testrail, xray, zephyr` (TEST_MANAGEMENT) · `slack, teams` (COMMUNICATION) ·
 `gha, gitlabci, azpipe, jenkins` (CICD) · `sim, browserstack` (DEVICES_BROWSERS) ·
-`anthropic` (AI_PROVIDERS).
+`anthropic, voyage` (AI_PROVIDERS).
 
 ## 9. Pricing (mock) reference for Subscription seeds
 FREE $0 (1 workspace · 2 services · 500 executions) · STARTER $29/mo (unlimited workspaces · 5 services ·
 5,000 executions · 3 users) · GROWTH $99/mo (15 services · 25,000 executions · unlimited users) · SCALE
 $499/mo base includes 10 workspaces + $99/extra workspace (unlimited executions/services, SSO/RBAC/SLA).
 Annual billing charges 10 months (2 months free).
+AI Brain token allowances (billable = input+output tokens; cache excluded; all org-attributed
+surfaces CHAT/ROUTER/GENERATE/EMBED count; global corpus ingest unmetered): FREE 100k/mo ·
+STARTER 2M/mo · GROWTH 10M/mo · SCALE unlimited. Resets each billing period (same rollover as
+executions).
 
 ## 10. Changelog
+- **v0.6 — 2026-07-06** — Token-billing + Voyage BYOK amendment (owner decisions, 2026-07-06):
+  +`voyage` key (§8, AI_PROVIDERS) · `Subscription` +`brainTokensQuota(int)` +`brainTokensUsed(int)`
+  (§2) · §9 AI Brain token allowances per tier (FREE 100k · STARTER 2M · GROWTH 10M · SCALE
+  unlimited; billable = input+output, cache excluded; exhausted → QUOTA_EXCEEDED, narrated
+  in-chat) · clarified the stale `Subscription` trailing note ("Mock provider now" → Stripe or
+  deterministic mock via PAYMENTS_MODE). Nothing else frozen was renamed, removed, or restructured.
 - **v0.5 — 2026-07-06** — Payments + SSO + semantic-embeddings amendment (owner decisions, 2026-07-06):
   +`Invoice` (§2/§5) + `InvoiceStatus` (§1) · +`GET /orgs/{orgId}/invoices` + `POST /billing/webhooks/{provider}`
   (§6) · +`GET /auth/sso/{provider}/start` + `GET /auth/sso/{provider}/callback` (§6; behind the frozen

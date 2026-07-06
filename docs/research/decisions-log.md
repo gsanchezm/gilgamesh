@@ -552,3 +552,30 @@ divergent `refactor/audit-hardening` branch. Reconciled + executed SDD/TDD, all 
   aplican migraciones — `db:deploy` manual antes del gate. (3) Un run matado a mitad de BDD puede
   dejar estado que hace fallar el siguiente sweep una vez (pasó 2/2 después). (4) Flake Playwright
   observado 1 vez en chat.spec (timing SSE de narración); el BDD cubre ese camino determinísticamente.
+
+## Programa paralelo v3 (2026-07-06 PM3) — decisiones del owner
+
+- **Tanda aprobada (5 streams, worktrees `pnpm wt`):** A `slice-14-token-billing` (S14 cobro de
+  tokens Brain) · B `feat-voyage-byok` (Voyage BYOK + smoke) · C `feat-sso-redis-state` (Redis
+  `SsoStateStore`) · D `feat-secret-vault` (vault real Azure Key Vault) · E `feat-vitest-3`
+  (upgrade toolchain Vitest 3). Descartados de la tanda: Stripe portal/refunds (chocaría con A en
+  billing), voz STT/TTS (necesita brainstorm de proveedor), Bloque 3 (sigue pendiente de decisión).
+- **S14 — semántica de cobro:** quota incluida por plan + bloqueo `QUOTA_EXCEEDED` (patrón
+  run-minutes; overage de pago DIFERIDO). Billable = `inputTokens + outputTokens` (cache read/create
+  EXCLUIDOS — optimización que no se castiga). Cuentan TODAS las surfaces org-atribuidas
+  (CHAT/ROUTER/GENERATE/EMBED); el ingest del corpus global sigue sin meterear. En superficies de
+  chat el bloqueo se narra in-chat (nunca 500); en API → 402. Reset por periodo de billing (mismo
+  rollover que executions).
+- **Keystone v0.6 aprobado** (revisado por el owner ANTES del commit): +`voyage` (§8) ·
+  `Subscription.brainTokensQuota/Used` (§2) · allowances §9 (FREE 100k · STARTER 2M · GROWTH 10M ·
+  SCALE unlimited) · nota stale de Subscription corregida.
+- **Agentes:** mix de CLIs externos + Claude (owner: "intentar CLIs externos"; ambos verificados
+  no-interactivos en esta sesión). Asignación anunciada: A→claude · B→agy · C→codex · D→agy(2ª) ·
+  E→claude(2ª). Review adversarial cruzada (autor ≠ reviewer); A/B/C/D tocan rutas protegidas
+  (billing/auth/secretos/migraciones) → cola de revisión humana con el reporte del reviewer.
+- **Plan de integración:** merges FF secuenciales **C → D → B → A → E** con re-test, servidores
+  frescos y `db:deploy` previo. Fusion points declarados: wirings de persistencia/infra (C/D/B) ·
+  lockfile (D `@azure/*`, E vitest) · pines offline de los harnesses (D añade `VAULT_MODE`) ·
+  `PLAN_CATALOG`/billing (solo A). E se rebasa y mergea AL FINAL.
+- **Stream D — inversión de seguridad (patrón S15):** vault ausente ≠ stub silencioso en prod —
+  el stub requiere `VAULT_MODE=offline` explícito y se rehúsa bajo `NODE_ENV=production`.
