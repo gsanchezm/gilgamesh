@@ -57,7 +57,7 @@ Everything below is **decided** (keystone §0 / decisions-log). TypeScript every
 | Web | **React + Vite** (`apps/web`) | keystone §4 |
 | Mobile | **Expo / React Native** (`apps/mobile`) | keystone §4 |
 | Design system | **React + Tailwind** (`@gilgamesh/ui`) | keystone §4 |
-| Persistence | **PostgreSQL** + **pgvector** (1536-dim embeddings), **Prisma** ORM | keystone §2,§4 |
+| Persistence | **PostgreSQL** + **pgvector** (1024-dim embeddings — keystone v0.5, Voyage `voyage-4`), **Prisma** ORM | keystone §2,§4 |
 | Cache / queue | **Redis** (BullMQ + cache) | decisions #11 |
 | Object storage | **MinIO** (local) → **Azure Blob** (cloud); signed expiring URLs only | keystone §2,§5 |
 | Event transport | `EventBus` port → Redis (local) / **Azure Service Bus** (cloud) | keystone §5 |

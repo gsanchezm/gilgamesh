@@ -1,13 +1,15 @@
 import {
   type KnowledgeDocumentView,
   ListKnowledgeDocuments,
+  type MembershipRepository,
   SearchKnowledge,
   type SearchResultView,
   UploadKnowledgeDocument,
 } from '@gilgamesh/application';
-import { Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { TOKENS } from '../persistence/tokens';
 import { UploadKnowledgeDocumentDto } from './dto';
 
 /**
@@ -17,12 +19,26 @@ import { UploadKnowledgeDocumentDto } from './dto';
 @Controller('knowledge')
 @UseGuards(SessionAuthGuard)
 export class KnowledgeController {
-  constructor(private readonly searchKnowledge: SearchKnowledge) {}
+  constructor(
+    private readonly searchKnowledge: SearchKnowledge,
+    @Inject(TOKENS.Memberships) private readonly memberships: MembershipRepository,
+  ) {}
 
   @Get('search')
-  search(@Query('q') q?: string, @Query('k') k?: string): Promise<SearchResultView> {
+  async search(
+    @CurrentUser() userId: string,
+    @Query('q') q?: string,
+    @Query('k') k?: string,
+  ): Promise<SearchResultView> {
     const parsedK = k !== undefined && k !== '' ? Number(k) : undefined;
-    return this.searchKnowledge.execute({ query: q ?? '', k: Number.isFinite(parsedK) ? parsedK : undefined });
+    // S16: the query-embed cost is ATTRIBUTED to the caller's org (first membership) for EMBED
+    // metering — the search itself stays global/org-agnostic (S5-A). No membership -> unmetered.
+    const [membership] = await this.memberships.listForUser(userId);
+    return this.searchKnowledge.execute({
+      query: q ?? '',
+      k: Number.isFinite(parsedK) ? parsedK : undefined,
+      orgId: membership?.orgId,
+    });
   }
 }
 

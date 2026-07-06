@@ -126,4 +126,23 @@ describe('Per-org knowledge documents API (slice 7)', () => {
       .send({ name: 'x.png', type: 'png', content: 'hello' });
     expect(res.status).toBe(422);
   });
+
+  it('meters EMBED usage for uploads and searches, attributed to the caller org (S16 AC-EMB-05)', async () => {
+    // The uploads above embedded as this org; a search by a member attributes its query embed too.
+    await request(server())
+      .get('/knowledge/search')
+      .set('Cookie', member.cookie)
+      .query({ q: 'boundary value analysis' })
+      .expect(200);
+
+    const usage = await request(server()).get(`/orgs/${orgId}/brain/usage`).set('Cookie', member.cookie);
+    expect(usage.status).toBe(200);
+    const embed = (usage.body.bySurface as { surface: string; calls: number; inputTokens: number; outputTokens: number }[]).find(
+      (s) => s.surface === 'EMBED',
+    );
+    expect(embed).toBeDefined();
+    expect(embed!.calls).toBeGreaterThanOrEqual(2); // at least one upload + this search
+    expect(embed!.inputTokens).toBeGreaterThan(0); // the stub's whitespace-token estimate
+    expect(embed!.outputTokens).toBe(0); // embeddings produce no completion tokens
+  });
 });

@@ -26,6 +26,8 @@ export default defineConfig({
       BRAIN_MODE: 'offline',
       // S15: the deterministic StubIdentityProvider answers the SSO routes — no Google, ever.
       SSO_MODE: 'offline',
+      // S17: same for mail — the recording stub, never an SMTP connection.
+      EMAIL_MODE: 'offline',
     },
   },
 });

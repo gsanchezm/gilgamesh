@@ -2,13 +2,15 @@ import {
   type AgentRepository,
   type AuditLogRepository,
   type AgentBrainPort,
+  type BrainUsageRepository,
+  type Clock,
   DeterministicKernel,
+  type IdGenerator,
   type KnowledgeChunkRepository,
   type KnowledgeDocumentRepository,
   KnowledgeRetriever,
   MockPaymentProvider,
   MockRepoProvider,
-  StubEmail,
   StubSecretVault,
   InMemoryAgentRepository,
   InMemoryAuditLogRepository,
@@ -56,6 +58,7 @@ import {
   brainFromEnv,
   brainKeyVerifierFromEnv,
   CryptoSessionTokenGenerator,
+  emailFromEnv,
   SystemClock,
   Uuid7IdGenerator,
 } from '../infra';
@@ -74,8 +77,10 @@ import { TOKENS } from './tokens';
     { provide: TOKENS.Memberships, useValue: new InMemoryMembershipRepository() },
     { provide: TOKENS.Sessions, useValue: new InMemorySessionRepository() },
     { provide: TOKENS.PasswordResets, useValue: new InMemoryPasswordResetRepository() },
-    // Owner decision S12: the EmailPort stub RECORDS sent mail (BDD/e2e read it via this token).
-    { provide: TOKENS.Email, useValue: new StubEmail() },
+    // Provider selection (S17, the S9-1 pattern): the S12 recording stub unless EMAIL_MODE/
+    // SMTP_URL select the real nodemailer SMTP adapter. Every harness pins EMAIL_MODE=offline,
+    // so BDD/e2e keep reading recorded mail via this token.
+    { provide: TOKENS.Email, useFactory: () => emailFromEnv() },
     { provide: TOKENS.Projects, useValue: new InMemoryProjectRepository() },
     { provide: TOKENS.Slices, useValue: new InMemorySliceRepository() },
     { provide: TOKENS.Features, useValue: new InMemoryFeatureRepository() },
@@ -171,9 +176,15 @@ import { TOKENS } from './tokens';
     { provide: TOKENS.KnowledgeDocuments, useValue: new InMemoryKnowledgeDocumentRepository() },
     {
       provide: TOKENS.KnowledgeRetrieval,
-      useFactory: (brain: AgentBrainPort, knowledge: KnowledgeChunkRepository) =>
-        new KnowledgeRetriever({ brain, knowledge }),
-      inject: [TOKENS.Brain, TOKENS.Knowledge],
+      // S16: scoped grounding meters EMBED BrainUsage rows for the filter org.
+      useFactory: (
+        brain: AgentBrainPort,
+        knowledge: KnowledgeChunkRepository,
+        brainUsage: BrainUsageRepository,
+        ids: IdGenerator,
+        clock: Clock,
+      ) => new KnowledgeRetriever({ brain, knowledge, meter: { brainUsage, ids, clock } }),
+      inject: [TOKENS.Brain, TOKENS.Knowledge, TOKENS.BrainUsage, TOKENS.Ids, TOKENS.Clock],
     },
     { provide: TOKENS.ChatSessions, useValue: new InMemoryChatSessionRepository() },
     { provide: TOKENS.ChatMessages, useValue: new InMemoryChatMessageRepository() },

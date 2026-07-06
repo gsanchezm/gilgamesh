@@ -167,3 +167,56 @@ describe('ListKnowledgeDocuments', () => {
     });
   });
 });
+
+describe('UploadKnowledgeDocument — EMBED metering (S16, AC-EMB-05)', () => {
+  let ctx: InMemoryContext;
+  beforeEach(() => {
+    ctx = createInMemoryContext();
+  });
+
+  it('meters ONE EMBED row for the org, embedding chunks with the document kind', async () => {
+    await seedMember(ctx);
+    const kinds: string[] = [];
+    const brain = {
+      complete: ctx.brain.complete.bind(ctx.brain),
+      stream: ctx.brain.stream.bind(ctx.brain),
+      embed: ctx.brain.embed.bind(ctx.brain),
+      embedAs: (texts: string[], kind: 'query' | 'document') => {
+        kinds.push(kind);
+        return ctx.brain.embedAs(texts, kind);
+      },
+    };
+    const upload = new UploadKnowledgeDocument({
+      uow: ctx.uow,
+      brain,
+      memberships: ctx.memberships,
+      ids: ctx.ids,
+      clock: ctx.clock,
+      meter: { brainUsage: ctx.brainUsage, ids: ctx.ids, clock: ctx.clock },
+    });
+    await upload.execute({ orgId: ORG, userId: USER, name: 'design.md', type: 'md', content: MD });
+
+    expect(kinds).toEqual(['document']);
+    const rows = await ctx.brainUsage.listForOrg(ORG);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ surface: 'EMBED', tier: 'HAIKU', outputTokens: 0 });
+    expect(rows[0]!.inputTokens).toBeGreaterThan(0);
+  });
+
+  it('a metering failure never fails the upload (resilience)', async () => {
+    await seedMember(ctx);
+    ctx.brainUsage.append = async () => {
+      throw new Error('usage store down');
+    };
+    const upload = new UploadKnowledgeDocument({
+      uow: ctx.uow,
+      brain: ctx.brain,
+      memberships: ctx.memberships,
+      ids: ctx.ids,
+      clock: ctx.clock,
+      meter: { brainUsage: ctx.brainUsage, ids: ctx.ids, clock: ctx.clock },
+    });
+    const doc = await upload.execute({ orgId: ORG, userId: USER, name: 'design.md', type: 'md', content: MD });
+    expect(doc.chunkCount).toBeGreaterThan(0);
+  });
+});

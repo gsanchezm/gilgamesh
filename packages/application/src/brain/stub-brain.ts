@@ -4,6 +4,9 @@ import type {
   BrainCompleteRequest,
   BrainCompleteResult,
   BrainStreamWithUsage,
+  EmbeddingKind,
+  EmbedWithUsageResult,
+  KindAwareEmbeddingBrain,
   UsageReportingBrain,
 } from '../ports/brain';
 import { CHAT_ROUTER_PREFIX } from '../use-cases/chat';
@@ -18,7 +21,7 @@ import { CHAT_ROUTER_PREFIX } from '../use-cases/chat';
  *  3. Test-draft generation (slice 2): a `{prompt, format, count}` user message → draft JSON
  *     (the shape is the contract owned by the GenerateDrafts use case).
  */
-export class DeterministicBrain implements AgentBrainPort, UsageReportingBrain {
+export class DeterministicBrain implements AgentBrainPort, UsageReportingBrain, KindAwareEmbeddingBrain {
   async complete(req: BrainCompleteRequest): Promise<BrainCompleteResult> {
     const last = req.messages[req.messages.length - 1]?.content ?? '';
 
@@ -43,6 +46,17 @@ export class DeterministicBrain implements AgentBrainPort, UsageReportingBrain {
 
   async embed(texts: string[]): Promise<number[][]> {
     return texts.map((t) => embedText(t));
+  }
+
+  /** S16 optional extension (spec 16 §5): the lexical hash has no query/document asymmetry — the kind
+   *  is accepted for wire parity with Voyage. Usage is a deterministic whitespace-token estimate so
+   *  offline EMBED metering rows still carry meaningful counts. */
+  async embedAs(texts: string[], kind: EmbeddingKind): Promise<EmbedWithUsageResult> {
+    void kind;
+    return {
+      embeddings: texts.map((t) => embedText(t)),
+      usage: { totalTokens: texts.reduce((sum, t) => sum + (t.match(/\S+/g) ?? []).length, 0) },
+    };
   }
 
   /** S9 optional extension (spec 09 s13): stream + final usage, so streamed calls can be metered. */

@@ -1,6 +1,9 @@
 import {
   type AgentBrainPort,
+  type BrainUsageRepository,
+  type Clock,
   DeterministicKernel,
+  type IdGenerator,
   InMemoryEventBus,
   type IntegrationRepository,
   type KnowledgeChunkRepository,
@@ -8,7 +11,6 @@ import {
   MockPaymentProvider,
   MockRepoProvider,
   type SecretVault,
-  StubEmail,
   StubSecretVault,
 } from '@gilgamesh/application';
 import { Global, Module } from '@nestjs/common';
@@ -17,6 +19,7 @@ import {
   brainFromEnv,
   brainKeyVerifierFromEnv,
   CryptoSessionTokenGenerator,
+  emailFromEnv,
   SystemClock,
   Uuid7IdGenerator,
 } from '../../infra';
@@ -58,9 +61,10 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     { provide: TOKENS.Memberships, useFactory: (db: PrismaService) => new PrismaMembershipRepository(db), inject: [PrismaService] },
     { provide: TOKENS.Sessions, useFactory: (db: PrismaService) => new PrismaSessionRepository(db), inject: [PrismaService] },
     { provide: TOKENS.PasswordResets, useFactory: (db: PrismaService) => new PrismaPasswordResetRepository(db), inject: [PrismaService] },
-    // Owner decision S12: mail is RECORDED, not sent — the real SMTP/SES adapter is a later swap
-    // behind the same frozen §5 port (this wiring change is the only touchpoint).
-    { provide: TOKENS.Email, useValue: new StubEmail() },
+    // Provider selection (S17, the S9-1 pattern): the S12 recording stub unless EMAIL_MODE/
+    // SMTP_URL select the real nodemailer SMTP adapter — the "later swap behind the same frozen
+    // §5 port" promised by owner decision S12, delivered as this one wiring change.
+    { provide: TOKENS.Email, useFactory: () => emailFromEnv() },
     { provide: TOKENS.Projects, useFactory: (db: PrismaService) => new PrismaProjectRepository(db), inject: [PrismaService] },
     { provide: TOKENS.Slices, useFactory: (db: PrismaService) => new PrismaSliceRepository(db), inject: [PrismaService] },
     { provide: TOKENS.Features, useFactory: (db: PrismaService) => new PrismaFeatureRepository(db), inject: [PrismaService] },
@@ -108,9 +112,15 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     },
     {
       provide: TOKENS.KnowledgeRetrieval,
-      useFactory: (brain: AgentBrainPort, knowledge: KnowledgeChunkRepository) =>
-        new KnowledgeRetriever({ brain, knowledge }),
-      inject: [TOKENS.Brain, TOKENS.Knowledge],
+      // S16: scoped grounding meters EMBED BrainUsage rows for the filter org.
+      useFactory: (
+        brain: AgentBrainPort,
+        knowledge: KnowledgeChunkRepository,
+        brainUsage: BrainUsageRepository,
+        ids: IdGenerator,
+        clock: Clock,
+      ) => new KnowledgeRetriever({ brain, knowledge, meter: { brainUsage, ids, clock } }),
+      inject: [TOKENS.Brain, TOKENS.Knowledge, TOKENS.BrainUsage, TOKENS.Ids, TOKENS.Clock],
     },
     {
       provide: TOKENS.ChatSessions,
