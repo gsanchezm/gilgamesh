@@ -171,7 +171,7 @@ describe('ClaudeBrain — Anthropic Messages API over fetch (S9)', () => {
     const brain = new ClaudeBrain({ apiKey: KEY });
     const [vec] = await brain.embed(['boundary value analysis']);
     expect(vec).toEqual(embedText('boundary value analysis'));
-    expect(vec).toHaveLength(1536);
+    expect(vec).toHaveLength(1024); // keystone v0.5 — the Voyage voyage-4 dimension
   });
 
   it('claudeOptionsFromEnv: per-tier model overrides + output cap', () => {

@@ -4,12 +4,16 @@ import {
   type BrainCompleteRequest,
   type BrainCompleteResult,
   type BrainStreamWithUsage,
+  type EmbeddingKind,
+  type EmbedWithUsageResult,
   type IntegrationRepository,
+  type KindAwareEmbeddingBrain,
   type OrgScopedBrain,
   type SecretVault,
   type UsageReportingBrain,
 } from '@gilgamesh/application';
 import { ClaudeBrain, claudeOptionsFromEnv } from './claude-brain';
+import { voyageFromEnv } from './voyage-embedder';
 
 /**
  * Provider selection (slice 9, owner decision S9-1 / spec §0-1): `BRAIN_MODE=offline` OR no
@@ -47,18 +51,23 @@ export function resolveBrainMode(env: NodeJS.ProcessEnv = process.env): BrainMod
   return env.BRAIN_MODE === 'offline' || !env.ANTHROPIC_API_KEY?.trim() ? 'offline' : 'auto';
 }
 
-export class SelectingBrain implements AgentBrainPort, UsageReportingBrain, OrgScopedBrain {
+export class SelectingBrain implements AgentBrainPort, UsageReportingBrain, OrgScopedBrain, KindAwareEmbeddingBrain {
   /** `offline` = stub only (self-reported so the BDD sweep can assert no network path exists). */
   readonly mode: BrainMode;
+
+  /** S16: which embedding path serves `embed`/`embedAs` — `voyage` (real semantic) or `lexical`
+   *  (the deterministic domain hash). Self-reported for the same BDD-sweep reason as `mode`. */
+  readonly embeddings: 'voyage' | 'lexical';
 
   /** Per-org ClaudeBrain cache keyed orgId+secretRef — a rotated/removed ref naturally misses. */
   private readonly orgBrains = new Map<string, AgentBrainPort & UsageReportingBrain>();
 
   constructor(
-    private readonly brains: { stub: DeterministicBrain; claude?: ClaudeBrain },
+    private readonly brains: { stub: DeterministicBrain; claude?: ClaudeBrain; voyage?: KindAwareEmbeddingBrain },
     private readonly byok?: OrgKeyResolution,
   ) {
     this.mode = brains.claude ? 'auto' : 'offline';
+    this.embeddings = brains.voyage ? 'voyage' : 'lexical';
   }
 
   private target(): AgentBrainPort {
@@ -73,8 +82,16 @@ export class SelectingBrain implements AgentBrainPort, UsageReportingBrain, OrgS
     return this.target().stream(req);
   }
 
-  embed(texts: string[]): Promise<number[][]> {
+  async embed(texts: string[]): Promise<number[][]> {
+    // S16: the frozen embed() carries no input_type — callers embed stored content by default,
+    // so the Voyage path uses `document` semantics here; kind-aware callers use embedAs below.
+    if (this.brains.voyage) return (await this.brains.voyage.embedAs(texts, 'document')).embeddings;
     return this.target().embed(texts);
+  }
+
+  /** S16 optional extension: Voyage when configured, else the deterministic lexical stub. */
+  embedAs(texts: string[], kind: EmbeddingKind): Promise<EmbedWithUsageResult> {
+    return (this.brains.voyage ?? this.brains.stub).embedAs(texts, kind);
   }
 
   streamWithUsage(req: BrainCompleteRequest): BrainStreamWithUsage {
@@ -121,7 +138,8 @@ export class SelectingBrain implements AgentBrainPort, UsageReportingBrain, OrgS
     if (!this.brains.claude || !this.byok) return this;
 
     const resolve = () => this.resolveOrgBrain(orgId);
-    const handle: AgentBrainPort & UsageReportingBrain = {
+    const self = this;
+    const handle: AgentBrainPort & UsageReportingBrain & KindAwareEmbeddingBrain = {
       complete: async (req) => (await resolve()).complete(req),
       stream: (req) => {
         const targetP = resolve();
@@ -129,7 +147,11 @@ export class SelectingBrain implements AgentBrainPort, UsageReportingBrain, OrgS
           yield* (await targetP).stream(req);
         })();
       },
-      embed: async (texts) => (await resolve()).embed(texts),
+      // S16: embeddings ride the PLATFORM selection (Voyage or lexical), never the per-org Claude
+      // adapter — Voyage BYOK is out of scope and an org's Anthropic key must not fork the one
+      // shared embedding space the vector(1024) column represents.
+      embed: (texts) => self.embed(texts),
+      embedAs: (texts, kind) => self.embedAs(texts, kind),
       // Usage passthrough (the streamWithUsage extension) so CHAT metering keeps REAL token counts.
       streamWithUsage: (req) => {
         let resolveUsage!: (u: Awaited<BrainStreamWithUsage['usage']>) => void;
@@ -192,19 +214,23 @@ export class SelectingBrain implements AgentBrainPort, UsageReportingBrain, OrgS
 }
 
 /**
- * The wiring entry point: resolves the mode from env and composes the stub (+ Claude when auto).
- * Pass `orgKeys` (the integrations repo + vault, from the persistence wiring) to enable org-BYOK
- * call-time resolution; per-org instances share the platform model/cap config — only the key differs.
+ * The wiring entry point: resolves the mode from env and composes the stub (+ Claude when auto,
+ * + the Voyage embedder when `VOYAGE_API_KEY` is set and `BRAIN_MODE != offline` — S16; note the
+ * embedding selection is independent of the Anthropic key: a Voyage-only deployment gets stub chat
+ * with real semantic embeddings). Pass `orgKeys` (the integrations repo + vault, from the
+ * persistence wiring) to enable org-BYOK call-time resolution; per-org instances share the platform
+ * model/cap config — only the key differs.
  */
 export function brainFromEnv(
   env: NodeJS.ProcessEnv = process.env,
   orgKeys?: { integrations: Pick<IntegrationRepository, 'findByKey'>; vault: Pick<SecretVault, 'get'> },
 ): SelectingBrain {
   const stub = new DeterministicBrain();
-  if (resolveBrainMode(env) === 'offline') return new SelectingBrain({ stub });
+  const voyage = voyageFromEnv(env);
+  if (resolveBrainMode(env) === 'offline') return new SelectingBrain({ stub, voyage });
   const options = claudeOptionsFromEnv(env);
   return new SelectingBrain(
-    { stub, claude: new ClaudeBrain({ apiKey: env.ANTHROPIC_API_KEY!.trim(), ...options }) },
+    { stub, claude: new ClaudeBrain({ apiKey: env.ANTHROPIC_API_KEY!.trim(), ...options }), voyage },
     orgKeys && { ...orgKeys, makeClaude: (apiKey) => new ClaudeBrain({ apiKey, ...options }) },
   );
 }
