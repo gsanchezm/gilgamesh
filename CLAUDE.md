@@ -314,6 +314,8 @@ by a 3-angle adversarial review (6 findings fixed; secrets/DI/conventions gates 
 - **Verified (post-merge on `main`):** typecheck + lint · 570 Docker-free unit/e2e · `test:int` 19 ·
   **BDD 133 scenarios / 1063 steps** · **Playwright 17**. Every suite runs offline (`BRAIN_MODE=offline`
   in all four harnesses + test-setup default); real answers require only `ANTHROPIC_API_KEY` at runtime.
-- **Deferred:** org-BYOK call-time key resolution (`SecretVault.get()`) · live EventSource in the web
+- **Deferred:** ~~org-BYOK call-time key resolution~~ (CLOSED on `main` via `feat-byok-live`:
+  `SecretVault.get()` + the `forOrg(orgId)` optional extension — per-call row re-read, orgId+secretRef
+  cache, offline seam preserved) · live EventSource in the web
   chat · semantic embeddings (Anthropic has no embeddings API — Voyage decision) · token charging
   (4-tier billing migration) · optional `BRAIN_SMOKE` manual live-key smoke.
