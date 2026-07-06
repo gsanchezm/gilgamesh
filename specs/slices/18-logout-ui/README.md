@@ -57,7 +57,8 @@ test exposes a real defect.
 - `apps/web/e2e/logout.spec.ts` — Playwright: UI login → agent room → Log out → back at `/login`,
   session cookie gone, old cookie replay → 401, protected route redirects to `/login`
   (AC-OUT-01..03). Written to run under the existing serialized e2e stack; not run in this stream.
-- This spec + a docs touch-up marking the S1-B logout deferral closed.
+- This spec, which documents the S1-B logout deferral as **closed** (the CLAUDE.md / status-board
+  touch-up rides the merge — that file is shared across parallel streams).
 
 ## 3. Out of scope
 
