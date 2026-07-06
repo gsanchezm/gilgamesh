@@ -202,10 +202,13 @@ for deity names, IBM Plex Sans/Mono). Below specifies *behavior*; styling is del
 - Validation (`422`): missing required name fields, malformed email, password below policy.
 
 ### 7.5 Onboarding wizard (3 steps) — `/onboarding`
-Requires authentication (else `401` → login). The three **visible** steps match the prototype exactly; the
-Org is created **implicitly** on Finish (no org-name field — see deviation note in §13).
+Requires authentication (else `401` → login). The three **visible** steps match the prototype; the
+Org is created on Finish from the optional **Company** (`orgName`) carried from register, falling back
+to the project name (see deviation note in §13).
 
-- **Step 1 — Project name.** Required, trimmed, non-empty. Empty/whitespace → inline error, **Next** disabled.
+- **Step 1 — Project name (+ optional Company).** Project name required, trimmed, non-empty.
+  Empty/whitespace → inline error, **Next** disabled. **Company** is optional, prefilled from the value
+  collected at register (carried via router state) and editable; it becomes the `Org.name` (AC-ONB-14).
 - **Step 2 — Format.** Radio: **BDD / Gherkin** or **Traditional cases** → `ProjectFormat = BDD | TRADITIONAL`.
 - **Step 3 — Connect repo (optional).** Provider choice **GitHub | Bitbucket | Azure DevOps** →
   `repoProvider ∈ {github, bitbucket, ado}`, plus `repoFullName` + `repoBranch`. **Skip** is allowed.
@@ -304,6 +307,10 @@ verifies (traceability matrix in §11).
   subscription/project).
 - **AC-ONB-13** Finishing onboarding redirects to the new project's agent room and audits `org.created`
   (when bootstrapped) and `project.created`.
+- **AC-ONB-14** Finishing onboarding with an explicit `orgName` (the Company collected at register,
+  carried via router state, editable on step 1) names the `Org` from it; a missing or whitespace-only
+  `orgName` falls back to the project name. The `Org` is still created **only** at onboarding
+  (AC-AUTH-01 unchanged — register creates no `Org`).
 
 ### Agent room (`agent-room.feature`)
 - **AC-ROOM-01** The agent room lists exactly 11 agents with their per-project `ToolBinding` (`enabled`,
@@ -442,6 +449,7 @@ Never store credentials/tokens/passwords in `metadata`.
 | AC-ONB-11 | onboarding.feature | `@AC-ONB-11` Onboarding requires auth and role |
 | AC-ONB-12 | onboarding.feature | `@AC-ONB-12` Bootstrap is all-or-nothing |
 | AC-ONB-13 | onboarding.feature | `@AC-ONB-13` Finish redirects and audits |
+| AC-ONB-14 | onboarding.feature | `@AC-ONB-14` Explicit company names the Org / fallback to project name |
 | AC-ROOM-01 | agent-room.feature | `@AC-ROOM-01` List the eleven agents |
 | AC-ROOM-02 | agent-room.feature | `@AC-ROOM-02` Status derives from enabled |
 | AC-ROOM-03 | agent-room.feature | `@AC-ROOM-03` Fresh project shows all active |
@@ -493,10 +501,13 @@ Never store credentials/tokens/passwords in `metadata`.
 - **`EmailPort`** (dev/log adapter in slice 1) and a **password-reset token store** (hashed, expiring,
   single-use) are implied infrastructure not named in the keystone ports (§5). They sit behind the
   `IdentityProvider`/local-auth boundary. Recommend adding `EmailPort` to keystone §5 in the next revision.
-- **Implicit Org creation in onboarding:** the prototype's 3 onboarding steps are project-only (no org-name
-  field); the decisions log + task require onboarding to create the `Org`. To honor *both* "match the
-  prototype" and "onboarding creates Org+Project", the `Org.name` is **derived** from the user's name and the
-  `slug` auto-generated/de-collided, editable later (out of slice scope). No new visible step/field is added.
+- **Org naming in onboarding (revised with the slice-7 re-skin — AC-ONB-14):** the original slice-1
+  deviation derived the `Org.name` with no org-name field. The re-skinned flow now collects a **Company**
+  at register (slice-7 `register.feature`), carries it via **router state** to onboarding (no server-side
+  persistence at register), and consumes it there: `POST /projects` accepts an optional `orgName` that
+  names the `Org`; missing/blank falls back to the project name. The `Org` is still created **only** at
+  onboarding bootstrap — register creates no `Org` and AC-AUTH-01 is unchanged. `slug` remains
+  auto-generated/de-collided from the resolved name.
 - **FREE trial unlocks the full 11-agent roster:** the seeded `Subscription` is `plan = FREE` / `TRIALING`,
   yet all 11 agents are seedable/awake. Keystone §2 fixes the catalog at 11 always; plan limits apply to
   workspace/services/execution usage, not to seeding the fixed agent catalog.

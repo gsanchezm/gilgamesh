@@ -1,8 +1,10 @@
 # Slice 1 — Onboarding (3 steps -> tenant bootstrap)
 # Maps 1:1 to spec.md §8 "Onboarding" acceptance criteria (AC-ONB-*).
 # Names/enums/paths are verbatim from specs/_keystone/foundation-vocabulary.md.
-# Visible steps match the prototype (project name -> format -> repo); the Org is created
-# implicitly on Finish (Org.name derived, slug auto-generated). Repo = metadata only in slice 1.
+# Visible steps match the prototype (project name -> format -> repo); the Org is created on
+# Finish (Org.name = the optional company/orgName — collected at register, carried via router
+# state, editable on step 1 — falling back to the project name; slug auto-generated).
+# Repo = metadata only in slice 1.
 
 Feature: Onboarding and tenant bootstrap
   As a newly-registered user with no workspace
@@ -117,6 +119,25 @@ Feature: Onboarding and tenant bootstrap
     And no additional Agent rows are seeded
     And no additional Subscription is created
     And only a new Project "Voyager" with its 11 ToolBinding rows is created
+
+  @AC-ONB-14 @bootstrap @company
+  Scenario: An explicit company names the Org
+    Given I have completed steps 1 to 3 with project name "OmniPizza" and format "BDD"
+    When I finish onboarding with the company "Acme Inc."
+    Then the created Org is named "Acme Inc."
+    And a "POST /projects" creates the Project "OmniPizza" with format "BDD"
+
+  @AC-ONB-14 @bootstrap @company @edge
+  Scenario: Without a company the Org name falls back to the project name
+    Given I have completed steps 1 to 3 with project name "OmniPizza" and format "BDD"
+    When I finish onboarding
+    Then the created Org is named "OmniPizza"
+
+  @AC-ONB-14 @bootstrap @company @edge
+  Scenario: A whitespace-only company falls back to the project name
+    Given I have completed steps 1 to 3 with project name "OmniPizza" and format "BDD"
+    When I finish onboarding with the company "   "
+    Then the created Org is named "OmniPizza"
 
   @AC-ONB-11 @security @edge
   Scenario: Onboarding requires authentication

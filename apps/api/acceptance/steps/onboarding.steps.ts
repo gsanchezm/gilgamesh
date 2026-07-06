@@ -17,12 +17,20 @@ const PROVIDER_BY_LABEL: Record<string, string> = {
 
 async function finishOnboarding(
   world: GilgameshWorld,
-  opts: { projectName?: string; format?: string; repoProvider?: string; repoFullName?: string; repoBranch?: string } = {},
+  opts: {
+    projectName?: string;
+    format?: string;
+    orgName?: string;
+    repoProvider?: string;
+    repoFullName?: string;
+    repoBranch?: string;
+  } = {},
 ) {
   const body: Record<string, unknown> = {
     projectName: opts.projectName ?? (world.notes.get('projectName') as string) ?? 'OmniPizza',
     format: opts.format ?? (world.notes.get('format') as string) ?? 'BDD',
   };
+  if (opts.orgName !== undefined) body.orgName = opts.orgName;
   if (opts.repoProvider) {
     body.repoProvider = opts.repoProvider;
     if (opts.repoFullName) body.repoFullName = opts.repoFullName;
@@ -223,6 +231,18 @@ Then(
 
 Then('I am redirected to the agent room of the new project', function () {
   /* UI step — client navigation, verified by Playwright. */
+});
+
+// ---- Org naming (AC-ONB-14) ---------------------------------------------------------
+
+When('I finish onboarding with the company {string}', async function (this: GilgameshWorld, company: string) {
+  await finishOnboarding(this, { orgName: company });
+});
+
+Then('the created Org is named {string}', async function (this: GilgameshWorld, name: string) {
+  assert.equal(this.response?.status, 201);
+  const org = await this.db.org.findUnique({ where: { id: this.lastOrgId! } });
+  assert.equal(org?.name, name);
 });
 
 // ---- Roster (AC-ONB-05) -------------------------------------------------------------
