@@ -1,5 +1,5 @@
 import { EMBED_DIM, embedText } from '@gilgamesh/domain';
-import { DeterministicBrain } from '@gilgamesh/application';
+import { DeterministicBrain, type IntegrationRecord, type KindAwareEmbeddingBrain } from '@gilgamesh/application';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { brainFromEnv, SelectingBrain } from '../src/infra/selecting-brain';
 import {
@@ -212,7 +212,9 @@ describe('SelectingBrain — embed routing (S16)', () => {
     expect(viaKind.usage.totalTokens).toBe(3); // the stub's whitespace estimate
   });
 
-  it('forOrg handles keep PLATFORM embeddings (Voyage BYOK is out of scope — one embedding space)', async () => {
+  it('forOrg handles without a voyage factory keep PLATFORM embeddings (one embedding space)', async () => {
+    // S19: an org's ANTHROPIC key must never fork the shared embedding space — only a voyage
+    // BYOK factory (makeVoyage) reroutes embeds, and this brain has none wired.
     const voyage = fakeVoyage();
     const perOrgEmbed = vi.fn(async (texts: string[]) => texts.map(() => [0]));
     const claude = {
@@ -250,5 +252,178 @@ describe('SelectingBrain — embed routing (S16)', () => {
     const brain = brainFromEnv(env({ VOYAGE_API_KEY: KEY, ANTHROPIC_API_KEY: 'sk-ant-x' }));
     expect(brain.mode).toBe('auto');
     expect(brain.embeddings).toBe('voyage');
+  });
+});
+
+describe('SelectingBrain — org voyage BYOK call-time resolution (S19, AC-VBYOK-05)', () => {
+  const voyageRow = (orgId: string, secretRef: string | null, connected = true): IntegrationRecord => ({
+    id: `int-${orgId}`,
+    orgId,
+    key: 'voyage',
+    group: 'AI_PROVIDERS',
+    connected,
+    secretRef,
+    config: {},
+    connectedById: null,
+    connectedAt: null,
+  });
+
+  /** A per-org embedder whose vectors carry the key it was built with, so routing is assertable. */
+  function orgEmbedder(apiKey: string): KindAwareEmbeddingBrain {
+    return {
+      embedAs: vi.fn(async (texts: string[], kind: string) => ({
+        embeddings: texts.map(() => [`org:${apiKey}:${kind}`] as unknown as number[]),
+        usage: { totalTokens: texts.length },
+      })),
+    };
+  }
+
+  function makeVoyageByok(over: {
+    rows?: Record<string, IntegrationRecord | undefined>;
+    secrets?: Record<string, string>;
+    platformVoyage?: boolean;
+    maxOrgBrains?: number;
+  }) {
+    const platform = {
+      embedAs: vi.fn(async (texts: string[], kind: string) => ({
+        embeddings: texts.map(() => [`platform:${kind}`] as unknown as number[]),
+        usage: { totalTokens: texts.length },
+      })),
+    };
+    const findByKey = vi.fn(async (orgId: string, key: string) => (key === 'voyage' ? (over.rows?.[orgId] ?? null) : null));
+    const get = vi.fn(async (scope: string) => over.secrets?.[scope] ?? null);
+    const makeVoyage = vi.fn((apiKey: string) => orgEmbedder(apiKey));
+    const brain = new SelectingBrain(
+      { stub: new DeterministicBrain(), voyage: over.platformVoyage === false ? undefined : platform },
+      { integrations: { findByKey }, vault: { get }, makeVoyage, maxOrgBrains: over.maxOrgBrains },
+    );
+    return { brain, platform, findByKey, get, makeVoyage };
+  }
+
+  /** The handle is typed as the frozen port; the S16 extension rides it (hasEmbedAs at runtime). */
+  function handleOf(brain: SelectingBrain, orgId: string) {
+    return brain.forOrg(orgId) as ReturnType<SelectingBrain['forOrg']> & KindAwareEmbeddingBrain;
+  }
+
+  it('a connected org row resolves the vaulted key and embeds with the per-org embedder', async () => {
+    const { brain, platform, findByKey, get, makeVoyage } = makeVoyageByok({
+      rows: { 'org-1': voyageRow('org-1', 'vault://org-1/voyage') },
+      secrets: { 'org-1/voyage': 'pa-org-1' },
+    });
+    const res = await handleOf(brain, 'org-1').embedAs(['q'], 'query');
+    expect(res.embeddings).toEqual([['org:pa-org-1:query']]);
+    expect(findByKey).toHaveBeenCalledWith('org-1', 'voyage');
+    expect(get).toHaveBeenCalledWith('org-1/voyage'); // scope = secretRef minus 'vault://'
+    expect(makeVoyage).toHaveBeenCalledWith('pa-org-1');
+    expect(platform.embedAs).not.toHaveBeenCalled();
+  });
+
+  it('the frozen embed() on the org handle rides the per-org embedder with document semantics', async () => {
+    const { brain } = makeVoyageByok({
+      rows: { 'org-1': voyageRow('org-1', 'vault://org-1/voyage') },
+      secrets: { 'org-1/voyage': 'pa-org-1' },
+    });
+    const vecs = await brain.forOrg('org-1').embed(['x']);
+    expect(vecs).toEqual([['org:pa-org-1:document']]);
+  });
+
+  it('no org row -> the platform Voyage embedder serves', async () => {
+    const { brain, get, makeVoyage } = makeVoyageByok({ rows: {} });
+    const res = await handleOf(brain, 'org-1').embedAs(['q'], 'query');
+    expect(res.embeddings).toEqual([['platform:query']]);
+    expect(get).not.toHaveBeenCalled();
+    expect(makeVoyage).not.toHaveBeenCalled();
+  });
+
+  it('no org row AND no platform key -> the deterministic lexical stub serves (no key at all)', async () => {
+    const { brain } = makeVoyageByok({ rows: {}, platformVoyage: false });
+    const [vec] = await brain.forOrg('org-1').embed(['boundary value analysis']);
+    expect(vec).toEqual(embedText('boundary value analysis'));
+  });
+
+  it('an org row without a vault entry falls through to the platform embedder', async () => {
+    const { brain, makeVoyage } = makeVoyageByok({
+      rows: { 'org-1': voyageRow('org-1', 'vault://org-1/voyage') },
+      secrets: {},
+    });
+    const res = await handleOf(brain, 'org-1').embedAs(['q'], 'query');
+    expect(res.embeddings).toEqual([['platform:query']]);
+    expect(makeVoyage).not.toHaveBeenCalled();
+  });
+
+  it('DISCONNECT bites on the very next call (per-call row re-read)', async () => {
+    const rows: Record<string, IntegrationRecord | undefined> = {
+      'org-1': voyageRow('org-1', 'vault://org-1/voyage'),
+    };
+    const { brain } = makeVoyageByok({ rows, secrets: { 'org-1/voyage': 'pa-org-1' } });
+    const org = handleOf(brain, 'org-1');
+    expect((await org.embedAs(['q'], 'query')).embeddings).toEqual([['org:pa-org-1:query']]);
+    rows['org-1'] = voyageRow('org-1', null, false); // PATCH …/integrations/voyage disconnect
+    expect((await org.embedAs(['q'], 'query')).embeddings).toEqual([['platform:query']]);
+  });
+
+  it('caches the per-org embedder by orgId+secretRef; rotation misses and rebuilds', async () => {
+    const rows: Record<string, IntegrationRecord | undefined> = {
+      'org-1': voyageRow('org-1', 'vault://org-1/voyage@v1'),
+    };
+    const { brain, findByKey, get, makeVoyage } = makeVoyageByok({
+      rows,
+      secrets: { 'org-1/voyage@v1': 'pa-old', 'org-1/voyage@v2': 'pa-new' },
+    });
+    const org = handleOf(brain, 'org-1');
+    await org.embedAs(['a'], 'query');
+    await org.embedAs(['b'], 'document');
+    expect(makeVoyage).toHaveBeenCalledTimes(1); // cached
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(findByKey).toHaveBeenCalledTimes(2); // the row is re-read EVERY call
+
+    rows['org-1'] = voyageRow('org-1', 'vault://org-1/voyage@v2'); // key rotation
+    expect((await org.embedAs(['c'], 'query')).embeddings).toEqual([['org:pa-new:query']]);
+    expect(makeVoyage).toHaveBeenNthCalledWith(2, 'pa-new');
+  });
+
+  it('voyage-only BYOK keeps chat on the deterministic stub through the handle', async () => {
+    const { brain } = makeVoyageByok({
+      rows: { 'org-1': voyageRow('org-1', 'vault://org-1/voyage') },
+      secrets: { 'org-1/voyage': 'pa-org-1' },
+    });
+    const org = brain.forOrg('org-1');
+    const req = { tier: 'HAIKU' as const, system: 'x', messages: [{ role: 'user', content: 'hi' }] };
+    const a = await org.complete(req);
+    const b = await org.complete(req);
+    expect(a.text).toBe(b.text); // deterministic stub chat, unchanged by voyage BYOK
+  });
+
+  it('brainFromEnv wires org voyage resolution: the org key reaches the wire, never the logs', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        object: 'list',
+        data: [{ object: 'embedding', embedding: new Array<number>(EMBED_DIM).fill(0.5), index: 0 }],
+        usage: { total_tokens: 2 },
+      }),
+      body: null,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const brain = brainFromEnv(env(), {
+      integrations: { findByKey: async () => voyageRow('org-1', 'vault://org-1/voyage') } as never,
+      vault: { get: async () => 'pa-org-wire-key' } as never,
+    });
+    expect(brain.embeddings).toBe('lexical'); // no PLATFORM key — but the ORG key still resolves
+    await brain.forOrg('org-1').embed(['x']);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(VOYAGE_EMBEDDINGS_URL);
+    expect((init.headers as Record<string, string>).authorization).toBe('Bearer pa-org-wire-key');
+  });
+
+  it('brainFromEnv with BRAIN_MODE=offline never wires voyage BYOK: forOrg is the identity', () => {
+    const findByKey = vi.fn();
+    const brain = brainFromEnv(env({ BRAIN_MODE: 'offline', VOYAGE_API_KEY: KEY }), {
+      integrations: { findByKey } as never,
+      vault: { get: vi.fn() } as never,
+    });
+    expect(brain.forOrg('org-1')).toBe(brain); // the stub path + the BDD fault-injection seam
+    expect(findByKey).not.toHaveBeenCalled();
   });
 });

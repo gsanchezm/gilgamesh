@@ -13,7 +13,7 @@ import {
   type UsageReportingBrain,
 } from '@gilgamesh/application';
 import { ClaudeBrain, claudeOptionsFromEnv } from './claude-brain';
-import { voyageFromEnv } from './voyage-embedder';
+import { VoyageBrainEmbedder, voyageFromEnv, voyageOptionsFromEnv } from './voyage-embedder';
 
 /**
  * Provider selection (slice 9, owner decision S9-1 / spec §0-1): `BRAIN_MODE=offline` OR no
@@ -29,21 +29,30 @@ import { voyageFromEnv } from './voyage-embedder';
  * In `offline` mode `forOrg` returns this instance (the stub path — determinism AND the BDD
  * fault-injection seam, which patches `stream` on the bound brain, are preserved). The resolved
  * API key lives only inside the built adapter — it is NEVER logged or embedded in errors.
+ *
+ * Org-voyage BYOK (S19, spec 19 AC-VBYOK-05): the SAME per-call discipline for embeddings — the
+ * org's `voyage` Integration row → `SecretVault.get` → a per-org {@link VoyageBrainEmbedder}
+ * (its own orgId+secretRef LRU cache) → else the platform Voyage embedder → else the lexical
+ * stub. Gated only on the explicit `BRAIN_MODE=offline` pin (wired via `makeVoyage`), NOT on the
+ * platform keys: a deployment without `VOYAGE_API_KEY` still honors org keys.
  */
 export type BrainMode = 'offline' | 'auto';
 
-/** Keystone §8 AI-provider integration key — the row carrying an org's BYOK `secretRef`. */
+/** Keystone §8 AI-provider integration keys — the rows carrying an org's BYOK `secretRef`. */
 const ANTHROPIC_INTEGRATION_KEY = 'anthropic';
+const VOYAGE_INTEGRATION_KEY = 'voyage';
 const SECRET_REF_PREFIX = 'vault://';
 const DEFAULT_MAX_ORG_BRAINS = 50;
 
-/** Call-time BYOK resolution deps: the org's integration row, the vault, and an adapter factory. */
+/** Call-time BYOK resolution deps: the org's integration row, the vault, and adapter factories. */
 export interface OrgKeyResolution {
   integrations: Pick<IntegrationRepository, 'findByKey'>;
   vault: Pick<SecretVault, 'get'>;
-  /** Builds the per-org adapter — injected so tests fake it and env config is applied once. */
-  makeClaude: (apiKey: string) => AgentBrainPort & UsageReportingBrain;
-  /** Per-org instance cache cap (default 50); the least-recently-used entry is evicted beyond it. */
+  /** Builds the per-org chat adapter (S9) — injected so tests fake it and env config is applied once. */
+  makeClaude?: (apiKey: string) => AgentBrainPort & UsageReportingBrain;
+  /** Builds the per-org Voyage embedder (S19) — org-voyage BYOK is inert without it. */
+  makeVoyage?: (apiKey: string) => KindAwareEmbeddingBrain;
+  /** Per-org instance cache cap (default 50, per cache); the least-recently-used entry is evicted beyond it. */
   maxOrgBrains?: number;
 }
 
@@ -61,6 +70,9 @@ export class SelectingBrain implements AgentBrainPort, UsageReportingBrain, OrgS
 
   /** Per-org ClaudeBrain cache keyed orgId+secretRef — a rotated/removed ref naturally misses. */
   private readonly orgBrains = new Map<string, AgentBrainPort & UsageReportingBrain>();
+
+  /** Per-org Voyage embedder cache (S19), same keying/eviction discipline as {@link orgBrains}. */
+  private readonly orgVoyages = new Map<string, KindAwareEmbeddingBrain>();
 
   constructor(
     private readonly brains: { stub: DeterministicBrain; claude?: ClaudeBrain; voyage?: KindAwareEmbeddingBrain },
@@ -133,27 +145,40 @@ export class SelectingBrain implements AgentBrainPort, UsageReportingBrain, OrgS
    * immediately) and delegates to the per-org, platform, or stub adapter.
    */
   forOrg(orgId: string): AgentBrainPort {
-    // Offline (or no resolution deps wired): this instance IS the right path — returning `this`
-    // keeps determinism and the BDD fault-injection seam (tests patch `stream` on the bound brain).
-    if (!this.brains.claude || !this.byok) return this;
+    // Chat BYOK (S9) needs the platform Claude adapter + its factory; voyage BYOK (S19) needs only
+    // its factory — an org's key must work without a platform `VOYAGE_API_KEY` (spec 19, S19-4).
+    const chatByok = !!(this.brains.claude && this.byok?.makeClaude);
+    const voyageByok = !!this.byok?.makeVoyage;
+    // Neither wired (offline, or no resolution deps): this instance IS the right path — returning
+    // `this` keeps determinism and the BDD fault-injection seam (tests patch `stream` on the bound brain).
+    if (!chatByok && !voyageByok) return this;
 
     const resolve = () => this.resolveOrgBrain(orgId);
+    const resolveEmbedder = () => this.resolveOrgVoyage(orgId);
     const self = this;
     const handle: AgentBrainPort & UsageReportingBrain & KindAwareEmbeddingBrain = {
-      complete: async (req) => (await resolve()).complete(req),
+      complete: async (req) => (chatByok ? (await resolve()).complete(req) : self.complete(req)),
       stream: (req) => {
+        if (!chatByok) return self.stream(req); // the platform/stub path (incl. the patched seam)
         const targetP = resolve();
         return (async function* () {
           yield* (await targetP).stream(req);
         })();
       },
-      // S16: embeddings ride the PLATFORM selection (Voyage or lexical), never the per-org Claude
-      // adapter — Voyage BYOK is out of scope and an org's Anthropic key must not fork the one
-      // shared embedding space the vector(1024) column represents.
-      embed: (texts) => self.embed(texts),
-      embedAs: (texts, kind) => self.embedAs(texts, kind),
+      // S19: embeddings resolve the org's `voyage` key at call time (org → platform → lexical).
+      // Without a voyage factory they ride the PLATFORM selection — an org's ANTHROPIC key must
+      // never fork the one shared embedding space the vector(1024) column represents (S16 rule).
+      embed: async (texts) => {
+        if (!voyageByok) return self.embed(texts);
+        // The frozen embed() carries no input_type — stored-content (`document`) semantics, as in
+        // the platform path above.
+        return (await (await resolveEmbedder()).embedAs(texts, 'document')).embeddings;
+      },
+      embedAs: async (texts, kind) =>
+        voyageByok ? (await resolveEmbedder()).embedAs(texts, kind) : self.embedAs(texts, kind),
       // Usage passthrough (the streamWithUsage extension) so CHAT metering keeps REAL token counts.
       streamWithUsage: (req) => {
+        if (!chatByok) return self.streamWithUsage(req);
         let resolveUsage!: (u: Awaited<BrainStreamWithUsage['usage']>) => void;
         let rejectUsage!: (e: unknown) => void;
         const usage = new Promise<Awaited<BrainStreamWithUsage['usage']>>((res, rej) => {
@@ -182,34 +207,62 @@ export class SelectingBrain implements AgentBrainPort, UsageReportingBrain, OrgS
    * re-read on every call; the built adapter is cached by orgId+secretRef (LRU-ish, capped) so a
    * hit costs no vault read. The key is handed straight to the factory — never logged or thrown.
    */
-  private async resolveOrgBrain(orgId: string): Promise<AgentBrainPort & UsageReportingBrain> {
-    const platform = this.brains.claude!;
+  private resolveOrgBrain(orgId: string): Promise<AgentBrainPort & UsageReportingBrain> {
+    // Only reachable through the chatByok gate in forOrg (platform claude + factory both present).
+    return this.resolveOrgProvider(orgId, {
+      integrationKey: ANTHROPIC_INTEGRATION_KEY,
+      platform: this.brains.claude!,
+      make: this.byok!.makeClaude!,
+      cache: this.orgBrains,
+    });
+  }
+
+  /**
+   * S19 per-call resolution (spec 19 AC-VBYOK-05): org `voyage` key → platform Voyage → lexical
+   * stub. Same discipline as {@link resolveOrgBrain}: the row is re-read every call so a
+   * disconnect/rotation bites on the very next embed.
+   */
+  private resolveOrgVoyage(orgId: string): Promise<KindAwareEmbeddingBrain> {
+    // Only reachable through the voyageByok gate in forOrg (the factory is present).
+    return this.resolveOrgProvider(orgId, {
+      integrationKey: VOYAGE_INTEGRATION_KEY,
+      platform: this.brains.voyage ?? this.brains.stub,
+      make: this.byok!.makeVoyage!,
+      cache: this.orgVoyages,
+    });
+  }
+
+  /** The shared org→platform resolution pipeline: row re-read → LRU hit → vault read → build+cache. */
+  private async resolveOrgProvider<T>(
+    orgId: string,
+    p: { integrationKey: string; platform: T; make: (apiKey: string) => T; cache: Map<string, T> },
+  ): Promise<T> {
     const byok = this.byok!;
-    const row = await byok.integrations.findByKey(orgId, ANTHROPIC_INTEGRATION_KEY);
+    const row = await byok.integrations.findByKey(orgId, p.integrationKey);
     const secretRef = row?.connected ? row.secretRef : null;
-    if (!secretRef || !secretRef.startsWith(SECRET_REF_PREFIX)) return platform;
+    if (!secretRef || !secretRef.startsWith(SECRET_REF_PREFIX)) return p.platform;
 
     const cacheKey = `${orgId}\n${secretRef}`;
-    const cached = this.orgBrains.get(cacheKey);
+    const cached = p.cache.get(cacheKey);
     if (cached) {
       // Refresh recency: Map preserves insertion order, so re-inserting makes eviction LRU-ish.
-      this.orgBrains.delete(cacheKey);
-      this.orgBrains.set(cacheKey, cached);
+      p.cache.delete(cacheKey);
+      p.cache.set(cacheKey, cached);
       return cached;
     }
 
     const apiKey = await byok.vault.get(secretRef.slice(SECRET_REF_PREFIX.length));
-    if (!apiKey) return platform; // BYOK row without a vault entry → platform fallthrough (spec §12)
+    if (!apiKey) return p.platform; // BYOK row without a vault entry → platform fallthrough (spec §12)
 
-    const brain = byok.makeClaude(apiKey);
+    const built = p.make(apiKey);
     const cap = byok.maxOrgBrains ?? DEFAULT_MAX_ORG_BRAINS;
-    while (this.orgBrains.size >= cap) {
-      const oldest = this.orgBrains.keys().next().value as string | undefined;
+    while (p.cache.size >= cap) {
+      const oldest = p.cache.keys().next().value as string | undefined;
       if (oldest === undefined) break;
-      this.orgBrains.delete(oldest);
+      p.cache.delete(oldest);
     }
-    this.orgBrains.set(cacheKey, brain);
-    return brain;
+    p.cache.set(cacheKey, built);
+    return built;
   }
 }
 
@@ -220,6 +273,11 @@ export class SelectingBrain implements AgentBrainPort, UsageReportingBrain, OrgS
  * with real semantic embeddings). Pass `orgKeys` (the integrations repo + vault, from the
  * persistence wiring) to enable org-BYOK call-time resolution; per-org instances share the platform
  * model/cap config — only the key differs.
+ *
+ * S19: org-voyage BYOK is gated ONLY on the explicit offline pin (`BRAIN_MODE=offline`), never on
+ * the platform keys — an org's voyage key must work even when the platform has no `VOYAGE_API_KEY`
+ * (that key is the per-call fallback, not the prerequisite). Every harness/CI pins
+ * `BRAIN_MODE=offline`, so no suite ever builds the factory or touches the network.
  */
 export function brainFromEnv(
   env: NodeJS.ProcessEnv = process.env,
@@ -227,10 +285,16 @@ export function brainFromEnv(
 ): SelectingBrain {
   const stub = new DeterministicBrain();
   const voyage = voyageFromEnv(env);
-  if (resolveBrainMode(env) === 'offline') return new SelectingBrain({ stub, voyage });
+  const makeVoyage =
+    orgKeys && env.BRAIN_MODE !== 'offline'
+      ? (apiKey: string) => new VoyageBrainEmbedder({ apiKey, ...voyageOptionsFromEnv(env) })
+      : undefined;
+  if (resolveBrainMode(env) === 'offline') {
+    return new SelectingBrain({ stub, voyage }, orgKeys && makeVoyage ? { ...orgKeys, makeVoyage } : undefined);
+  }
   const options = claudeOptionsFromEnv(env);
   return new SelectingBrain(
     { stub, claude: new ClaudeBrain({ apiKey: env.ANTHROPIC_API_KEY!.trim(), ...options }), voyage },
-    orgKeys && { ...orgKeys, makeClaude: (apiKey) => new ClaudeBrain({ apiKey, ...options }) },
+    orgKeys && { ...orgKeys, makeClaude: (apiKey) => new ClaudeBrain({ apiKey, ...options }), makeVoyage },
   );
 }

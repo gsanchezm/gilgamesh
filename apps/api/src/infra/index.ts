@@ -4,6 +4,7 @@ export * from './crypto-token';
 export * from './system-clock';
 export * from './claude-brain';
 export * from './voyage-embedder';
+export * from './voyage-key-verifier';
 export * from './selecting-brain';
 export * from './anthropic-key-verifier';
 export * from './stripe-payment-provider';

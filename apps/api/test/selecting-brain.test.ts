@@ -318,11 +318,30 @@ describe('AnthropicKeyVerifier (AC-BYOK-02)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('brainKeyVerifierFromEnv: real ping only in auto mode, stub verifier offline', () => {
-    expect(brainKeyVerifierFromEnv(env({ ANTHROPIC_API_KEY: 'sk-ant-x' }))).toBeInstanceOf(AnthropicKeyVerifier);
+  it('brainKeyVerifierFromEnv: stub offline; a routing verifier otherwise (S19 — voyage dispatches by key)', async () => {
+    // Explicit offline pins the stub for EVERY provider (the harness/CI posture).
     expect(brainKeyVerifierFromEnv(env({ BRAIN_MODE: 'offline', ANTHROPIC_API_KEY: 'sk-ant-x' }))).toBeInstanceOf(
       StubBrainKeyVerifier,
     );
-    expect(brainKeyVerifierFromEnv(env())).toBeInstanceOf(StubBrainKeyVerifier);
+    expect(brainKeyVerifierFromEnv(env({ BRAIN_MODE: 'offline' }))).toBeInstanceOf(StubBrainKeyVerifier);
+
+    // Auto mode: anthropic keys still hit the real 1-token ping (the S9 behavior, now behind routing).
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 401, json: async () => ({}) })),
+    );
+    const auto = brainKeyVerifierFromEnv(env({ ANTHROPIC_API_KEY: 'sk-ant-x' }));
+    await expect(auto.verify({ key: 'anthropic', token: 'sk-ant-candidate' })).rejects.toMatchObject({
+      code: 'VALIDATION',
+    });
+
+    // No platform Anthropic key: anthropic connects keep the stub path (accepts without network).
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('the anthropic stub path must not fetch');
+      }),
+    );
+    await expect(brainKeyVerifierFromEnv(env()).verify({ key: 'anthropic', token: 'sk-ant-x' })).resolves.toBeUndefined();
   });
 });

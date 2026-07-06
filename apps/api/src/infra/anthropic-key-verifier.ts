@@ -1,6 +1,7 @@
 import { ApplicationError, StubBrainKeyVerifier, type BrainKeyVerifier } from '@gilgamesh/application';
 import { ClaudeApiError, ClaudeBrain, claudeOptionsFromEnv } from './claude-brain';
 import { resolveBrainMode } from './selecting-brain';
+import { RoutingBrainKeyVerifier, VoyageKeyVerifier } from './voyage-key-verifier';
 
 /**
  * Real {@link BrainKeyVerifier} (slice 9, AC-BYOK-02): a minimal 1-token HAIKU `complete` ping with
@@ -33,9 +34,14 @@ export class AnthropicKeyVerifier implements BrainKeyVerifier {
 }
 
 /**
- * The real 1-token ping only when the brain runs in `auto` mode (platform key present, not forced
- * offline); every offline/harness path keeps the deterministic stub verifier — no network in BDD.
+ * Verifier selection, per provider (S9 + S19). Explicit `BRAIN_MODE=offline` pins the stub for
+ * EVERY provider — no suite/harness can ever ping one. Otherwise the frozen `verify({key, token})`
+ * routes on the §8 key: `voyage` → the real Voyage embed ping (its BYOK works without a platform
+ * `VOYAGE_API_KEY`, spec 19 decision S19-4); everything else keeps the S9 anthropic gate (the real
+ * 1-token ping only in `auto` mode — platform key present).
  */
 export function brainKeyVerifierFromEnv(env: NodeJS.ProcessEnv = process.env): BrainKeyVerifier {
-  return resolveBrainMode(env) === 'auto' ? new AnthropicKeyVerifier() : new StubBrainKeyVerifier();
+  if (env.BRAIN_MODE === 'offline') return new StubBrainKeyVerifier();
+  const anthropic = resolveBrainMode(env) === 'auto' ? new AnthropicKeyVerifier() : new StubBrainKeyVerifier();
+  return new RoutingBrainKeyVerifier({ voyage: new VoyageKeyVerifier() }, anthropic);
 }
