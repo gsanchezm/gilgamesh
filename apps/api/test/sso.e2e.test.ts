@@ -12,9 +12,14 @@ const STUB_UNVERIFIED_CODE = 'stub-sso-unverified';
 const STUB_EMAIL = 'sso.stub@gilgamesh.test';
 const STUB_UNVERIFIED_EMAIL = 'sso.unverified@gilgamesh.test';
 
+const ORIGINAL_REDIS = process.env.REDIS_URL;
+
 let app: INestApplication;
 
 beforeAll(async () => {
+  // Pin the in-memory state store regardless of ambient env, so a shell-wide REDIS_URL can't
+  // make this Docker-free suite depend on a live Redis (same guard as rate-limit.e2e.test.ts).
+  delete process.env.REDIS_URL;
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   app = moduleRef.createNestApplication();
   await app.init();
@@ -22,6 +27,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close();
+  if (ORIGINAL_REDIS === undefined) delete process.env.REDIS_URL;
+  else process.env.REDIS_URL = ORIGINAL_REDIS;
 });
 
 function cookieHeader(res: request.Response): string {
