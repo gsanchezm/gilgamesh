@@ -4,6 +4,8 @@ export const TOKENS = {
   Orgs: 'OrgRepository',
   Memberships: 'MembershipRepository',
   Sessions: 'SessionRepository',
+  PasswordResets: 'PasswordResetRepository',
+  Email: 'EmailPort',
   Projects: 'ProjectRepository',
   Slices: 'SliceRepository',
   Features: 'FeatureRepository',

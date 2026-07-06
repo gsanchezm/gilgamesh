@@ -24,6 +24,8 @@ import type {
   ScoredChunk,
   OrgRecord,
   OrgRepository,
+  PasswordResetRecord,
+  PasswordResetRepository,
   ProjectRecord,
   ProjectRepository,
   Role,
@@ -60,6 +62,24 @@ export class PrismaUserRepository implements UserRepository {
   }
   async create(rec: UserRecord): Promise<void> {
     await this.db.user.create({ data: rec });
+  }
+  async updatePassword(id: string, passwordHash: string, updatedAt: Date): Promise<void> {
+    // Targeted columns only (the linkRepo pattern) — never clobbers name/email/status.
+    await this.db.user.update({ where: { id }, data: { passwordHash, updatedAt } });
+  }
+}
+
+export class PrismaPasswordResetRepository implements PasswordResetRepository {
+  constructor(private readonly db: Prisma.TransactionClient) {}
+  async create(rec: PasswordResetRecord): Promise<void> {
+    await this.db.passwordReset.create({ data: rec });
+  }
+  findByTokenHash(tokenHash: string): Promise<PasswordResetRecord | null> {
+    return this.db.passwordReset.findUnique({ where: { tokenHash } });
+  }
+  async markUsed(id: string, at: Date): Promise<void> {
+    // updateMany = no-op (not P2025) if the row is gone, matching the port contract.
+    await this.db.passwordReset.updateMany({ where: { id }, data: { usedAt: at } });
   }
 }
 
