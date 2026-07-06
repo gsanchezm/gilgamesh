@@ -484,13 +484,20 @@ export class PrismaKnowledgeChunkRepository implements KnowledgeChunkRepository 
   async search(queryEmbedding: number[], k: number): Promise<ScoredChunk[]> {
     const vec = `[${queryEmbedding.join(',')}]`;
     // Shared corpus only (org_id IS NULL) — per-org uploaded chunks never surface in the global search.
+    // Inner ANN scan ordered by the BARE distance expression so the planner can use the HNSW index
+    // (a trailing tie-break column would force a full sort — audit #8); the outer re-sort of the
+    // 4x oversample restores the previous deterministic tie order (distance, then id) exactly.
     const rows = await this.db.$queryRaw<KnowledgeSearchRow[]>`
-      SELECT id, source, heading_path AS "headingPath", section, content,
-             token_estimate AS "tokenEstimate", 1 - (embedding <=> ${vec}::vector) AS score
-      FROM knowledge_chunks
-      WHERE org_id IS NULL
-      ORDER BY embedding <=> ${vec}::vector, id
-      LIMIT ${k}`;
+      SELECT id, source, "headingPath", section, content, "tokenEstimate", score
+      FROM (
+        SELECT id, source, heading_path AS "headingPath", section, content,
+               token_estimate AS "tokenEstimate", 1 - (embedding <=> ${vec}::vector) AS score,
+               embedding <=> ${vec}::vector AS distance
+        FROM knowledge_chunks
+        WHERE org_id IS NULL
+        ORDER BY embedding <=> ${vec}::vector LIMIT ${k * 4}
+      ) ann
+      ORDER BY distance, id LIMIT ${k}`;
     return rows.map((r) => ({
       chunk: {
         id: r.id,
@@ -515,14 +522,20 @@ export class PrismaKnowledgeChunkRepository implements KnowledgeChunkRepository 
       filter.slot != null
         ? Prisma.sql`(scope IS NULL OR scope = 'shared' OR scope = ${filter.slot})`
         : Prisma.sql`(scope IS NULL OR scope = 'shared')`;
+    // Same ANN shape as `search` (audit #8): bare-distance inner ORDER BY for the HNSW index,
+    // outer deterministic (distance, id) re-sort of the 4x oversample.
     const rows = await this.db.$queryRaw<KnowledgeSearchRow[]>`
-      SELECT id, source, heading_path AS "headingPath", section, content,
-             token_estimate AS "tokenEstimate", 1 - (embedding <=> ${vec}::vector) AS score
-      FROM knowledge_chunks
-      WHERE (org_id IS NULL OR org_id = ${filter.orgId}::uuid)
-        AND ${scopePredicate}
-      ORDER BY embedding <=> ${vec}::vector, id
-      LIMIT ${k}`;
+      SELECT id, source, "headingPath", section, content, "tokenEstimate", score
+      FROM (
+        SELECT id, source, heading_path AS "headingPath", section, content,
+               token_estimate AS "tokenEstimate", 1 - (embedding <=> ${vec}::vector) AS score,
+               embedding <=> ${vec}::vector AS distance
+        FROM knowledge_chunks
+        WHERE (org_id IS NULL OR org_id = ${filter.orgId}::uuid)
+          AND ${scopePredicate}
+        ORDER BY embedding <=> ${vec}::vector LIMIT ${k * 4}
+      ) ann
+      ORDER BY distance, id LIMIT ${k}`;
     return rows.map((r) => ({
       chunk: {
         id: r.id,
