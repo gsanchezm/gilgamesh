@@ -8,7 +8,7 @@ import type { KnowledgeDocumentRepository } from '../ports/knowledge';
 import type { KnowledgeChunkRecord, KnowledgeDocumentRecord } from '../ports/records';
 import type { MembershipRepository } from '../ports/repositories';
 import type { UnitOfWork } from '../ports/unit-of-work';
-import { embedFor, meterEmbed } from './knowledge';
+import { embeddingBrainFor, embedFor, meterEmbed } from './knowledge';
 
 /** Org gate: a non-member gets NOT_FOUND so tenant existence is never leaked (mirrors requireProjectAccess). */
 async function requireOrgMember(
@@ -84,8 +84,10 @@ export class UploadKnowledgeDocument {
     if (this.deps.meter) await this.deps.meter.assertWithinQuota(input.orgId);
 
     // Embedding is external I/O — do it BEFORE opening the DB transaction (never hold a tx over I/O).
-    // Stored corpus content embeds as `document` (S16 AC-EMB-04) and meters EMBED to the uploading org.
-    const { embeddings, totalTokens } = await embedFor(this.deps.brain, chunks.map((c) => c.text), 'document');
+    // Stored corpus content embeds as `document` (S16 AC-EMB-04) and meters EMBED to the uploading org;
+    // the uploading org resolves its own embedding key through the forOrg seam (S19 AC-VBYOK-05).
+    const brain = embeddingBrainFor(this.deps.brain, input.orgId);
+    const { embeddings, totalTokens } = await embedFor(brain, chunks.map((c) => c.text), 'document');
     await meterEmbed(this.deps.meter, input.orgId, totalTokens);
     const documentId = this.deps.ids.next();
     const now = this.deps.clock.now();

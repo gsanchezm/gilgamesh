@@ -29,7 +29,7 @@ describe('Integrations — connect a source repo (stub provider)', () => {
 
   it('lists the full catalog disconnected initially (AC-INT-01; +AI_PROVIDERS since keystone v0.3)', async () => {
     const list = await new ListIntegrations(ctx).execute({ userId, orgId });
-    expect(list.map((i) => i.key)).toEqual(['github', 'gitlab', 'bitbucket', 'ado_repos', 'anthropic']);
+    expect(list.map((i) => i.key)).toEqual(['github', 'gitlab', 'bitbucket', 'ado_repos', 'anthropic', 'voyage']);
     expect(list.every((i) => i.connected === false)).toBe(true);
   });
 

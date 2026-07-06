@@ -1,7 +1,13 @@
 import { scrubChunk } from '@gilgamesh/domain';
 import { ApplicationError } from '../errors';
 import type { BrainTokenMeter } from '../brain/token-billing';
-import { hasEmbedAs, type AgentBrainPort, type BrainTier, type EmbeddingKind } from '../ports/brain';
+import {
+  hasBrainForOrg,
+  hasEmbedAs,
+  type AgentBrainPort,
+  type BrainTier,
+  type EmbeddingKind,
+} from '../ports/brain';
 import type {
   Citation,
   KnowledgeChunkRepository,
@@ -44,6 +50,16 @@ function citationOf(chunk: KnowledgeChunkRecord): Citation {
 /** Embeddings have no generation tier; EMBED rows pin the nominal lightest tier (the ROUTER-at-HAIKU
  *  precedent) until the keystone ever grows an embedding member on the frozen `BrainTier` (spec 16 §6). */
 export const EMBED_TIER: BrainTier = 'HAIKU';
+
+/**
+ * S19 (AC-VBYOK-05): an org-attributable embed resolves through the OPTIONAL `forOrg(orgId)`
+ * extension — the seam where the composing adapter resolves the org's voyage BYOK key at call time
+ * (org key → platform `VOYAGE_API_KEY` → lexical stub). Org-less calls and adapters without the
+ * extension (the deterministic stub) keep the direct platform path.
+ */
+export function embeddingBrainFor(brain: AgentBrainPort, orgId: string | null | undefined): AgentBrainPort {
+  return orgId && hasBrainForOrg(brain) ? brain.forOrg(orgId) : brain;
+}
 
 /**
  * Embed via the optional kind-aware S16 extension when the adapter has it (Voyage `input_type` +
@@ -111,7 +127,9 @@ export class IngestKnowledge {
 
     // S14: an org-attributed ingest is a billable EMBED — gate it BEFORE the embed call.
     await assertEmbedQuota(this.deps.meter, attribution?.orgId);
-    const { embeddings, totalTokens } = await embedFor(this.deps.brain, cleaned.map((c) => c.content), 'document');
+    // Org-attributed ingest resolves the org's embedding key (S19); the global corpus path stays platform.
+    const brain = embeddingBrainFor(this.deps.brain, attribution?.orgId);
+    const { embeddings, totalTokens } = await embedFor(brain, cleaned.map((c) => c.content), 'document');
     await meterEmbed(this.deps.meter, attribution?.orgId, totalTokens);
     const records: KnowledgeChunkRecord[] = cleaned.map((c, i) => ({
       id: c.chunk.id,
@@ -143,7 +161,9 @@ export class SearchKnowledge {
     const k = Math.min(Math.max(Math.trunc(input.k ?? 8), 1), 20);
     // S14: the query embed is billable when org-attributed — gate BEFORE the call (402 when exhausted).
     await assertEmbedQuota(this.deps.meter, input.orgId);
-    const { embeddings: [embedding], totalTokens } = await embedFor(this.deps.brain, [q], 'query');
+    // The caller's org resolves its own embedding key (S19); the search itself stays global (S5-A).
+    const brain = embeddingBrainFor(this.deps.brain, input.orgId);
+    const { embeddings: [embedding], totalTokens } = await embedFor(brain, [q], 'query');
     await meterEmbed(this.deps.meter, input.orgId, totalTokens);
     if (isZeroVector(embedding)) return { results: [], total: await this.deps.knowledge.count() };
     const scored = await this.deps.knowledge.search(embedding!, k);
@@ -185,7 +205,9 @@ export class KnowledgeRetriever implements KnowledgeRetrievalPort {
   ): Promise<RetrievedChunk[]> {
     const q = query.trim().slice(0, MAX_QUERY_CHARS);
     if (!q) return [];
-    const { embeddings: [embedding], totalTokens } = await embedFor(this.deps.brain, [q], 'query');
+    // Scoped grounding resolves the filter org's embedding key (S19); org-less retrieve stays platform.
+    const brain = embeddingBrainFor(this.deps.brain, orgId);
+    const { embeddings: [embedding], totalTokens } = await embedFor(brain, [q], 'query');
     await meterEmbed(this.deps.meter, orgId, totalTokens);
     if (isZeroVector(embedding)) return [];
     const scored = await search(embedding!);

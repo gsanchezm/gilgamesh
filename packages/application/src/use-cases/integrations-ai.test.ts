@@ -64,3 +64,71 @@ describe('AI provider BYOK — anthropic integration (AC-BYOK-*)', () => {
     ).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 });
+
+describe('AI provider BYOK — voyage integration (S19, AC-VBYOK-*)', () => {
+  let ctx: InMemoryContext;
+  let userId: string;
+  let orgId: string;
+
+  beforeEach(async () => {
+    ctx = createInMemoryContext();
+    userId = (
+      await new RegisterUser(ctx).execute({ firstName: 'I', lastName: 'U', email: 'owner@uruk.io', password: 'C0rrect-Horse!' })
+    ).userId;
+    orgId = (await new CompleteOnboarding(ctx).execute({ userId, projectName: 'OmniPizza', format: 'BDD' })).orgId;
+  });
+
+  it('lists voyage in the catalog under AI_PROVIDERS, disconnected (AC-VBYOK-01)', async () => {
+    const list = await new ListIntegrations(ctx).execute({ userId, orgId });
+    const voyage = list.find((i) => i.key === 'voyage');
+    expect(voyage).toMatchObject({ name: 'Voyage AI', group: 'AI_PROVIDERS', connected: false });
+  });
+
+  it('connect verifies, vaults a secretRef and discards the raw key (AC-VBYOK-02)', async () => {
+    const view = await new ConnectIntegration(ctx).execute({ userId, orgId, key: 'voyage', token: 'pa-voyage-test-123' });
+    expect(view).toMatchObject({ key: 'voyage', group: 'AI_PROVIDERS', connected: true });
+    expect(JSON.stringify(view)).not.toContain('pa-voyage-test-123'); // never in any View
+
+    const row = await ctx.integrations.findByKey(orgId, 'voyage');
+    expect(row?.secretRef).toBe(`vault://${orgId}/voyage`);
+    const everything = JSON.stringify([row, ctx.audit.rows, await new ListIntegrations(ctx).execute({ userId, orgId })]);
+    expect(everything).not.toContain('pa-voyage-test-123'); // never in a row, audit event, or list
+  });
+
+  it('the vault retains the key by scope for call-time resolution (AC-VBYOK-05 seam)', async () => {
+    await new ConnectIntegration(ctx).execute({ userId, orgId, key: 'voyage', token: 'pa-voyage-test-123' });
+    await expect(ctx.vault.get(`${orgId}/voyage`)).resolves.toBe('pa-voyage-test-123');
+    await expect(ctx.vault.get('someone-else/voyage')).resolves.toBeNull();
+  });
+
+  it('rejects an invalid key with VALIDATION and stores nothing (AC-VBYOK-02)', async () => {
+    await expect(
+      new ConnectIntegration(ctx).execute({ userId, orgId, key: 'voyage', token: 'invalid' }),
+    ).rejects.toMatchObject({ code: 'VALIDATION' });
+    expect((await ctx.integrations.findByKey(orgId, 'voyage'))?.connected ?? false).toBe(false);
+  });
+
+  it('disconnect clears the connection and the secretRef (AC-VBYOK-03)', async () => {
+    await new ConnectIntegration(ctx).execute({ userId, orgId, key: 'voyage', token: 'pa-voyage-ok' });
+    const view = await new DisconnectIntegration(ctx).execute({ userId, orgId, key: 'voyage' });
+    expect(view.connected).toBe(false);
+    expect((await ctx.integrations.findByKey(orgId, 'voyage'))?.secretRef).toBeNull();
+  });
+
+  it('only OWNER/ADMIN manage the key; a non-member gets NOT_FOUND (AC-VBYOK-03)', async () => {
+    const member = (
+      await new RegisterUser(ctx).execute({ firstName: 'M', lastName: 'B', email: 'member@uruk.io', password: 'C0rrect-Horse!' })
+    ).userId;
+    await ctx.memberships.create({ id: ctx.ids.next(), orgId, userId: member, role: 'MEMBER', createdAt: ctx.clock.now() });
+    await expect(
+      new ConnectIntegration(ctx).execute({ userId: member, orgId, key: 'voyage', token: 'pa-voyage-x' }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+
+    const outsider = (
+      await new RegisterUser(ctx).execute({ firstName: 'O', lastName: 'X', email: 'other@elsewhere.io', password: 'C0rrect-Horse!' })
+    ).userId;
+    await expect(
+      new ConnectIntegration(ctx).execute({ userId: outsider, orgId, key: 'voyage', token: 'pa-voyage-x' }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+});
