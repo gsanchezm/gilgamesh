@@ -66,7 +66,7 @@ describe('SSO / Google login (slice 15, stub mode)', () => {
 
     // The minted session authenticates /auth/me.
     const sessionPair = (res.headers['set-cookie'] as unknown as string[])
-      .map((c) => c.split(';')[0])
+      .map((c) => c.split(';')[0] ?? '')
       .filter((c) => c.startsWith('__Host-gg_session') || c.startsWith('csrf='))
       .join('; ');
     const me = await request(app.getHttpServer()).get('/auth/me').set('Cookie', sessionPair);

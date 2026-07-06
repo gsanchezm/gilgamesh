@@ -36,4 +36,8 @@ export const TOKENS = {
   Integrations: 'IntegrationRepository',
   RepoProvider: 'RepoProvider',
   SecretVault: 'SecretVault',
+  // Slice 15 (SSO): bound in the AuthModule, not the persistence wirings — transport-security
+  // plumbing (the RateLimitStore precedent). The Redis SsoStateStore swap happens there later.
+  Identity: 'IdentityProvider',
+  SsoStates: 'SsoStateStore',
 } as const;

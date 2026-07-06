@@ -5,3 +5,5 @@ export * from './system-clock';
 export * from './claude-brain';
 export * from './selecting-brain';
 export * from './anthropic-key-verifier';
+export * from './google-identity-provider';
+export * from './selecting-identity';

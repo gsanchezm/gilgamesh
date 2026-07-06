@@ -88,4 +88,27 @@ describe('Auth rate limiting (AC-AUTH-13)', () => {
     const padded = await login(`  ${canonical} `);
     expect(padded.status).toBe(429);
   });
+
+  it('throttles the SSO start route per IP (slice 15, AC-SSO-08)', async () => {
+    for (let i = 1; i <= LIMIT; i++) {
+      const res = await request(app.getHttpServer()).get('/auth/sso/google/start');
+      expect(res.status).toBe(302); // the stub authorize redirect, not throttled yet
+    }
+    const blocked = await request(app.getHttpServer()).get('/auth/sso/google/start');
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.code).toBe('RATE_LIMITED');
+  });
+
+  it('throttles the SSO callback route in its own bucket (slice 15, AC-SSO-08)', async () => {
+    for (let i = 1; i <= LIMIT; i++) {
+      const res = await request(app.getHttpServer())
+        .get('/auth/sso/google/callback')
+        .query({ code: 'x', state: 'y' });
+      expect(res.status).toBe(302); // sso=failed redirect (forged state), not throttled yet
+    }
+    const blocked = await request(app.getHttpServer())
+      .get('/auth/sso/google/callback')
+      .query({ code: 'x', state: 'y' });
+    expect(blocked.status).toBe(429);
+  });
 });
