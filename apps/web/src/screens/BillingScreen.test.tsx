@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { BillingClient, BrainUsageView, SubscriptionView } from '../lib/billing-client';
+import type { BillingClient, BrainUsageView, InvoiceView, SubscriptionView } from '../lib/billing-client';
 import { BillingScreen } from './BillingScreen';
 
 const sub: SubscriptionView = {
@@ -39,10 +39,34 @@ const someUsage: BrainUsageView = {
   ],
 };
 
+const paidInvoice: InvoiceView = {
+  id: 'inv-1',
+  providerInvoiceId: 'in_1',
+  status: 'PAID',
+  amountCents: 9900,
+  currency: 'usd',
+  periodStart: null,
+  periodEnd: null,
+  hostedInvoiceUrl: 'https://mock.pay/invoice/in_1',
+  pdfUrl: null,
+  createdAt: '2026-07-06T12:00:00.000Z',
+};
+
+const openInvoice: InvoiceView = {
+  ...paidInvoice,
+  id: 'inv-2',
+  providerInvoiceId: 'in_2',
+  status: 'OPEN',
+  amountCents: 4900,
+  hostedInvoiceUrl: null,
+  createdAt: '2026-06-06T12:00:00.000Z',
+};
+
 function fakeClient(overrides?: Partial<BillingClient>): BillingClient {
   return {
     getSubscription: vi.fn(async () => sub),
     getBrainUsage: vi.fn(async () => zeroUsage),
+    listInvoices: vi.fn(async () => []),
     changePlan: vi.fn(async (_o, input) => ({
       ...sub,
       plan: input.plan,
@@ -122,6 +146,52 @@ describe('BillingScreen', () => {
     await screen.findByText(/Free · TRIALING/);
     fireEvent.change(screen.getByLabelText('Plan'), { target: { value: 'SCALE' } });
     expect(screen.getByText(/Extra workspaces are \$99\/month each after the first 10\./)).toBeTruthy();
+  });
+
+  it('lists invoices with date, amount, status chip and the hosted link (AC-PAY-01)', async () => {
+    const client = fakeClient({ listInvoices: vi.fn(async () => [paidInvoice, openInvoice]) });
+    render(<BillingScreen client={client} orgId="o1" />);
+    await screen.findByText(/Free · TRIALING/);
+    expect(client.listInvoices).toHaveBeenCalledWith('o1');
+
+    expect(await screen.findByText('$99.00')).toBeTruthy();
+    expect(screen.getByText('$49.00')).toBeTruthy();
+    expect(screen.getByText('PAID')).toBeTruthy();
+    expect(screen.getByText('OPEN')).toBeTruthy();
+    expect(screen.getByText('Jul 6, 2026')).toBeTruthy();
+    expect(screen.getByText('Jun 6, 2026')).toBeTruthy();
+
+    // Only the invoice carrying a hostedInvoiceUrl renders a link.
+    const links = screen.getAllByRole('link', { name: 'View invoice' });
+    expect(links).toHaveLength(1);
+    expect(links[0]?.getAttribute('href')).toBe('https://mock.pay/invoice/in_1');
+  });
+
+  it('shows the invoices empty state', async () => {
+    render(<BillingScreen client={fakeClient()} orgId="o1" />);
+    await screen.findByText(/Free · TRIALING/);
+    expect(screen.getByLabelText('Invoices')).toBeTruthy();
+    expect(await screen.findByText(/No invoices yet/)).toBeTruthy();
+  });
+
+  it('an invoices failure degrades the card without blanking the billing screen', async () => {
+    const client = fakeClient({
+      listInvoices: vi.fn(async () => {
+        throw new Error('Could not load the invoices.');
+      }),
+    });
+    render(<BillingScreen client={client} orgId="o1" />);
+    expect(await screen.findByText(/Free · TRIALING/)).toBeTruthy();
+    expect(await screen.findByText('Could not load the invoices.')).toBeTruthy();
+  });
+
+  it('refreshes the invoices after a checkout confirm (AC-PAY-02)', async () => {
+    const client = fakeClient();
+    render(<BillingScreen client={client} orgId="o1" />);
+    await screen.findByText(/Free · TRIALING/);
+    fireEvent.click(screen.getByRole('button', { name: 'Checkout' }));
+    await waitFor(() => expect(client.confirmCheckout).toHaveBeenCalledWith('o1'));
+    await waitFor(() => expect(client.listInvoices).toHaveBeenCalledTimes(2));
   });
 
   it('surfaces a plan-change error without crashing', async () => {

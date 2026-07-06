@@ -1525,6 +1525,64 @@ body {
   color: var(--muted);
   font-size: 13px;
 }
+.gx-billing__invoices {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gx-billing__invoices li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.gx-billing__invoices li span {
+  color: var(--muted);
+  font-size: 13px;
+  min-width: 96px;
+}
+.gx-billing__invoices li strong {
+  font-size: 14px;
+}
+.gx-billing__invoices li a {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.gx-billing__invoices li a:hover {
+  text-decoration: underline;
+}
+.gx-billing__invstatus {
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 3px 7px;
+  color: var(--muted);
+}
+.gx-billing__invstatus[data-status='PAID'] {
+  color: #55c78f;
+  border-color: color-mix(in srgb, #55c78f 45%, transparent);
+}
+.gx-billing__invstatus[data-status='OPEN'] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.gx-billing__invstatus[data-status='VOID'],
+.gx-billing__invstatus[data-status='UNCOLLECTIBLE'] {
+  color: #e0738a;
+  border-color: color-mix(in srgb, #e0738a 45%, transparent);
+}
 
 @media (max-width: 920px) {
   .gx-billing__summary,

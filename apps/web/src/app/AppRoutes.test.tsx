@@ -81,6 +81,7 @@ function makeClients(): Clients {
           byTier: [],
           bySurface: [],
         })),
+        listInvoices: vi.fn(async () => []),
       };
     })(),
     knowledge: {

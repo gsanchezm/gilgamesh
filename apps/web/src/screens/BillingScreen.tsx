@@ -1,6 +1,13 @@
 import { planTier } from '@gilgamesh/domain';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { BillingClient, BillingCycle, BrainUsageView, Plan, SubscriptionView } from '../lib/billing-client';
+import type {
+  BillingClient,
+  BillingCycle,
+  BrainUsageView,
+  InvoiceView,
+  Plan,
+  SubscriptionView,
+} from '../lib/billing-client';
 
 export interface BillingScreenProps {
   client: BillingClient;
@@ -20,6 +27,22 @@ function money(cents: number): string {
   return cents === 0 ? '$0' : `$${Math.round(cents / 100)}`;
 }
 
+// English-only product: en-US + UTC pin the rendering (and the tests) across machines.
+function invoiceAmount(inv: InvoiceView): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: inv.currency.toUpperCase() }).format(
+    inv.amountCents / 100,
+  );
+}
+
+function invoiceDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
 // Single source (slice 10): the Scale add-on copy derives from the canonical PLAN_CATALOG.
 const SCALE_TIER = planTier('scale');
 
@@ -35,11 +58,23 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
   const [sub, setSub] = useState<SubscriptionView | null>(null);
   const [usage, setUsage] = useState<BrainUsageView | null>(null);
   const [usageError, setUsageError] = useState<string | null>(null);
+  const [invoices, setInvoices] = useState<InvoiceView[] | null>(null);
+  const [invoicesError, setInvoicesError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [plan, setPlan] = useState<Plan>('FREE');
   const [cycle, setCycle] = useState<BillingCycle>('MONTHLY');
   const [workspaces, setWorkspaces] = useState('1');
+
+  // The invoices card degrades independently, like AI usage — and refreshes after a checkout.
+  const loadInvoices = useCallback(async () => {
+    try {
+      setInvoices(await client.listInvoices(orgId));
+      setInvoicesError(null);
+    } catch (err) {
+      setInvoicesError(err instanceof Error ? err.message : 'Could not load the invoices.');
+    }
+  }, [client, orgId]);
 
   const load = useCallback(async () => {
     try {
@@ -58,7 +93,8 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
     } catch (err) {
       setUsageError(err instanceof Error ? err.message : 'Could not load the AI usage.');
     }
-  }, [client, orgId]);
+    await loadInvoices();
+  }, [client, orgId, loadInvoices]);
 
   useEffect(() => {
     void load();
@@ -92,7 +128,10 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
   const checkout = () =>
     action(async () => {
       await client.checkout(orgId);
-      return client.confirmCheckout(orgId);
+      const confirmed = await client.confirmCheckout(orgId);
+      // The confirm records an invoice (mock: deterministic PAID; Stripe: via webhook) — refresh.
+      await loadInvoices();
+      return confirmed;
     });
 
   if (error && sub === null) {
@@ -203,6 +242,41 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
               {usage.byTier.map((t) => `${t.tier} ${t.calls.toLocaleString()}`).join(' · ')}
             </p>
           </>
+        )}
+      </section>
+
+      <section className="gx-billing__panel" aria-label="Invoices">
+        <div className="gx-billing__panelhead">
+          <div>
+            <h2>Invoices</h2>
+            {invoices === null ? (
+              <p>{invoicesError ?? 'Loading invoices…'}</p>
+            ) : invoices.length === 0 ? (
+              <p>No invoices yet — completed checkouts and provider webhooks land here.</p>
+            ) : (
+              <p>
+                {invoices.length} {invoices.length === 1 ? 'invoice' : 'invoices'}
+              </p>
+            )}
+          </div>
+        </div>
+        {invoices !== null && invoices.length > 0 && (
+          <ul className="gx-billing__invoices">
+            {invoices.map((inv) => (
+              <li key={inv.id}>
+                <span>{invoiceDate(inv.createdAt)}</span>
+                <strong>{invoiceAmount(inv)}</strong>
+                <em className="gx-billing__invstatus" data-status={inv.status}>
+                  {inv.status}
+                </em>
+                {inv.hostedInvoiceUrl && (
+                  <a href={inv.hostedInvoiceUrl} target="_blank" rel="noreferrer">
+                    View invoice
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 

@@ -20,6 +20,24 @@ export interface SubscriptionView {
   currentPeriodEnd: string | null;
 }
 
+/** Keystone §1 v0.5 — mirrors the provider's (Stripe) invoice lifecycle. */
+export type InvoiceStatus = 'DRAFT' | 'OPEN' | 'PAID' | 'VOID' | 'UNCOLLECTIBLE';
+
+/** Keystone §6 v0.5 — `GET /orgs/{orgId}/invoices` (newest-first). */
+export interface InvoiceView {
+  id: string;
+  providerInvoiceId: string | null;
+  status: InvoiceStatus;
+  amountCents: number;
+  /** Lowercase ISO-4217 (e.g. `usd`). */
+  currency: string;
+  periodStart: string | null;
+  periodEnd: string | null;
+  hostedInvoiceUrl: string | null;
+  pdfUrl: string | null;
+  createdAt: string;
+}
+
 export type BrainTier = 'HAIKU' | 'SONNET' | 'OPUS';
 export type BrainSurface = 'CHAT' | 'ROUTER' | 'GENERATE' | 'EMBED';
 
@@ -46,6 +64,7 @@ export interface BillingClient {
   confirmCheckout(orgId: string): Promise<SubscriptionView>;
   cancel(orgId: string): Promise<SubscriptionView>;
   getBrainUsage(orgId: string): Promise<BrainUsageView>;
+  listInvoices(orgId: string): Promise<InvoiceView[]>;
 }
 
 const base = (orgId: string) => `/orgs/${orgId}/subscription`;
@@ -58,4 +77,5 @@ export const httpBillingClient: BillingClient = {
   confirmCheckout: (orgId) => sendJson('POST', `${base(orgId)}/checkout/confirm`, {}, 'Could not confirm checkout.'),
   cancel: (orgId) => sendJson('POST', `${base(orgId)}/cancel`, {}, 'Could not cancel the subscription.'),
   getBrainUsage: (orgId) => getJson(`/orgs/${orgId}/brain/usage`, 'Could not load the AI usage.'),
+  listInvoices: (orgId) => getJson(`/orgs/${orgId}/invoices`, 'Could not load the invoices.'),
 };
