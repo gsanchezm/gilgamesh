@@ -287,3 +287,33 @@ then hardened by an 8-angle adversarial review (7 findings fixed TDD) and merged
 - **Deferred (review S8 / spec §13):** real answers + live SSE push (Brain slice) · reusable SSE adapter +
   first-class tool registry · session list/history routes (keystone amendment) · `FeatureRepository.findByName`
   · web appends the answer instead of full replay · `agent_id` FKs on chat tables.
+
+## Slice 9 status (Brain — real `AgentBrainPort` adapter) — DoD COMPLETE (2026-07-06, on `main`)
+
+`specs/slices/09-brain/` — the real Claude adapter behind the frozen port + BYOK + metering + live chat
+SSE + tool registry (owner decisions S9-1..6). Keystone amended to **v0.3 first, in series on `main`**
+(`214f94b`): `AI_PROVIDERS`/`anthropic` (§1/§8), `BrainSurface` (§1), `BrainUsage` (§2/§5),
+`GET /orgs/{orgId}/brain/usage` (§6). Built SDD→BDD→TDD (BDD red first: 12 scenarios failing), hardened
+by a 3-angle adversarial review (6 findings fixed; secrets/DI/conventions gates clean), merged FF:
+- **domain** — `AI_PROVIDER_CATALOG` + `aggregateBrainUsage` (pure fold for the usage view).
+- **application** — `ChatToolRegistry` (SINGLE source: Claude `tools` defs + arg validation + dispatch;
+  `INVALID_ARGS` narrated + audited, the use case never runs); unconditional `BrainUsage` metering
+  (ROUTER/CHAT in `SendChatMessage`, GENERATE in `GenerateDrafts`, cache tokens threaded through);
+  brain-outage narration (a send never 500s); frozen §5 `EventBus` port + `InMemoryEventBus` with
+  MESSAGE/DELTA/DONE publishing per session; `GetBrainUsage`; BYOK via `BrainKeyVerifier` merged into
+  the S6 integration flow; `streamWithUsage` optional extension (usage for streamed calls).
+- **api** — `ClaudeBrain` infra adapter (Messages API over fetch: tier→model env config, prompt caching
+  via the frozen `cacheKey` incl. cache-token usage capture, 30s timeout + one drained retry, output cap;
+  the key never reaches logs/errors/rows); `SelectingBrain` bound to `TOKENS.Brain` in both wirings
+  (`BRAIN_MODE=offline` or no `ANTHROPIC_API_KEY` → stub; org-BYOK call-time resolution = follow-up
+  pending `SecretVault.get()`); `AnthropicKeyVerifier` (1-token ping, auto mode only); `BrainModule`
+  (usage route); Prisma `BrainUsage` + migration `brain_usage`; **C3 live SSE** (explicit `?live=1`
+  opt-in, subscribe-before-replay with deduped flush, guarded writes, leak-proof teardown, heartbeat).
+- **web** — Billing gains the **AI usage** card (`getBrainUsage`); Integrations renders AI Providers;
+  ChatScreen keeps replay resync (live EventSource = Chat re-skin follow-up).
+- **Verified (post-merge on `main`):** typecheck + lint · 570 Docker-free unit/e2e · `test:int` 19 ·
+  **BDD 133 scenarios / 1063 steps** · **Playwright 17**. Every suite runs offline (`BRAIN_MODE=offline`
+  in all four harnesses + test-setup default); real answers require only `ANTHROPIC_API_KEY` at runtime.
+- **Deferred:** org-BYOK call-time key resolution (`SecretVault.get()`) · live EventSource in the web
+  chat · semantic embeddings (Anthropic has no embeddings API — Voyage decision) · token charging
+  (4-tier billing migration) · optional `BRAIN_SMOKE` manual live-key smoke.

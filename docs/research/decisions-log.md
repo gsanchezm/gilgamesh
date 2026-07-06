@@ -457,3 +457,20 @@ divergent `refactor/audit-hardening` branch. Reconciled + executed SDD/TDD, all 
   re-fetching the whole replay (O(n²) over a session) · `agent_id` FKs on chat tables · dedupe the
   acceptance `server()` helper (6th copy) · unify the SSE `at` vs `createdAt` wire shape ·
   `isKnowledgeScope` stays unused until a scope-input surface exists.
+
+## Slice 9 (Brain) — owner decisions + review (2026-07-06)
+
+- **Keystone v0.3 approved** ("Apruebo") and applied in series on `main` (`214f94b`) before the worktree:
+  `AI_PROVIDERS`+`anthropic`, `BrainSurface`, `BrainUsage`, `GET /orgs/{orgId}/brain/usage`.
+- **Owner decisions S9-1..6** (recorded in the spec §0): platform env key + optional per-org BYOK w/
+  stub fallback and `BRAIN_MODE=offline` forcing; embeddings stay lexical (Anthropic has NO embeddings
+  API — semantic = separate Voyage-class decision); metering without charging; first-class tool registry;
+  live SSE via the frozen EventBus; tier→model/config in the adapter. Implementation amendment: metering
+  is UNCONDITIONAL (stub included) — the `BRAIN_METER_STUB` knob was dropped as needless config.
+- **Review S9 (3 angles: line-by-line infra, cross-file/DI, conventions/secrets)** — secrets gate CLEAN
+  (key never in logs/errors/rows/audit/views), DI/cross-file CLEAN. Fixed from line-by-line: SSE
+  lifecycle (leaked subscription+heartbeat on disconnect race; replay/subscribe event gap; unguarded
+  writes; Accept-sniffing → explicit `?live=1`), cache-token usage silently dropped (now captured
+  end-to-end), undrained retry response bodies, verifier 4xx mapping. Deferred: org-BYOK call-time
+  resolution (needs `SecretVault.get()`); live EventSource in the web chat; web chat O(n²) replay
+  (unchanged from S8); `BRAIN_SMOKE` manual smoke.

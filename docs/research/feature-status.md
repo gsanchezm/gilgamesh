@@ -32,7 +32,7 @@ Backend = does the data/logic exist · UI = re-skinned to the `capturas/NN` targ
 | 04 | Dashboard (Agent room) | ✅ | ✅ | |
 | 05 | Dashboard — light theme | ✅ | ✅ | |
 | 06 | Orchestration (DAG) | 🔴 | 🔴 | blocked on TOM kernel |
-| 07 | Chat / voice | ✅ | 🟡 | **slice 8 (text) on `main`**: sessions + HAIKU-routing + scoped RAG + 3-tool whitelist, all behind the stub brain; functional `ChatScreen` at `/projects/:id/chat` (capture re-skin + voice pending; real answers land with the Brain slice) |
+| 07 | Chat / voice | ✅ | 🟡 | **slices 8+9 on `main`**: sessions + HAIKU-routing + scoped RAG + registry-validated tools, now with the **real Claude brain** when a key is present (stub offline) + per-org metering + live C3 SSE; `ChatScreen` functional (capture re-skin, live EventSource in the client, and voice pending) |
 | 08 | Reports | ✅ | ✅ | `ReportsScreen` + `summarizeAcrossRuns`; route wired at `/projects/:id/reports` (+ Playwright e2e); per-tool "Tools" breakdown deferred |
 | 09 | Knowledge base | ✅ | ✅ | + per-org upload + `.pdf`/`.docx` ingest |
 | 10 | Test Lab | ✅ | ✅ | Integrated TestLabSummaryStats & refactored layout |
@@ -54,8 +54,8 @@ Real vs. stub-behind-a-port. Swapping a stub for the real adapter is a future sl
 - [x] Test Lab authoring (Slice/Feature/TestCase, Gherkin parser) — ✅ real
 - [x] Integrations (github/gitlab/bitbucket/ado_repos; token never persisted) — ✅ real
 - [ ] Test execution + results — 🔵 `DeterministicKernel` stub (real TOM/chaos-proxy kernel pending)
-- [ ] AI draft generation — 🔵 `DeterministicBrain` stub (real Claude adapter pending)
-- [ ] RAG embeddings — 🔵 lexical FNV-1a 1536-dim (real embeddings land with the Brain slice)
+- [x] AI brain (chat · routing · draft generation) — ✅ **real `ClaudeBrain` adapter on `main` (slice 9)** behind `SelectingBrain`: real answers with `ANTHROPIC_API_KEY` (or org BYOK — call-time resolution pending `SecretVault.get()`), deterministic stub offline/CI; per-org `BrainUsage` metering + usage view + tool registry + live C3 SSE (`?live=1`)
+- [ ] RAG embeddings — 🔵 lexical FNV-1a 1536-dim (Anthropic has no embeddings API; semantic = separate provider decision, e.g. Voyage)
 - [ ] Payments / checkout — 🔵 `MockPaymentProvider` (real Stripe + invoices/webhooks deferred)
 
 ## 3) Missing / deferred (with the blocker)
