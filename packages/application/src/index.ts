@@ -23,6 +23,7 @@ export * from './use-cases/knowledge';
 export * from './use-cases/knowledge-documents';
 export * from './use-cases/integrations';
 export * from './brain/stub-brain';
+export * from './brain/token-billing';
 export * from './email/stub-email';
 export * from './sso/stub-identity-provider';
 export * from './sso/in-memory-sso-state-store';

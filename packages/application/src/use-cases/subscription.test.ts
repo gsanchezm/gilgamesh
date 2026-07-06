@@ -33,7 +33,35 @@ describe('Subscription & Billing', () => {
       maxServicesPerWorkspace: 2,
       unlimited: false,
       runMinutesQuota: 500,
+      // S14: onboarding seeds the FREE AI token allowance (derived from the catalog).
+      brainTokensQuota: 100_000,
+      brainTokensUsed: 0,
+      brainTokensUnlimited: false,
     });
+  });
+
+  // ---- Slice 14: token quota on the subscription (AC-TOKB-01/07) ----
+
+  it('a plan change remaps the token quota from the catalog and PRESERVES the usage (AC-TOKB-01)', async () => {
+    const sub = (await ctx.subscriptions.findByOrg(orgId))!;
+    await ctx.subscriptions.save({ ...sub, brainTokensUsed: 12_345 });
+
+    const starter = await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'STARTER' });
+    expect(starter).toMatchObject({ brainTokensQuota: 2_000_000, brainTokensUsed: 12_345 });
+    const growth = await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'GROWTH' });
+    expect(growth).toMatchObject({ brainTokensQuota: 10_000_000, brainTokensUsed: 12_345 });
+    const scale = await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'SCALE' });
+    expect(scale).toMatchObject({ brainTokensUnlimited: true, brainTokensUsed: 12_345 });
+  });
+
+  it('checkout confirmation preserves the token counter — no rollover reset exists (AC-TOKB-07)', async () => {
+    const sub = (await ctx.subscriptions.findByOrg(orgId))!;
+    await ctx.subscriptions.save({ ...sub, brainTokensUsed: 777 });
+    await new StartCheckout(ctx).execute({ userId, orgId });
+    const v = await new ConfirmCheckout(ctx).execute({ userId, orgId });
+    // Exactly the executions behavior (spec 14 §4): activation never resets the monthly counters.
+    expect(v.brainTokensUsed).toBe(777);
+    expect(v.runMinutesUsed).toBe(sub.runMinutesUsed);
   });
 
   it('changes the plan and remaps execution quota + workspace cap (AC-SUB-02)', async () => {

@@ -163,6 +163,13 @@ export interface SubscriptionRepository {
    * so a concurrent plan/checkout/cancel can't be clobbered (slice-4 review fix).
    */
   chargeRunMinutes(orgId: string, minutes: number): Promise<boolean>;
+  /**
+   * Atomically adds `tokens` to brainTokensUsed (slice 14). UNCONDITIONAL — unlike
+   * `chargeRunMinutes`, a brain call's cost is known only AFTER the tokens are consumed, so the
+   * charge can never be refused (the pre-call quota check is the gate; spec 14 §5.2). Touches
+   * only the counter; a no-op when the org has no subscription row.
+   */
+  chargeBrainTokens(orgId: string, tokens: number): Promise<void>;
   /** Resolves the tenant behind a provider webhook (slice 13): Stripe `customer` → org. */
   findByProviderCustomerId(providerCustomerId: string): Promise<SubscriptionRecord | null>;
 }

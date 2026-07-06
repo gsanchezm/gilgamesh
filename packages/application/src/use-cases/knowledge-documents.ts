@@ -1,5 +1,6 @@
 import { chunkText, parseDocument } from '@gilgamesh/domain';
 import { ApplicationError } from '../errors';
+import type { BrainTokenMeter } from '../brain/token-billing';
 import type { AgentBrainPort } from '../ports/brain';
 import type { Clock } from '../ports/clock';
 import type { IdGenerator } from '../ports/id';
@@ -7,7 +8,7 @@ import type { KnowledgeDocumentRepository } from '../ports/knowledge';
 import type { KnowledgeChunkRecord, KnowledgeDocumentRecord } from '../ports/records';
 import type { MembershipRepository } from '../ports/repositories';
 import type { UnitOfWork } from '../ports/unit-of-work';
-import { embedFor, meterEmbed, type EmbedMeter } from './knowledge';
+import { embedFor, meterEmbed } from './knowledge';
 
 /** Org gate: a non-member gets NOT_FOUND so tenant existence is never leaked (mirrors requireProjectAccess). */
 async function requireOrgMember(
@@ -51,8 +52,8 @@ export interface UploadKnowledgeDocumentDeps {
   memberships: MembershipRepository;
   ids: IdGenerator;
   clock: Clock;
-  /** Optional S16 EMBED metering — the upload's embed cost is attributed to the uploading org. */
-  meter?: EmbedMeter;
+  /** S16 EMBED metering + S14 quota/charge — the upload's embed cost is attributed to the uploading org. */
+  meter?: BrainTokenMeter;
 }
 
 /**
@@ -78,6 +79,9 @@ export class UploadKnowledgeDocument {
     if (chunks.length === 0) {
       throw new ApplicationError('VALIDATION', 'The document has no indexable text.');
     }
+
+    // S14: the upload's embed is a billable EMBED call — gate it BEFORE the call (402 when exhausted).
+    if (this.deps.meter) await this.deps.meter.assertWithinQuota(input.orgId);
 
     // Embedding is external I/O — do it BEFORE opening the DB transaction (never hold a tx over I/O).
     // Stored corpus content embeds as `document` (S16 AC-EMB-04) and meters EMBED to the uploading org.

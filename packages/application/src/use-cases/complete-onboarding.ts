@@ -1,4 +1,4 @@
-import { AGENT_ROSTER, Slug } from '@gilgamesh/domain';
+import { AGENT_ROSTER, planLimits, Slug } from '@gilgamesh/domain';
 import { ApplicationError } from '../errors';
 import type { Clock } from '../ports/clock';
 import type { IdGenerator } from '../ports/id';
@@ -166,6 +166,9 @@ export class CompleteOnboarding {
       status: 'TRIALING',
       runMinutesQuota: 500,
       runMinutesUsed: 0,
+      // S14: the FREE AI token allowance, DERIVED from the catalog (keystone §9 — 100k/mo).
+      brainTokensQuota: planLimits('FREE').brainTokensQuota,
+      brainTokensUsed: 0,
       providerCustomerId: null,
       providerSubscriptionId: null,
       currentPeriodEnd: new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000),

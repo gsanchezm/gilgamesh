@@ -192,7 +192,7 @@ describe('UploadKnowledgeDocument — EMBED metering (S16, AC-EMB-05)', () => {
       memberships: ctx.memberships,
       ids: ctx.ids,
       clock: ctx.clock,
-      meter: { brainUsage: ctx.brainUsage, ids: ctx.ids, clock: ctx.clock },
+      meter: ctx.billing,
     });
     await upload.execute({ orgId: ORG, userId: USER, name: 'design.md', type: 'md', content: MD });
 
@@ -214,9 +214,43 @@ describe('UploadKnowledgeDocument — EMBED metering (S16, AC-EMB-05)', () => {
       memberships: ctx.memberships,
       ids: ctx.ids,
       clock: ctx.clock,
-      meter: { brainUsage: ctx.brainUsage, ids: ctx.ids, clock: ctx.clock },
+      meter: ctx.billing,
     });
     const doc = await upload.execute({ orgId: ORG, userId: USER, name: 'design.md', type: 'md', content: MD });
     expect(doc.chunkCount).toBeGreaterThan(0);
+  });
+
+  // ---- Slice 14: token quota on the upload's EMBED (AC-TOKB-04) ----
+
+  it('an exhausted allowance blocks the upload with QUOTA_EXCEEDED before the embed', async () => {
+    await seedMember(ctx);
+    await ctx.subscriptions.create({
+      id: 'sub-a',
+      orgId: ORG,
+      plan: 'FREE',
+      billingCycle: 'MONTHLY',
+      seats: 1,
+      status: 'ACTIVE',
+      runMinutesQuota: 500,
+      runMinutesUsed: 0,
+      brainTokensQuota: 100_000,
+      brainTokensUsed: 100_000,
+      providerCustomerId: null,
+      providerSubscriptionId: null,
+      currentPeriodEnd: null,
+    });
+    const upload = new UploadKnowledgeDocument({
+      uow: ctx.uow,
+      brain: ctx.brain,
+      memberships: ctx.memberships,
+      ids: ctx.ids,
+      clock: ctx.clock,
+      meter: ctx.billing,
+    });
+    await expect(
+      upload.execute({ orgId: ORG, userId: USER, name: 'design.md', type: 'md', content: MD }),
+    ).rejects.toMatchObject({ code: 'QUOTA_EXCEEDED' });
+    expect(await ctx.brainUsage.listForOrg(ORG)).toHaveLength(0);
+    expect(await ctx.knowledgeDocuments.listForOrg(ORG)).toHaveLength(0);
   });
 });

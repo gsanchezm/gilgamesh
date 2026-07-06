@@ -1,6 +1,7 @@
 import { AGENT_ROSTER, personaPrompt, type AgentSlot } from '@gilgamesh/domain';
 import { ApplicationError } from '../errors';
-import { hasBrainForOrg, hasStreamWithUsage, type AgentBrainPort, type BrainSurface, type BrainTier } from '../ports/brain';
+import { hasBrainForOrg, hasStreamWithUsage, type AgentBrainPort } from '../ports/brain';
+import type { BrainTokenMeter } from '../brain/token-billing';
 import type { EventBus } from '../ports/events';
 import type { Clock } from '../ports/clock';
 import type { IdGenerator } from '../ports/id';
@@ -16,7 +17,6 @@ import type {
 import type {
   AgentRepository,
   AuditLogRepository,
-  BrainUsageRepository,
   ChatMessageRepository,
   ChatSessionRepository,
   FeatureRepository,
@@ -211,13 +211,21 @@ interface SendDeps {
   features: FeatureRepository;
   brain: AgentBrainPort;
   retrieval: KnowledgeRetrievalPort;
-  brainUsage: BrainUsageRepository;
+  /** S14: the atomic BrainUsage-row + token-counter charge seam (replaces raw brainUsage.append). */
+  billing: BrainTokenMeter;
   events: EventBus;
   audit: AuditLogRepository;
   ids: IdGenerator;
   clock: Clock;
   tools: ChatTools;
 }
+
+/**
+ * The in-chat narration when the org's AI token allowance is exhausted (spec 14 AC-TOKB-05):
+ * a chat send never 402s or 500s — the block is narrated, mirroring the brain-outage message.
+ */
+export const CHAT_TOKEN_QUOTA_NARRATION =
+  'Your workspace has used its monthly AI token allowance — upgrade your plan to keep chatting with the pantheon.';
 
 interface ToolOutcome {
   answerText: string;
@@ -261,15 +269,23 @@ export class SendChatMessage {
     // brain (org key → platform key → stub) once per send; plain adapters keep the direct path.
     const brain = hasBrainForOrg(this.deps.brain) ? this.deps.brain.forOrg(project.orgId) : this.deps.brain;
 
-    const routing = await this.route(brain, session, project, content);
+    // S14 token quota — ONE pre-check per send, BEFORE any billable brain call (router, grounding
+    // embed, answer). When exhausted the send still succeeds: the block is narrated (AC-TOKB-05),
+    // no brain call is made and nothing is charged. Mid-send crossings finish the send (spec 14
+    // §5.2 — overshoot is bounded by one send); the NEXT send blocks.
+    const quotaBlocked = await this.deps.billing.isExhausted(project.orgId);
+
+    const routing = await this.route(brain, session, project, content, quotaBlocked);
     const entry = AGENT_ROSTER.find((e) => e.slot === routing.agent.slot)!;
 
     // Scoped grounding (spec §retrieval): org-visible chunks whose scope is the answering agent's
-    // slot, 'shared', or NULL.
-    const retrieved = await this.deps.retrieval.retrieveScoped(content, RETRIEVAL_TOP_K, {
-      orgId: project.orgId,
-      slot: routing.agent.slot,
-    });
+    // slot, 'shared', or NULL. Skipped when quota-blocked — the query embed is a billable call.
+    const retrieved = quotaBlocked
+      ? []
+      : await this.deps.retrieval.retrieveScoped(content, RETRIEVAL_TOP_K, {
+          orgId: project.orgId,
+          slot: routing.agent.slot,
+        });
     const grounding = formatGrounding(retrieved);
     const system = grounding
       ? `${personaPrompt(entry)}\n\nReference context:\n${grounding}`
@@ -281,32 +297,37 @@ export class SendChatMessage {
     let full = '';
     let brainDown = false;
     let chatUsage: { inputTokens: number; outputTokens: number } | null = null;
-    try {
-      const req = { tier: 'SONNET' as const, system, messages: [{ role: 'user', content }] };
-      if (hasStreamWithUsage(brain)) {
-        const withUsage = brain.streamWithUsage(req);
-        for await (const { delta } of withUsage.events) {
-          full += delta;
-          await this.deps.events.publish(topic, { type: 'DELTA', delta });
+    if (!quotaBlocked) {
+      try {
+        const req = { tier: 'SONNET' as const, system, messages: [{ role: 'user', content }] };
+        if (hasStreamWithUsage(brain)) {
+          const withUsage = brain.streamWithUsage(req);
+          for await (const { delta } of withUsage.events) {
+            full += delta;
+            await this.deps.events.publish(topic, { type: 'DELTA', delta });
+          }
+          chatUsage = await withUsage.usage;
+        } else {
+          for await (const { delta } of brain.stream(req)) {
+            full += delta;
+            await this.deps.events.publish(topic, { type: 'DELTA', delta });
+          }
+          // No usage side-channel on the frozen stream(): meter with a length estimate.
+          chatUsage = { inputTokens: system.length + content.length, outputTokens: full.length };
         }
-        chatUsage = await withUsage.usage;
-      } else {
-        for await (const { delta } of brain.stream(req)) {
-          full += delta;
-          await this.deps.events.publish(topic, { type: 'DELTA', delta });
-        }
-        // No usage side-channel on the frozen stream(): meter with a length estimate.
-        chatUsage = { inputTokens: system.length + content.length, outputTokens: full.length };
+      } catch {
+        // A brain outage narrates instead of failing the send — the USER message is already persisted
+        // (spec 09 AC-BRAIN-03).
+        brainDown = true;
       }
-    } catch {
-      // A brain outage narrates instead of failing the send — the USER message is already persisted
-      // (spec 09 AC-BRAIN-03).
-      brainDown = true;
     }
-    if (chatUsage) await this.meter(project.orgId, 'CHAT', 'SONNET', chatUsage);
+    // S14: the actual usage charges atomically (BrainUsage row + brainTokensUsed, one transaction).
+    if (chatUsage) await this.deps.billing.charge(project.orgId, 'CHAT', 'SONNET', chatUsage);
 
     let outcome: ToolOutcome;
-    if (brainDown) {
+    if (quotaBlocked) {
+      outcome = { answerText: CHAT_TOKEN_QUOTA_NARRATION };
+    } else if (brainDown) {
       outcome = { answerText: 'The pantheon brain is unavailable right now — please try again in a moment.' };
     } else {
       const tool = parseToolCall(full);
@@ -375,36 +396,19 @@ export class SendChatMessage {
     return { message: toView({ ...userMsg, runId: outcome.runId ?? userMsg.runId }), answer: toView(answer) };
   }
 
-  /** One BrainUsage row per brain call (S9 metering; keystone v0.3). */
-  private async meter(
-    orgId: string,
-    surface: BrainSurface,
-    tier: BrainTier,
-    usage: { inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheCreateTokens?: number },
-  ): Promise<void> {
-    await this.deps.brainUsage.append({
-      id: this.deps.ids.next(),
-      orgId,
-      tier,
-      surface,
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
-      cacheReadTokens: usage.cacheReadTokens ?? 0,
-      cacheCreateTokens: usage.cacheCreateTokens ?? 0,
-      createdAt: this.deps.clock.now(),
-    });
-  }
-
   /**
    * Spec §routing: a pinned session skips classification entirely; otherwise one HAIKU classify
    * picks the slot — low confidence (< 0.6) or a disabled (`ToolBinding.enabled = false`) target
    * falls back to the lead. The lead covers as last resort even if its own binding is disabled.
+   * When the token quota is exhausted (S14) the classify call is skipped too — the pinned agent
+   * (or the lead) fronts the narrated block without any billable call.
    */
   private async route(
     brain: AgentBrainPort,
     session: ChatSessionRecord,
     project: ProjectRecord,
     content: string,
+    quotaBlocked = false,
   ): Promise<RoutingDecision> {
     const agents = await this.deps.agents.listForOrg(project.orgId);
     const lead = agents.find((a) => a.slot === 'lead');
@@ -414,13 +418,15 @@ export class SendChatMessage {
       const pinned = agents.find((a) => a.id === session.agentId);
       return { agent: pinned ?? lead, routed: false, fallback: !pinned };
     }
+    if (quotaBlocked) return { agent: lead, routed: false, fallback: true };
 
     const res = await brain.complete({
       tier: 'HAIKU',
       system: ROUTER_SYSTEM,
       messages: [{ role: 'user', content: JSON.stringify({ classify: content }) }],
     });
-    await this.meter(project.orgId, 'ROUTER', 'HAIKU', res.usage);
+    // S14: the router call charges atomically like every org-attributed surface.
+    await this.deps.billing.charge(project.orgId, 'ROUTER', 'HAIKU', res.usage);
     let slot: string | null = null;
     let confidence = 0;
     try {

@@ -58,6 +58,7 @@ import type {
   UserRecord,
 } from '../ports/records';
 import { DeterministicBrain } from '../brain/stub-brain';
+import { BrainBilling } from '../brain/token-billing';
 import { DeterministicKernel } from '../kernel/deterministic-kernel';
 import { ApplyPaymentEvent } from '../payment/apply-payment-event';
 import { MockPaymentProvider } from '../payment/mock-payment-provider';
@@ -372,6 +373,11 @@ export class InMemorySubscriptionRepository implements SubscriptionRepository {
     sub.runMinutesUsed += minutes;
     return true;
   }
+  async chargeBrainTokens(orgId: string, tokens: number): Promise<void> {
+    // Unconditional increment (S14): the cost is known only after the call — the pre-check gates.
+    const sub = this.byOrg.get(orgId);
+    if (sub) sub.brainTokensUsed += tokens;
+  }
   async findByProviderCustomerId(providerCustomerId: string): Promise<SubscriptionRecord | null> {
     for (const s of this.byOrg.values()) if (s.providerCustomerId === providerCustomerId) return s;
     return null;
@@ -585,6 +591,8 @@ export interface InMemoryContext {
   chatSessions: InMemoryChatSessionRepository;
   chatMessages: InMemoryChatMessageRepository;
   brainUsage: InMemoryBrainUsageRepository;
+  /** S14: the shared token check/charge seam, wired over the same uow/subscriptions/brainUsage. */
+  billing: BrainBilling;
   events: InMemoryEventBus;
   brainKeys: StubBrainKeyVerifier;
   integrations: InMemoryIntegrationRepository;
@@ -626,6 +634,8 @@ export function createInMemoryContext(): InMemoryContext {
     audit: new InMemoryAuditLogRepository(),
     knowledge,
     knowledgeDocuments,
+    // In the UoW bundle since S14: the usage row + the token charge commit together.
+    brainUsage: new InMemoryBrainUsageRepository(),
   };
   const brain = new DeterministicBrain();
   const uow = new InMemoryUnitOfWork(repos);
@@ -636,7 +646,7 @@ export function createInMemoryContext(): InMemoryContext {
     email: new StubEmail(),
     chatSessions: new InMemoryChatSessionRepository(),
     chatMessages: new InMemoryChatMessageRepository(),
-    brainUsage: new InMemoryBrainUsageRepository(),
+    billing: new BrainBilling({ uow, subscriptions: repos.subscriptions, ids, clock }),
     events: new InMemoryEventBus(),
     brainKeys: new StubBrainKeyVerifier(),
     integrations: new InMemoryIntegrationRepository(),

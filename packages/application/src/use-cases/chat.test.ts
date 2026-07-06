@@ -2,7 +2,7 @@ import type { KnowledgeScope } from '@gilgamesh/domain';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { AgentBrainPort, BrainCompleteRequest } from '../ports/brain';
 import { createInMemoryContext, type InMemoryContext } from '../testing/in-memory';
-import { CreateChatSession, GetChatEvents, SendChatMessage } from './chat';
+import { CHAT_TOKEN_QUOTA_NARRATION, CreateChatSession, GetChatEvents, SendChatMessage } from './chat';
 import { CompleteOnboarding } from './complete-onboarding';
 import { RegisterUser } from './register-user';
 import { TriggerRun } from './runs';
@@ -428,6 +428,59 @@ describe('Agent Chat — sessions, routing, retrieval, tools', () => {
     expect(types.filter((t) => t === 'MESSAGE').length).toBeGreaterThanOrEqual(2); // USER + AGENT
     expect(types).toContain('DELTA');
     expect(types[types.length - 1]).toBe('DONE');
+  });
+
+  // ---- Slice 14: AI token billing (AC-TOKB-02/05/06) ----
+
+  const exhaustTokens = async () => {
+    const sub = (await ctx.subscriptions.findByOrg(orgId))!;
+    await ctx.subscriptions.save({ ...sub, brainTokensUsed: sub.brainTokensQuota });
+  };
+
+  it('charges the send atomically: brainTokensUsed equals the billable sum of its usage rows (AC-TOKB-02)', async () => {
+    const session = await makeSession();
+    await makeSend().execute({ userId, sessionId: session.id, content: 'our checkout p95 latency explodes under load' });
+    const rows = ctx.brainUsage.rows.filter((r) => r.orgId === orgId);
+    expect(rows.length).toBeGreaterThanOrEqual(2); // ROUTER + CHAT
+    const billable = rows.reduce((sum, r) => sum + r.inputTokens + r.outputTokens, 0);
+    expect(billable).toBeGreaterThan(0);
+    expect((await ctx.subscriptions.findByOrg(orgId))!.brainTokensUsed).toBe(billable);
+  });
+
+  it('an exhausted allowance narrates the block: no 500, no brain call, nothing charged (AC-TOKB-05)', async () => {
+    const session = await makeSession();
+    await exhaustTokens();
+    const before = (await ctx.subscriptions.findByOrg(orgId))!.brainTokensUsed;
+
+    const res = await makeSend().execute({ userId, sessionId: session.id, content: 'hello pantheon' });
+    expect(res.answer.content).toBe(CHAT_TOKEN_QUOTA_NARRATION);
+
+    const rows = await ctx.chatMessages.listForSession(session.id);
+    expect(rows.map((m) => m.role)).toEqual(['USER', 'AGENT']); // the USER message persisted first
+    expect(ctx.brainUsage.rows.filter((r) => r.orgId === orgId)).toHaveLength(0);
+    expect((await ctx.subscriptions.findByOrg(orgId))!.brainTokensUsed).toBe(before);
+  });
+
+  it('a pinned session narrates the block via the pinned agent, without a router call (AC-TOKB-05)', async () => {
+    const sec = await agentId('sec');
+    const session = await makeSession(sec);
+    await exhaustTokens();
+    const res = await makeSend().execute({ userId, sessionId: session.id, content: 'hello pantheon' });
+    expect(res.answer.content).toBe(CHAT_TOKEN_QUOTA_NARRATION);
+    expect(res.answer.agentId).toBe(sec);
+    expect(ctx.brainUsage.rows).toHaveLength(0);
+  });
+
+  it('SCALE is unlimited: a maxed-out counter never blocks, and usage keeps charging (AC-TOKB-06)', async () => {
+    const sub = (await ctx.subscriptions.findByOrg(orgId))!;
+    await ctx.subscriptions.save({ ...sub, plan: 'SCALE', brainTokensUsed: sub.brainTokensQuota + 1 });
+    const before = sub.brainTokensQuota + 1;
+
+    const session = await makeSession();
+    const res = await makeSend().execute({ userId, sessionId: session.id, content: 'hello pantheon' });
+    expect(res.answer.content).not.toBe(CHAT_TOKEN_QUOTA_NARRATION);
+    expect(ctx.brainUsage.rows.some((r) => r.surface === 'CHAT')).toBe(true);
+    expect((await ctx.subscriptions.findByOrg(orgId))!.brainTokensUsed).toBeGreaterThan(before);
   });
 
   // ---- Events (C3 replay) ----

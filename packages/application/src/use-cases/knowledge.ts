@@ -1,8 +1,7 @@
 import { scrubChunk } from '@gilgamesh/domain';
 import { ApplicationError } from '../errors';
+import type { BrainTokenMeter } from '../brain/token-billing';
 import { hasEmbedAs, type AgentBrainPort, type BrainTier, type EmbeddingKind } from '../ports/brain';
-import type { Clock } from '../ports/clock';
-import type { IdGenerator } from '../ports/id';
 import type {
   Citation,
   KnowledgeChunkRepository,
@@ -12,7 +11,6 @@ import type {
   ScoredChunk,
 } from '../ports/knowledge';
 import type { KnowledgeChunkRecord } from '../ports/records';
-import type { BrainUsageRepository } from '../ports/repositories';
 
 const MIN_TOKENS = 4; // drop near-empty boilerplate-only chunks (e.g. a stray page number) after scrubbing
 const MAX_QUERY_CHARS = 512; // a search query never needs more; bounds work on hostile input
@@ -43,13 +41,6 @@ function citationOf(chunk: KnowledgeChunkRecord): Citation {
   return { source: chunk.source, section: chunk.section, headingPath: chunk.headingPath };
 }
 
-/** Optional S16 EMBED-metering deps (keystone v0.3 `BrainUsage`); absent → embeds are unmetered. */
-export interface EmbedMeter {
-  brainUsage: BrainUsageRepository;
-  ids: IdGenerator;
-  clock: Clock;
-}
-
 /** Embeddings have no generation tier; EMBED rows pin the nominal lightest tier (the ROUTER-at-HAIKU
  *  precedent) until the keystone ever grows an embedding member on the frozen `BrainTier` (spec 16 §6). */
 export const EMBED_TIER: BrainTier = 'HAIKU';
@@ -72,37 +63,39 @@ export async function embedFor(
 }
 
 /**
- * One `BrainUsage` row per embed call (surface `EMBED`, outputTokens 0). No-op without a meter or an
- * orgId (`BrainUsage.orgId` is frozen non-null — platform-global ingest has no tenant to attribute,
- * spec 16 AC-EMB-06). A metering failure is swallowed: it must NEVER break ingest/search/grounding.
+ * One `BrainUsage` row per embed call (surface `EMBED`, outputTokens 0), charged atomically against
+ * the org's `brainTokensUsed` (S14 — the meter is the shared BrainBilling seam). No-op without a
+ * meter or an orgId (`BrainUsage.orgId` is frozen non-null — platform-global ingest has no tenant
+ * to attribute, spec 16 AC-EMB-06). A metering/charge failure is swallowed: it must NEVER break
+ * ingest/search/grounding (spec 16 AC-EMB-05; worst case one uncharged embed).
  */
 export async function meterEmbed(
-  meter: EmbedMeter | undefined,
+  meter: BrainTokenMeter | undefined,
   orgId: string | null | undefined,
   totalTokens: number,
 ): Promise<void> {
   if (!meter || !orgId) return;
   try {
-    await meter.brainUsage.append({
-      id: meter.ids.next(),
-      orgId,
-      tier: EMBED_TIER,
-      surface: 'EMBED',
-      inputTokens: totalTokens,
-      outputTokens: 0,
-      cacheReadTokens: 0,
-      cacheCreateTokens: 0,
-      createdAt: meter.clock.now(),
-    });
+    await meter.charge(orgId, 'EMBED', EMBED_TIER, { inputTokens: totalTokens, outputTokens: 0 });
   } catch {
     /* metering must never fail the user call (spec 16 AC-EMB-05) */
   }
 }
 
+/**
+ * S14 pre-call gate for org-attributed embed surfaces: throws QUOTA_EXCEEDED (→ 402) when the
+ * org's allowance is exhausted. Unattributed/unmetered paths (global corpus) are never blocked.
+ */
+async function assertEmbedQuota(meter: BrainTokenMeter | undefined, orgId: string | null | undefined): Promise<void> {
+  if (!meter || !orgId) return;
+  await meter.assertWithinQuota(orgId);
+}
+
 interface KnowledgeDeps {
   knowledge: KnowledgeChunkRepository;
   brain: AgentBrainPort;
-  meter?: EmbedMeter;
+  /** S14: the shared check/charge seam; absent → embeds are unmetered AND never blocked. */
+  meter?: BrainTokenMeter;
 }
 
 /** Scrub → drop tiny → embed → upsert raw corpus chunks into the global shared KB (slice 5). */
@@ -116,6 +109,8 @@ export class IngestKnowledge {
       .filter((c) => tokenCount(c.content) >= MIN_TOKENS);
     if (cleaned.length === 0) return { ingested: 0, skipped: chunks.length };
 
+    // S14: an org-attributed ingest is a billable EMBED — gate it BEFORE the embed call.
+    await assertEmbedQuota(this.deps.meter, attribution?.orgId);
     const { embeddings, totalTokens } = await embedFor(this.deps.brain, cleaned.map((c) => c.content), 'document');
     await meterEmbed(this.deps.meter, attribution?.orgId, totalTokens);
     const records: KnowledgeChunkRecord[] = cleaned.map((c, i) => ({
@@ -146,6 +141,8 @@ export class SearchKnowledge {
     const q = input.query.trim().slice(0, MAX_QUERY_CHARS);
     if (!q) throw new ApplicationError('VALIDATION', 'A query is required.');
     const k = Math.min(Math.max(Math.trunc(input.k ?? 8), 1), 20);
+    // S14: the query embed is billable when org-attributed — gate BEFORE the call (402 when exhausted).
+    await assertEmbedQuota(this.deps.meter, input.orgId);
     const { embeddings: [embedding], totalTokens } = await embedFor(this.deps.brain, [q], 'query');
     await meterEmbed(this.deps.meter, input.orgId, totalTokens);
     if (isZeroVector(embedding)) return { results: [], total: await this.deps.knowledge.count() };
@@ -176,7 +173,11 @@ export class KnowledgeRetriever implements KnowledgeRetrievalPort {
     return this.ground(query, filter.orgId, (embedding) => this.deps.knowledge.searchScoped(filter, embedding, k));
   }
 
-  /** One grounding pipeline for both paths: trim/cap → embed (+meter) → zero-vector guard → cite. */
+  /**
+   * One grounding pipeline for both paths: trim/cap → embed (+charge) → zero-vector guard → cite.
+   * No S14 quota gate HERE: grounding is a fragment of a larger send/generate whose use case owns
+   * the pre-check (chat must narrate, never throw) — spec 14 §5.1.
+   */
   private async ground(
     query: string,
     orgId: string | undefined,

@@ -248,6 +248,10 @@ export interface SubscriptionRecord {
   status: SubscriptionStatus;
   runMinutesQuota: number;
   runMinutesUsed: number;
+  /** Monthly AI Brain token allowance (keystone §2 v0.6, slice 14) — derived from the plan. */
+  brainTokensQuota: number;
+  /** Billable tokens (input + output; cache excluded) charged this period across all surfaces. */
+  brainTokensUsed: number;
   providerCustomerId: string | null;
   providerSubscriptionId: string | null;
   currentPeriodEnd: Date | null;

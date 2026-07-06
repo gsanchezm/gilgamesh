@@ -161,6 +161,32 @@ describe('Test Lab — AI generate (stub brain)', () => {
     });
   });
 
+  // ---- Slice 14: AI token billing (AC-TOKB-03/04/06) ----
+
+  it('charges the GENERATE call: brainTokensUsed equals the billable sum of the usage rows (AC-TOKB-03)', async () => {
+    await new GenerateDrafts(ctx).execute({ userId, projectId, prompt: 'checkout flow', count: 1 });
+    const rows = ctx.brainUsage.rows.filter((r) => r.orgId === orgId);
+    expect(rows.some((r) => r.surface === 'GENERATE' && r.tier === 'SONNET')).toBe(true);
+    const billable = rows.reduce((sum, r) => sum + r.inputTokens + r.outputTokens, 0);
+    expect((await ctx.subscriptions.findByOrg(orgId))!.brainTokensUsed).toBe(billable);
+  });
+
+  it('an exhausted allowance blocks generate with QUOTA_EXCEEDED and no brain call (AC-TOKB-04)', async () => {
+    const sub = (await ctx.subscriptions.findByOrg(orgId))!;
+    await ctx.subscriptions.save({ ...sub, brainTokensUsed: sub.brainTokensQuota });
+    await expect(
+      new GenerateDrafts(ctx).execute({ userId, projectId, prompt: 'checkout flow' }),
+    ).rejects.toMatchObject({ code: 'QUOTA_EXCEEDED' });
+    expect(ctx.brainUsage.rows).toHaveLength(0);
+  });
+
+  it('SCALE never blocks generate, even with a maxed-out counter (AC-TOKB-06)', async () => {
+    const sub = (await ctx.subscriptions.findByOrg(orgId))!;
+    await ctx.subscriptions.save({ ...sub, plan: 'SCALE', brainTokensUsed: sub.brainTokensQuota + 1 });
+    const drafts = await new GenerateDrafts(ctx).execute({ userId, projectId, prompt: 'checkout flow', count: 1 });
+    expect(drafts.features.length).toBeGreaterThan(0);
+  });
+
   it('rejects an empty prompt (VALIDATION)', async () => {
     await expect(new GenerateDrafts(ctx).execute({ userId, projectId, prompt: '   ' })).rejects.toMatchObject({
       code: 'VALIDATION',

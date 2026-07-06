@@ -22,6 +22,11 @@ export interface SubscriptionView {
   /** Monthly executions. Backed by the legacy `runMinutes*` columns until the storage model is renamed. */
   runMinutesQuota: number;
   runMinutesUsed: number;
+  /** Monthly AI Brain token allowance (slice 14, keystone §2 v0.6). */
+  brainTokensQuota: number;
+  brainTokensUsed: number;
+  /** True on SCALE — token blocking is bypassed (metering isn't). */
+  brainTokensUnlimited: boolean;
   priceCents: number;
   providerCustomerId: string | null;
   currentPeriodEnd: Date | null;
@@ -41,6 +46,9 @@ export function subscriptionView(sub: SubscriptionRecord): SubscriptionView {
     unlimited: limits.unlimited,
     runMinutesQuota: sub.runMinutesQuota,
     runMinutesUsed: sub.runMinutesUsed,
+    brainTokensQuota: sub.brainTokensQuota,
+    brainTokensUsed: sub.brainTokensUsed,
+    brainTokensUnlimited: limits.brainTokensUnlimited,
     priceCents: priceCents(sub.plan, sub.billingCycle, sub.seats),
     providerCustomerId: sub.providerCustomerId,
     currentPeriodEnd: sub.currentPeriodEnd,
@@ -102,6 +110,9 @@ export class ChangeSubscription {
       plan: input.plan,
       billingCycle: input.billingCycle ?? sub.billingCycle,
       runMinutesQuota: limits.runMinutesQuota,
+      // S14: the token quota remaps from the new plan exactly like the executions quota;
+      // brainTokensUsed is PRESERVED — nothing but the (deferred, shared) period rollover resets it.
+      brainTokensQuota: limits.brainTokensQuota,
     };
     await this.deps.subscriptions.save(updated);
     await audit(this.deps, input.orgId, input.userId, 'subscription.plan_changed', {

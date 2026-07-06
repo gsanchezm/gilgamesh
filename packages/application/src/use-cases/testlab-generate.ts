@@ -1,10 +1,11 @@
 import { ApplicationError } from '../errors';
+import type { BrainTokenMeter } from '../brain/token-billing';
 import { hasBrainForOrg, type AgentBrainPort } from '../ports/brain';
 import type { Clock } from '../ports/clock';
 import type { IdGenerator } from '../ports/id';
 import type { Citation, KnowledgeRetrievalPort } from '../ports/knowledge';
 import type { ProjectFormat, TestCasePriority } from '../ports/records';
-import type { AuditLogRepository, BrainUsageRepository, MembershipRepository, ProjectRepository } from '../ports/repositories';
+import type { AuditLogRepository, MembershipRepository, ProjectRepository } from '../ports/repositories';
 import { requireProjectAccess } from './authz';
 import { formatGrounding } from './knowledge';
 
@@ -40,7 +41,8 @@ const SYSTEM_PROMPT =
 interface GenerateDeps {
   brain: AgentBrainPort;
   retrieval: KnowledgeRetrievalPort;
-  brainUsage: BrainUsageRepository;
+  /** S14: the atomic BrainUsage-row + token-counter charge seam (replaces raw brainUsage.append). */
+  billing: BrainTokenMeter;
   projects: ProjectRepository;
   memberships: MembershipRepository;
   audit: AuditLogRepository;
@@ -106,6 +108,10 @@ export class GenerateDrafts {
     const n = Math.trunc(Number(input.count ?? 3));
     const count = Number.isFinite(n) ? Math.min(Math.max(n, 1), 10) : 3;
 
+    // S14 token quota — checked BEFORE any billable call (the grounding embed + the SONNET
+    // complete). Exhausted → QUOTA_EXCEEDED (402), the slice-4 TriggerRun pattern.
+    await this.deps.billing.assertWithinQuota(project.orgId);
+
     // Slice 5 + per-org grounding: ground the generation in the chunks visible to this org — its own
     // uploads (scope 'shared' or NULL; agent-scoped chunks stay private to that agent's chat) plus the
     // global shared corpus. No slot: generation is not agent-specific. The stub brain ignores the
@@ -123,18 +129,9 @@ export class GenerateDrafts {
         : SYSTEM_PROMPT,
       messages: [{ role: 'user', content: JSON.stringify({ prompt, format, count }) }],
     });
-    // S9 metering (keystone v0.3): one BrainUsage row per brain call.
-    await this.deps.brainUsage.append({
-      id: this.deps.ids.next(),
-      orgId: project.orgId,
-      tier: 'SONNET',
-      surface: 'GENERATE',
-      inputTokens: res.usage.inputTokens,
-      outputTokens: res.usage.outputTokens,
-      cacheReadTokens: res.usage.cacheReadTokens ?? 0,
-      cacheCreateTokens: res.usage.cacheCreateTokens ?? 0,
-      createdAt: this.deps.clock.now(),
-    });
+    // S9 metering + S14 billing: one BrainUsage row per brain call, charged atomically with the
+    // org's brainTokensUsed counter (billable = input + output; cache excluded).
+    await this.deps.billing.charge(project.orgId, 'GENERATE', 'SONNET', res.usage);
     const parsed = parseDrafts(res.text);
     // Enforce the count cap at the use-case boundary so the invariant holds regardless of which
     // AgentBrainPort adapter is plugged in (the real Claude one may not honor count).

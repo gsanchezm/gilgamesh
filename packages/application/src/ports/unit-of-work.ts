@@ -2,6 +2,7 @@ import type { KnowledgeChunkRepository, KnowledgeDocumentRepository } from './kn
 import type {
   AgentRepository,
   AuditLogRepository,
+  BrainUsageRepository,
   FeatureRepository,
   InvoiceRepository,
   MembershipRepository,
@@ -43,6 +44,8 @@ export interface Repositories {
   audit: AuditLogRepository;
   knowledge: KnowledgeChunkRepository;
   knowledgeDocuments: KnowledgeDocumentRepository;
+  /** Joined in slice 14 so the usage row + the token charge commit atomically (BrainBilling). */
+  brainUsage: BrainUsageRepository;
 }
 
 /**

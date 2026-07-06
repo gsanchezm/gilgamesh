@@ -96,7 +96,8 @@ function bareBrain(ctx: InMemoryContext): AgentBrainPort {
 describe('Knowledge EMBED metering (S16)', () => {
   let ctx: InMemoryContext;
   let kinds: EmbeddingKind[];
-  const meterOf = (c: InMemoryContext) => ({ brainUsage: c.brainUsage, ids: c.ids, clock: c.clock });
+  // S14: the meter is now the shared BrainBilling seam (rows + token charge, atomically).
+  const meterOf = (c: InMemoryContext) => c.billing;
 
   beforeEach(() => {
     ctx = createInMemoryContext();
@@ -170,5 +171,58 @@ describe('Knowledge EMBED metering (S16)', () => {
     const rows = await ctx.brainUsage.listForOrg('org-1');
     expect(rows).toHaveLength(1); // the call still happened -> one row, tokens unknown
     expect(rows[0]!.inputTokens).toBe(0);
+  });
+
+  // ---- Slice 14: token quota on EMBED surfaces (AC-TOKB-03/04) ----
+
+  const seedSub = (orgId: string, brainTokensUsed: number) =>
+    ctx.subscriptions.create({
+      id: `sub-${orgId}`,
+      orgId,
+      plan: 'FREE',
+      billingCycle: 'MONTHLY',
+      seats: 1,
+      status: 'ACTIVE',
+      runMinutesQuota: 500,
+      runMinutesUsed: 0,
+      brainTokensQuota: 100_000,
+      brainTokensUsed,
+      providerCustomerId: null,
+      providerSubscriptionId: null,
+      currentPeriodEnd: null,
+    });
+
+  it('the embed charge lands on the org counter atomically with the usage row (AC-TOKB-03)', async () => {
+    await seedSub('org-1', 0);
+    await new IngestKnowledge(ctx).execute(CHUNKS);
+    const search = new SearchKnowledge({ knowledge: ctx.knowledge, brain: ctx.brain, meter: meterOf(ctx) });
+    await search.execute({ query: 'example mapping cards', orgId: 'org-1' });
+    const [row] = await ctx.brainUsage.listForOrg('org-1');
+    expect(row!.inputTokens).toBeGreaterThan(0);
+    expect((await ctx.subscriptions.findByOrg('org-1'))!.brainTokensUsed).toBe(row!.inputTokens);
+  });
+
+  it('an exhausted allowance blocks the org-attributed search BEFORE the embed (AC-TOKB-04)', async () => {
+    await seedSub('org-1', 100_000);
+    await new IngestKnowledge(ctx).execute(CHUNKS);
+    const search = new SearchKnowledge({ knowledge: ctx.knowledge, brain: ctx.brain, meter: meterOf(ctx) });
+    await expect(search.execute({ query: 'example mapping cards', orgId: 'org-1' })).rejects.toMatchObject({
+      code: 'QUOTA_EXCEEDED',
+    });
+    expect(await ctx.brainUsage.listForOrg('org-1')).toHaveLength(0);
+  });
+
+  it('an exhausted allowance blocks the org-attributed ingest too (AC-TOKB-04)', async () => {
+    await seedSub('org-7', 100_000);
+    const ingest = new IngestKnowledge({ knowledge: ctx.knowledge, brain: ctx.brain, meter: meterOf(ctx) });
+    await expect(ingest.execute(CHUNKS, { orgId: 'org-7' })).rejects.toMatchObject({ code: 'QUOTA_EXCEEDED' });
+  });
+
+  it('an unattributed (global) search is never quota-blocked', async () => {
+    await seedSub('org-1', 100_000);
+    await new IngestKnowledge(ctx).execute(CHUNKS);
+    const search = new SearchKnowledge({ knowledge: ctx.knowledge, brain: ctx.brain, meter: meterOf(ctx) });
+    const res = await search.execute({ query: 'example mapping cards' });
+    expect(res.results.length).toBeGreaterThan(0);
   });
 });
