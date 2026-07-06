@@ -4,7 +4,7 @@
 > signatures, and the OpenAPI/schema skeleton. Every foundation artifact MUST adhere to it
 > **verbatim** — same entity names, field names, enum values, IDs, and port signatures.
 > If an artifact needs a name not defined here, it adds it here first (don't invent locally).
-> Authored centrally (full design context). Expansions fan out from this. v0.4 — 2026-07-06.
+> Authored centrally (full design context). Expansions fan out from this. v0.5 — 2026-07-06.
 
 ## 0. Conventions
 - TypeScript everywhere. Package names `@gilgamesh/<name>`.
@@ -34,6 +34,7 @@ IntegrationGroup   = SOURCE_REPOS | PROJECT_TRACKING | TEST_MANAGEMENT | COMMUNI
 Plan               = FREE | STARTER | GROWTH | SCALE
 BillingCycle       = MONTHLY | ANNUAL
 SubscriptionStatus = TRIALING | ACTIVE | PAST_DUE | CANCELED
+InvoiceStatus      = DRAFT | OPEN | PAID | VOID | UNCOLLECTIBLE   # mirrors the provider's invoice lifecycle (Stripe)
 KnowledgeDocStatus = UPLOADED | INDEXING | INDEXED | FAILED
 BrainTier          = HAIKU | SONNET | OPUS
 BrainSurface       = CHAT | ROUTER | GENERATE | EMBED   # where a brain call originated (metering dimension)
@@ -60,8 +61,13 @@ KnowledgeScope (key) = <AgentSlot key> | shared   # lowercase keys; nullable on 
 - **Artifact** — id, orgId, runId, runNodeId?, type:ArtifactType, storageKey, contentType, sizeBytes, capturedAt, meta(json). Blob via signed expiring URL (never public).
 - **Integration** — id, orgId, key(stable, §8), group:IntegrationGroup, connected(bool), secretRef?(Key Vault ref — NEVER raw token), config(json non-secret), connectedById?, connectedAt?. Unique(orgId,key).
 - **Subscription** — id, orgId(unique), plan:Plan, billingCycle:BillingCycle, seats(int), status:SubscriptionStatus, runMinutesQuota(int), runMinutesUsed(int), providerCustomerId?, providerSubscriptionId?, currentPeriodEnd?. Mock provider now.
+- **Invoice** — id, orgId, providerInvoiceId?(unique — the provider's id, e.g. Stripe `in_…`), status:InvoiceStatus,
+  amountCents(int), currency(lowercase ISO-4217, default `usd`), periodStart?, periodEnd?, hostedInvoiceUrl?,
+  pdfUrl?, createdAt, updatedAt. Written by PaymentProvider webhooks (Stripe) or deterministically by the mock.
 - **KnowledgeDoc** — id, orgId, projectId?, name, sizeBytes, storageKey, status:KnowledgeDocStatus, createdById, createdAt. Private RAG source.
-- **KnowledgeChunk** — id, orgId, docId, ordinal, content(text), embedding(vector(1536)),
+- **KnowledgeChunk** — id, orgId, docId, ordinal, content(text), embedding(vector(1024) — v0.5, was 1536;
+  owner-approved breaking change for real semantic embeddings via Voyage `voyage-4` [dim 1024; Voyage 4 has
+  no 1536 option]; requires a destructive vector migration + full corpus re-ingest),
   scope?:KnowledgeScope(indexed; `shared` or NULL = visible to all agents; an AgentSlot key = visible
   only to that agent's retrieval). pgvector; tenant-scoped retrieval.
 - **ChatSession** — id, orgId, projectId, agentId?(pinned agent when opened from an agent tile; null =
@@ -151,12 +157,14 @@ interface EmailPort {                                       // stub now (determi
 interface ArtifactStorage { put(key:string, data:Buffer|NodeJS.ReadableStream, contentType:string): Promise<void>; signedUrl(key:string, ttlSec:number): Promise<string>; }
 interface EventBus { publish(topic:string, e:unknown): Promise<void>; subscribe(topic:string, h:(e:unknown)=>void): () => void; }
 // Repository<T> per aggregate: User, Org, Membership, Session, Project, Slice, Feature, Scenario,
-//   TestCase, Agent, ToolBinding, Run, RunNode, Artifact, Integration, Subscription, KnowledgeDoc,
+//   TestCase, Agent, ToolBinding, Run, RunNode, Artifact, Integration, Subscription, Invoice, KnowledgeDoc,
 //   ChatSession, ChatMessage, BrainUsage, PasswordReset, AuditLog.
 ```
 
 ## 6. OpenAPI v1 — resource & schema skeleton (full bodies expanded by the API-contract artifact)
 Resources (paths): `/auth/{register,login,logout,me,forgot-password,reset-password}` ·
+`GET /auth/sso/{provider}/start` (302 → the IdP's authorize URL) · `GET /auth/sso/{provider}/callback`
+(code exchange → session cookie → 302 into the app; `provider` = `google` first) ·
 `/orgs`,`/orgs/{orgId}`,`/orgs/{orgId}/members`,`/orgs/{orgId}/members/{id}` (PATCH role change, DELETE remove) · `/projects`,`/projects/{id}` (POST = onboarding: creates Project [+repo]) ·
 `/orgs/{orgId}/agents` (catalog) · `/projects/{id}/agents` (+toolbinding+runtime status), `PATCH /projects/{id}/agents/{slot}`, `POST /projects/{id}/agents/wake-all` ·
 `/projects/{id}/slices`, `/projects/{id}/features`,`/features/{id}`, `/projects/{id}/test-cases`,`/test-cases/{id}`, `/projects/{id}/test-cases/import`, `/projects/{id}/test-cases/generate` ·
@@ -168,7 +176,9 @@ Resources (paths): `/auth/{register,login,logout,me,forgot-password,reset-passwo
 `GET /chat/{sessionId}/events` (SSE stream, same pattern as `/runs/{id}/events`) ·
 `GET /projects/{id}/chat` (list ChatSessions, newest-first) · `GET /chat/{sessionId}/messages` (history) ·
 `GET /orgs/{orgId}/brain/usage` (aggregated per-tier/per-surface token usage) ·
-`/orgs/{orgId}/subscription`, `/orgs/{orgId}/subscription/checkout` · `/orgs/{orgId}/audit`.
+`/orgs/{orgId}/subscription`, `/orgs/{orgId}/subscription/checkout` · `GET /orgs/{orgId}/invoices` ·
+`POST /billing/webhooks/{provider}` (unauthenticated but PROVIDER-SIGNED — raw body + signature header
+verified by the adapter; `provider` = `stripe` first) · `/orgs/{orgId}/audit`.
 Schema names = entity names in §2 + request/response DTOs `*Create`,`*Update`,`*View`,`MeView`(session context: user + memberships + activeOrgId),`ProjectAgentView`(Agent + per-project ToolBinding + derived AgentRuntimeStatus),`RunEvent`,`ReportView`,`Problem`(RFC9457 errors).
 Cross-cutting: every request resolves tenant from session→`orgId`; every list/detail filters by `orgId`; `Problem+json` errors; cursor pagination; rate-limit headers.
 
@@ -197,6 +207,13 @@ $499/mo base includes 10 workspaces + $99/extra workspace (unlimited executions/
 Annual billing charges 10 months (2 months free).
 
 ## 10. Changelog
+- **v0.5 — 2026-07-06** — Payments + SSO + semantic-embeddings amendment (owner decisions, 2026-07-06):
+  +`Invoice` (§2/§5) + `InvoiceStatus` (§1) · +`GET /orgs/{orgId}/invoices` + `POST /billing/webhooks/{provider}`
+  (§6) · +`GET /auth/sso/{provider}/start` + `GET /auth/sso/{provider}/callback` (§6; behind the frozen
+  `IdentityProvider` port, `google` first, login-or-register semantics) · **BREAKING (owner-approved):**
+  `KnowledgeChunk.embedding` vector(1536)→vector(1024) for Voyage `voyage-4` semantic embeddings —
+  destructive vector migration + full re-ingest required. Nothing else frozen was renamed, removed, or
+  restructured. Deferred to a later amendment: `voyage` BYOK key (§8), token-billing vocabulary.
 - **v0.4 — 2026-07-06** — Chat read routes + auth-recovery vocabulary: +`GET /projects/{id}/chat` list +
   `GET /chat/{sessionId}/messages` (§6) · +`PasswordReset` (§2/§5) · +`EmailPort` (§5).
   Nothing frozen was renamed, removed, or restructured.

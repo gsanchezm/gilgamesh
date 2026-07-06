@@ -499,3 +499,34 @@ divergent `refactor/audit-hardening` branch. Reconciled + executed SDD/TDD, all 
   Stripe/Invoice/webhooks · cobro de tokens del Brain · embeddings semánticos (Voyage) ·
   Orchestration/Session (TOM chaos-proxy) · SSO (AC-AUTH-15) · Bloque 3 restante (fail-open del
   rate-limit, per-IP backoff, pagination, postura RAG).
+
+
+## Programa paralelo v2 — Stripe + SSO + Embeddings + Email + Logout (2026-07-06) — owner decisions
+
+- **Combo aprobado (recomendaciones aceptadas en bloque):** 5 streams en worktrees disjuntos —
+  `slice-13-stripe` · `slice-15-sso` · `feat-semantic-embeddings` · `feat-email-adapter` ·
+  `feat-logout-ui`. **Cobro de tokens del Brain = SECUENCIAL tras Stripe** (chocan en billing), NO
+  entra en este combo.
+- **Keystone v0.5 aprobado** y aplicado en serie sobre `main` ANTES de paralelizar: +`Invoice`/
+  `InvoiceStatus` + `GET /orgs/{orgId}/invoices` + `POST /billing/webhooks/{provider}` + rutas SSO
+  `GET /auth/sso/{provider}/start|callback` + **BREAKING owner-approved:** `KnowledgeChunk.embedding`
+  vector(1536)→vector(1024) (Voyage 4 no ofrece 1536; migración destructiva + re-ingesta del corpus).
+- **S13 Stripe:** SDK oficial `stripe` (npm, server-only, pineado); patrón SelectingBrain — sin
+  `STRIPE_SECRET_KEY` (o `PAYMENTS_MODE=offline`) → `MockPaymentProvider`; TODOS los suites/CI offline.
+  Checkout Session real + webhooks con verificación de firma (raw body) + persistencia de `Invoice`.
+- **Embeddings:** proveedor **Voyage `voyage-4`** (dim 1024, contexto 32K, `input_type`
+  query/document), key de plataforma por env `VOYAGE_API_KEY`; BYOK Voyage = follow-up (§8 sin tocar).
+  Offline/CI: hash léxico determinista actual recortado a 1024. Seam: `AgentBrainPort.embed` vía el
+  brain selector; metering `BrainUsage` surface EMBED.
+- **S15 SSO:** Google OIDC (code flow + PKCE + state/nonce) detrás del puerto congelado
+  `IdentityProvider`; env `GOOGLE_CLIENT_ID/SECRET` (sin credenciales → botón deshabilitado);
+  **login-or-register**: email verificado existente → link + sesión; nuevo → crea User (password
+  inutilizable, hash de secreto aleatorio — passwordHash NO se vuelve nullable) → onboarding.
+- **Email real:** adapter SMTP (nodemailer) detrás del `EmailPort` congelado; selección por env
+  (`SMTP_URL`; sin URL o `EMAIL_MODE=offline` → stub actual que registra en memoria). Solo infra api.
+- **Logout UI:** cierra el deferral S1 — control en Sidebar/Topbar → `POST /auth/logout` (existe
+  desde S1) → limpiar estado de sesión del SPA → redirect `/login`.
+- **Reglas de ejecución:** SDD→BDD→TDD por stream · gates de stack (int/BDD/Playwright) serializados,
+  un worktree a la vez · merges secuenciales con re-test · review adversarial antes de cada merge ·
+  worktrees SIEMPRE anunciados · fusion points esperados: `AppRoutes.tsx(.test)` (logout/SSO),
+  `LoginScreen` (SSO), wirings de persistencia (Stripe/Invoice), `index.css` (regiones por stream).
