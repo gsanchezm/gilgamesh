@@ -345,3 +345,20 @@ the real TDD red); exact price pins in application/api tests; BillingScreen's SC
 from the catalog. **Verified (post-merge):** typecheck + lint · 633 Docker-free · `test:int` 19 ·
 **BDD 148 scenarios / 1223 steps** · Playwright 17. Deferred: Stripe/Invoice/webhooks · storage-column
 rename to execution semantics (future keystone major) · Brain token charging hookup.
+
+
+## Slice 11 status (Chat re-skin, capture 07) — DoD COMPLETE (2026-07-06, on `main`, owner-approved visual)
+
+`specs/slices/11-chat-reskin/` — the capture-07 chat experience over keystone v0.4's read routes.
+Application/api: `ChatSessionRepository.listForProject` (updatedAt desc) + batched
+`firstUserMessageBySession` (no N+1) + `ListChatSessions` (derived 60-char `title`, MEMBER+);
+history = the existing `GetChatEvents` behind `GET /chat/{sessionId}/messages`;
+`GET /projects/{id}/chat` lists sessions; `ProjectAgentView` gains `id`. Web: session rail
+(Conversations + New chat), pinned header (← Agents + AgentAvatar + deity + role chip +
+status·tool), deity attribution, run-narration console cards, prototype composer (mic disabled —
+voice is a future slice); **live EventSource** over `?live=1` (deltas append live; replaces the S8
+O(n²) replay-per-send; one-shot resync fallback); tile Chat action deep-links `?agent=<id>`.
+**Verified:** typecheck + lint · 653 Docker-free · `test:int` 19 · **BDD 160 scenarios / 1318
+steps** · **Playwright 18** · fidelity screenshot vs `capturas/07-chat-voz.png` approved by the
+owner. Known deltas (all prior owner decisions): no mic copy (voice deferred), no "View session"
+button (Session view blocked on timeline data), no sidebar Log out (S1 deferral).

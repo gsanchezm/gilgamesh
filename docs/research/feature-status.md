@@ -12,10 +12,10 @@ authoritative detail rather than repeating it, so it can't drift:
 **Legend:** ✅ done (backend + UI faithful to the capture) · 🟡 functional but UI not re-skinned to the
 capture / partial · 🔵 stub behind a port (runs offline; real engine pending) · 🔴 not built / blocked.
 
-_As of 2026-07-01. Slices 1–6 + look&feel (slice 7) + the audit fixes are all merged on `main`.
-Latest on `main`: **Reports** view (capture 08, read-only; route wired 2026-07-05) + **PDF/.docx knowledge
-parsers**. The **Onboarding wizard re-skin** (Company→`orgName`) is WIP on branch
-`feature/onboarding-reskin` (`5ab3f59`, unverified, not merged)._
+_As of 2026-07-06. Slices 1–12 are ALL merged + pushed on `main` (keystone v0.4): incl. Agent Chat
+(8) + real Claude Brain w/ BYOK + metering (9) + billing 4-tier formalization (10) + chat re-skin w/
+live streaming (11) + auth recovery (12), plus Reports, onboarding wizard, per-org RAG grounding,
+CI hardening (SHA-pinned actions, optimized assets)._
 
 ---
 
@@ -32,7 +32,7 @@ Backend = does the data/logic exist · UI = re-skinned to the `capturas/NN` targ
 | 04 | Dashboard (Agent room) | ✅ | ✅ | |
 | 05 | Dashboard — light theme | ✅ | ✅ | |
 | 06 | Orchestration (DAG) | 🔴 | 🔴 | blocked on TOM kernel |
-| 07 | Chat / voice | ✅ | 🟡 | **slices 8+9 on `main`**: sessions + HAIKU-routing + scoped RAG + registry-validated tools, now with the **real Claude brain** when a key is present (stub offline) + per-org metering + live C3 SSE; `ChatScreen` functional (capture re-skin, live EventSource in the client, and voice pending) |
+| 07 | Chat / voice | ✅ | ✅ | **slices 8+9+11 on `main`**: real Claude brain (BYOK per org, metering, tool registry) + capture-07 re-skin (session rail, pinned deity header, live EventSource streaming). Owner-approved screenshot. **Voice** 🔴 pending (STT/TTS) |
 | 08 | Reports | ✅ | ✅ | `ReportsScreen` + `summarizeAcrossRuns`; route wired at `/projects/:id/reports` (+ Playwright e2e); per-tool "Tools" breakdown deferred |
 | 09 | Knowledge base | ✅ | ✅ | + per-org upload + `.pdf`/`.docx` ingest |
 | 10 | Test Lab | ✅ | ✅ | Integrated TestLabSummaryStats & refactored layout |

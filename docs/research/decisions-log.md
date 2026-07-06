@@ -474,3 +474,28 @@ divergent `refactor/audit-hardening` branch. Reconciled + executed SDD/TDD, all 
   end-to-end), undrained retry response bodies, verifier 4xx mapping. Deferred: org-BYOK call-time
   resolution (needs `SecretVault.get()`); live EventSource in the web chat; web chat O(n²) replay
   (unchanged from S8); `BRAIN_SMOKE` manual smoke.
+
+
+## Programa paralelo de 5 streams (2026-07-06) — owner decisions + resultado
+
+- **Keystone v0.4 aprobado** y aplicado en serie (`ea888d1`): rutas de lectura del chat
+  (`GET /projects/{id}/chat` list + `GET /chat/{sessionId}/messages`) + `PasswordReset` + `EmailPort`.
+- **Owner: hasta 5 worktrees en paralelo; anunciar siempre qué worktrees/CLIs se usan** (regla
+  permanente). Asignación por matriz: agy→billing, codex→chat-reskin, claude→resto. El clasificador
+  de permisos bloqueó los modos no-interactivos de agy/codex (flags que desactivan sus gates);
+  reglas escritas en `.claude/settings.local.json` (gitignoreado) pero la sesión no las recargó —
+  **owner decidió: fallback a subagentes Claude** para billing y chat-reskin.
+- **Resultado (todo merged + pushed a `main`):** CI hardening (14 actions a SHA + −972 KB assets
+  lossless) · BYOK call-time (`SecretVault.get` + `forOrg(orgId)`, cache orgId+secretRef) ·
+  **S12 auth recovery** (202 genérico anti-enumeración, token sha256-only 30min single-use consumido
+  antes del rewrite, reset revoca sesiones; BDD 141) · **S10 billing 4-tier** (hallazgo honesto: la
+  semántica ya vivía desde `7632020`; el slice formalizó spec+BDD y derivó domain de `PLAN_CATALOG`
+  como fuente única + pines de precio; BDD 148) · **S11 chat re-skin** (rail+historial v0.4, título
+  derivado del primer mensaje, `ProjectAgentView.id` + deep-link pinned, EventSource vivo que
+  reemplaza el replay O(n²) de S8; BDD 160/1318 · Playwright 18 · screenshot vs captura 07
+  **aprobado por el owner**). Fusion points (AppRoutes.test, wiring Prisma) resueltos conservando
+  ambos lados en merges secuenciales con re-test.
+- **Deferred vigente:** voz (STT/TTS) · "View session" (bloqueado por timeline) · Log out (S1) ·
+  Stripe/Invoice/webhooks · cobro de tokens del Brain · embeddings semánticos (Voyage) ·
+  Orchestration/Session (TOM chaos-proxy) · SSO (AC-AUTH-15) · Bloque 3 restante (fail-open del
+  rate-limit, per-IP backoff, pagination, postura RAG).
