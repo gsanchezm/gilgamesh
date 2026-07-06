@@ -24,6 +24,15 @@ export function billableTokens(usage: BrainCallUsage): number {
 }
 
 /**
+ * Saturation cap for `Subscription.brainTokensUsed` (review S14 #2): the column is int4 and SCALE
+ * never blocks or resets, so an unbounded increment would eventually overflow (2^31-1) INSIDE the
+ * charge transaction and 500 a chat send. Both charge adapters clamp at this value (`LEAST(...)`
+ * in SQL / `Math.min` in-memory). The display saturates here for unlimited-tier orgs; exact
+ * overage past 2B is billing-irrelevant — the only plan that can reach it never blocks.
+ */
+export const BRAIN_TOKENS_USED_CAP = 2_000_000_000;
+
+/**
  * The check/charge seam every org-attributed brain surface consumes (slice 14). An interface —
  * not the class — so tests can double it (the `BrainKeyVerifier`/`EmbedMeter` precedent).
  */

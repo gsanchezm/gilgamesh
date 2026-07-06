@@ -47,8 +47,10 @@ const mutate = (req: request.Test) => req.set('Cookie', auth.cookie).set('X-CSRF
 const read = (req: request.Test) => req.set('Cookie', auth.cookie);
 
 async function setTokens(used: number, plan?: 'FREE' | 'SCALE') {
+  // save() deliberately never persists the usage counters (review S14 #1); the in-memory
+  // create() overwrites by orgId, so it doubles as the absolute-counter seeding path here.
   const sub = (await subscriptions.findByOrg(orgId))!;
-  await subscriptions.save({ ...sub, ...(plan ? { plan } : {}), brainTokensUsed: used });
+  await subscriptions.create({ ...sub, ...(plan ? { plan } : {}), brainTokensUsed: used });
 }
 
 describe('AI token billing (AC-TOKB)', () => {

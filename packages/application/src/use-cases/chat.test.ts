@@ -256,8 +256,9 @@ describe('Agent Chat — sessions, routing, retrieval, tools', () => {
 
   it('a chat-triggered run respects the quota: no Run, narrated QUOTA_EXCEEDED (AC-CRUN-02)', async () => {
     await makeFeature();
+    // Through the charge path — save() no longer persists the counters (review S14 #1).
     const sub = (await ctx.subscriptions.findByOrg(orgId))!;
-    await ctx.subscriptions.save({ ...sub, runMinutesUsed: sub.runMinutesQuota });
+    await ctx.subscriptions.chargeRunMinutes(orgId, sub.runMinutesQuota - sub.runMinutesUsed);
 
     const session = await makeSession();
     const res = await makeSend().execute({ userId, sessionId: session.id, content: 'run the Checkout feature' });
@@ -433,8 +434,9 @@ describe('Agent Chat — sessions, routing, retrieval, tools', () => {
   // ---- Slice 14: AI token billing (AC-TOKB-02/05/06) ----
 
   const exhaustTokens = async () => {
+    // Through the charge path — save() no longer persists the counters (review S14 #1).
     const sub = (await ctx.subscriptions.findByOrg(orgId))!;
-    await ctx.subscriptions.save({ ...sub, brainTokensUsed: sub.brainTokensQuota });
+    await ctx.subscriptions.chargeBrainTokens(orgId, sub.brainTokensQuota - sub.brainTokensUsed);
   };
 
   it('charges the send atomically: brainTokensUsed equals the billable sum of its usage rows (AC-TOKB-02)', async () => {
@@ -473,7 +475,8 @@ describe('Agent Chat — sessions, routing, retrieval, tools', () => {
 
   it('SCALE is unlimited: a maxed-out counter never blocks, and usage keeps charging (AC-TOKB-06)', async () => {
     const sub = (await ctx.subscriptions.findByOrg(orgId))!;
-    await ctx.subscriptions.save({ ...sub, plan: 'SCALE', brainTokensUsed: sub.brainTokensQuota + 1 });
+    await ctx.subscriptions.save({ ...sub, plan: 'SCALE' });
+    await ctx.subscriptions.chargeBrainTokens(orgId, sub.brainTokensQuota + 1);
     const before = sub.brainTokensQuota + 1;
 
     const session = await makeSession();

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createInMemoryContext, type InMemoryContext } from '../testing/in-memory';
 import type { SubscriptionRecord } from '../ports/records';
-import { billableTokens, BrainBilling } from './token-billing';
+import { billableTokens, BRAIN_TOKENS_USED_CAP, BrainBilling } from './token-billing';
 
 const subscription = (overrides: Partial<SubscriptionRecord> = {}): SubscriptionRecord => ({
   id: 'sub-1',
@@ -75,14 +75,45 @@ describe('BrainBilling (slice 14)', () => {
     expect(await billing.isExhausted('org-1')).toBe(true);
   });
 
-  it('SCALE is brainTokensUnlimited: never exhausted, but still charged (AC-TOKB-06)', async () => {
+  it('SCALE is brainTokensUnlimited: never exhausted even at the saturation cap (AC-TOKB-06)', async () => {
     await ctx.subscriptions.create(
-      subscription({ plan: 'SCALE', brainTokensQuota: 1_000_000_000, brainTokensUsed: 2_000_000_000 }),
+      subscription({ plan: 'SCALE', brainTokensQuota: 1_000_000_000, brainTokensUsed: BRAIN_TOKENS_USED_CAP }),
     );
     expect(await billing.isExhausted('org-1')).toBe(false);
     await expect(billing.assertWithinQuota('org-1')).resolves.toBeUndefined();
     await billing.charge('org-1', 'CHAT', 'SONNET', { inputTokens: 5, outputTokens: 5 });
-    expect((await ctx.subscriptions.findByOrg('org-1'))!.brainTokensUsed).toBe(2_000_000_010);
+    // Saturated counter (review S14 #2): charging past the cap clamps instead of overflowing int4 —
+    // the charge transaction (and the chat send inside it) can never 500 on an unlimited-tier org.
+    expect((await ctx.subscriptions.findByOrg('org-1'))!.brainTokensUsed).toBe(BRAIN_TOKENS_USED_CAP);
+  });
+
+  it('chargeBrainTokens clamps exactly at BRAIN_TOKENS_USED_CAP on the boundary (review S14 #2)', async () => {
+    await ctx.subscriptions.create(
+      subscription({ plan: 'SCALE', brainTokensQuota: 1_000_000_000, brainTokensUsed: BRAIN_TOKENS_USED_CAP - 3 }),
+    );
+    await billing.charge('org-1', 'CHAT', 'SONNET', { inputTokens: 2, outputTokens: 1 });
+    expect((await ctx.subscriptions.findByOrg('org-1'))!.brainTokensUsed).toBe(BRAIN_TOKENS_USED_CAP);
+    await billing.charge('org-1', 'CHAT', 'SONNET', { inputTokens: 10, outputTokens: 10 });
+    expect((await ctx.subscriptions.findByOrg('org-1'))!.brainTokensUsed).toBe(BRAIN_TOKENS_USED_CAP);
+    // Metering never stops — only the counter saturates.
+    expect(await ctx.brainUsage.listForOrg('org-1')).toHaveLength(2);
+  });
+
+  it('save() never persists the usage counters: a stale admin snapshot cannot clobber a concurrent charge (review S14 #1)', async () => {
+    await ctx.subscriptions.create(subscription());
+    // Admin flow reads its snapshot...
+    const stale = (await ctx.subscriptions.findByOrg('org-1'))!;
+    // ...a charge commits concurrently (tokens AND run minutes)...
+    await billing.charge('org-1', 'CHAT', 'SONNET', { inputTokens: 30, outputTokens: 12 });
+    expect(await ctx.subscriptions.chargeRunMinutes('org-1', 7)).toBe(true);
+    // ...then the admin flow writes the stale record back (plan change semantics).
+    await ctx.subscriptions.save({ ...stale, plan: 'GROWTH', brainTokensQuota: 10_000_000 });
+
+    const after = (await ctx.subscriptions.findByOrg('org-1'))!;
+    expect(after.plan).toBe('GROWTH'); // the admin write landed...
+    expect(after.brainTokensQuota).toBe(10_000_000);
+    expect(after.brainTokensUsed).toBe(42); // ...but the committed charges survived (no lost charge)
+    expect(after.runMinutesUsed).toBe(7); // fixes the identical pre-existing slice-4 race too
   });
 
   it('no subscription row -> no metering, never blocked (the chargeRunMinutes precedent)', async () => {

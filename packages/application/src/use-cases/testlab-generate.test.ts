@@ -172,8 +172,9 @@ describe('Test Lab — AI generate (stub brain)', () => {
   });
 
   it('an exhausted allowance blocks generate with QUOTA_EXCEEDED and no brain call (AC-TOKB-04)', async () => {
+    // Through the charge path — save() no longer persists the counters (review S14 #1).
     const sub = (await ctx.subscriptions.findByOrg(orgId))!;
-    await ctx.subscriptions.save({ ...sub, brainTokensUsed: sub.brainTokensQuota });
+    await ctx.subscriptions.chargeBrainTokens(orgId, sub.brainTokensQuota - sub.brainTokensUsed);
     await expect(
       new GenerateDrafts(ctx).execute({ userId, projectId, prompt: 'checkout flow' }),
     ).rejects.toMatchObject({ code: 'QUOTA_EXCEEDED' });
@@ -182,7 +183,8 @@ describe('Test Lab — AI generate (stub brain)', () => {
 
   it('SCALE never blocks generate, even with a maxed-out counter (AC-TOKB-06)', async () => {
     const sub = (await ctx.subscriptions.findByOrg(orgId))!;
-    await ctx.subscriptions.save({ ...sub, plan: 'SCALE', brainTokensUsed: sub.brainTokensQuota + 1 });
+    await ctx.subscriptions.save({ ...sub, plan: 'SCALE' });
+    await ctx.subscriptions.chargeBrainTokens(orgId, sub.brainTokensQuota + 1);
     const drafts = await new GenerateDrafts(ctx).execute({ userId, projectId, prompt: 'checkout flow', count: 1 });
     expect(drafts.features.length).toBeGreaterThan(0);
   });

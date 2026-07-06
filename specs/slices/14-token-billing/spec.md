@@ -190,6 +190,29 @@ the 1e9 unlimited cap fits; `brainTokensUnlimited` from the plan is the real sig
 cap pattern). Migration backfills `brain_tokens_quota` per each org's current plan and
 `brain_tokens_used = 0`.
 
+### 5.6 The charge methods OWN the usage counters — `save()` never writes them (review S14 #1)
+
+`SubscriptionRepository.save()` (BOTH wirings) deliberately does NOT persist `runMinutesUsed`/
+`brainTokensUsed`: any admin read→save flow (`ChangeSubscription`/`UpdateSeats`/`ConfirmCheckout`/
+`CancelSubscription`/`ApplyPaymentEvent`) racing a concurrent charge would otherwise write its
+stale counter snapshot back and silently erase a committed increment (lost charge). Prisma omits
+the two columns (and `orgId` — a subscription never moves tenants) from its explicit UPDATE; the
+in-memory twin preserves the stored row's counters on update (creation-time seeding stays on
+`create()`). This deliberately fixes the **identical pre-existing slice-4 `runMinutesUsed` race**
+as well. Quotas stay writable through `save()` — plan changes remap them on purpose.
+
+### 5.7 int4 saturation for the unlimited tier (review S14 #2)
+
+`brain_tokens_used` is int4 and SCALE neither blocks nor resets, so an unbounded increment would
+eventually overflow (2^31−1) INSIDE the charge transaction — turning a chat send into a 500.
+`chargeBrainTokens` therefore **saturates at `BRAIN_TOKENS_USED_CAP` = 2,000,000,000** in both
+wirings (SQL `LEAST(brain_tokens_used::bigint + n, 2e9)::int` — the bigint cast keeps the
+intermediate sum overflow-proof too; in-memory `Math.min`). Consequences: the usage display
+saturates at 2e9 for unlimited-tier orgs and the exact overage past 2B is billing-irrelevant —
+the only plan that can reach the cap never blocks, and `BrainUsage` rows keep the true per-call
+record regardless. A BigInt column was rejected (type ripple through views/DTOs for no billing
+value). Metered plans block at ≤ 10M and can never approach the cap.
+
 ---
 
 ## 6. API operations touched (keystone §6 — no new routes)
@@ -238,6 +261,12 @@ cap pattern). Migration backfills `brain_tokens_quota` per each org's current pl
   `unlimited` precedent for executions).
 - The `EmbedMeter` bag (`{brainUsage, ids, clock}`) is replaced by the `BrainTokenMeter` seam —
   EMBED metering now always charges; its swallow-on-failure behavior is preserved.
+- **`save()` no longer persists the usage counters** (both wirings) — the charge methods are the
+  sole counter writers; closes the review-S14 lost-charge race AND the identical pre-existing
+  slice-4 `runMinutesUsed` race (§5.6). Tests that need to seed absolute counter values go through
+  the charge methods (or in-memory `create()` overwrite), never `save()`.
+- **`BRAIN_TOKENS_USED_CAP` = 2e9 saturation** on `chargeBrainTokens` (§5.7) — int4 overflow
+  protection for the never-blocking, never-resetting SCALE tier; BigInt deliberately rejected.
 
 **Open questions (non-blocking):**
 - The shared rollover mechanism (cron vs webhook `invoice.paid` period detection) — owner decision

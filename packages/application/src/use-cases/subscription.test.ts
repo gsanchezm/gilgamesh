@@ -43,8 +43,8 @@ describe('Subscription & Billing', () => {
   // ---- Slice 14: token quota on the subscription (AC-TOKB-01/07) ----
 
   it('a plan change remaps the token quota from the catalog and PRESERVES the usage (AC-TOKB-01)', async () => {
-    const sub = (await ctx.subscriptions.findByOrg(orgId))!;
-    await ctx.subscriptions.save({ ...sub, brainTokensUsed: 12_345 });
+    // Through the charge path — save() no longer persists the counters (review S14 #1).
+    await ctx.subscriptions.chargeBrainTokens(orgId, 12_345);
 
     const starter = await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'STARTER' });
     expect(starter).toMatchObject({ brainTokensQuota: 2_000_000, brainTokensUsed: 12_345 });
@@ -56,7 +56,7 @@ describe('Subscription & Billing', () => {
 
   it('checkout confirmation preserves the token counter — no rollover reset exists (AC-TOKB-07)', async () => {
     const sub = (await ctx.subscriptions.findByOrg(orgId))!;
-    await ctx.subscriptions.save({ ...sub, brainTokensUsed: 777 });
+    await ctx.subscriptions.chargeBrainTokens(orgId, 777);
     await new StartCheckout(ctx).execute({ userId, orgId });
     const v = await new ConfirmCheckout(ctx).execute({ userId, orgId });
     // Exactly the executions behavior (spec 14 §4): activation never resets the monthly counters.

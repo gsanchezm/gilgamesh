@@ -58,7 +58,7 @@ import type {
   UserRecord,
 } from '../ports/records';
 import { DeterministicBrain } from '../brain/stub-brain';
-import { BrainBilling } from '../brain/token-billing';
+import { BRAIN_TOKENS_USED_CAP, BrainBilling } from '../brain/token-billing';
 import { DeterministicKernel } from '../kernel/deterministic-kernel';
 import { ApplyPaymentEvent } from '../payment/apply-payment-event';
 import { MockPaymentProvider } from '../payment/mock-payment-provider';
@@ -364,7 +364,16 @@ export class InMemorySubscriptionRepository implements SubscriptionRepository {
     return this.byOrg.get(orgId) ?? null;
   }
   async save(rec: SubscriptionRecord): Promise<void> {
-    this.byOrg.set(rec.orgId, rec);
+    // The usage counters are OWNED by the charge methods (review S14 #1): an existing row keeps
+    // its committed counters — a stale admin snapshot (plan/seats/status/checkout) can never
+    // clobber a concurrent charge. Mirrors the Prisma adapter's column-omitting UPDATE.
+    const existing = this.byOrg.get(rec.orgId);
+    this.byOrg.set(
+      rec.orgId,
+      existing
+        ? { ...rec, runMinutesUsed: existing.runMinutesUsed, brainTokensUsed: existing.brainTokensUsed }
+        : rec,
+    );
   }
   async chargeRunMinutes(orgId: string, minutes: number): Promise<boolean> {
     const sub = this.byOrg.get(orgId);
@@ -375,8 +384,9 @@ export class InMemorySubscriptionRepository implements SubscriptionRepository {
   }
   async chargeBrainTokens(orgId: string, tokens: number): Promise<void> {
     // Unconditional increment (S14): the cost is known only after the call — the pre-check gates.
+    // Saturates at BRAIN_TOKENS_USED_CAP (int4 headroom; review S14 #2) like the Prisma LEAST().
     const sub = this.byOrg.get(orgId);
-    if (sub) sub.brainTokensUsed += tokens;
+    if (sub) sub.brainTokensUsed = Math.min(sub.brainTokensUsed + tokens, BRAIN_TOKENS_USED_CAP);
   }
   async findByProviderCustomerId(providerCustomerId: string): Promise<SubscriptionRecord | null> {
     for (const s of this.byOrg.values()) if (s.providerCustomerId === providerCustomerId) return s;

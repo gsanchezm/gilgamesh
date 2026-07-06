@@ -51,7 +51,7 @@ import type {
   UserRecord,
   UserRepository,
 } from '@gilgamesh/application';
-import { ApplicationError } from '@gilgamesh/application';
+import { ApplicationError, BRAIN_TOKENS_USED_CAP } from '@gilgamesh/application';
 import { Prisma, type RepoProvider } from '@prisma/client';
 
 export class PrismaUserRepository implements UserRepository {
@@ -371,7 +371,25 @@ export class PrismaSubscriptionRepository implements SubscriptionRepository {
     return this.db.subscription.findUnique({ where: { orgId } });
   }
   async save(rec: SubscriptionRecord): Promise<void> {
-    await this.db.subscription.update({ where: { id: rec.id }, data: rec });
+    // EXPLICIT column list, deliberately OMITTING the usage counters (runMinutesUsed/
+    // brainTokensUsed) — those are OWNED by the charge methods below (review S14 #1): an admin
+    // read→save flow racing a concurrent charge must never write its stale counter snapshot back
+    // (lost charge). Also omits orgId (a subscription never moves across orgs). Quotas remain
+    // writable — plan changes remap them deliberately.
+    await this.db.subscription.update({
+      where: { id: rec.id },
+      data: {
+        plan: rec.plan,
+        billingCycle: rec.billingCycle,
+        seats: rec.seats,
+        status: rec.status,
+        runMinutesQuota: rec.runMinutesQuota,
+        brainTokensQuota: rec.brainTokensQuota,
+        providerCustomerId: rec.providerCustomerId,
+        providerSubscriptionId: rec.providerSubscriptionId,
+        currentPeriodEnd: rec.currentPeriodEnd,
+      },
+    });
   }
   findByProviderCustomerId(providerCustomerId: string): Promise<SubscriptionRecord | null> {
     return this.db.subscription.findFirst({ where: { providerCustomerId } });
@@ -392,9 +410,12 @@ export class PrismaSubscriptionRepository implements SubscriptionRepository {
     // Unconditional atomic increment (S14, spec §5.2): the cost is known only AFTER the brain call,
     // so the charge can never be refused — the pre-call quota check is the gate. Touches only the
     // counter (concurrent plan/checkout writes can't be clobbered); a no-op with no subscription row.
+    // Saturates at BRAIN_TOKENS_USED_CAP (review S14 #2): the column is int4 and SCALE never blocks
+    // or resets, so an unbounded increment would eventually overflow INSIDE the charge transaction
+    // and 500 a chat send. The bigint cast keeps the intermediate sum itself overflow-proof.
     await this.db.$executeRaw`
       UPDATE subscriptions
-      SET brain_tokens_used = brain_tokens_used + ${tokens}
+      SET brain_tokens_used = LEAST(brain_tokens_used::bigint + ${tokens}, ${BRAIN_TOKENS_USED_CAP})::int
       WHERE org_id = ${orgId}::uuid`;
   }
 }

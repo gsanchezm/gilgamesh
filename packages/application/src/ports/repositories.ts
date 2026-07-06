@@ -156,6 +156,14 @@ export interface IntegrationRepository {
 export interface SubscriptionRepository {
   create(rec: SubscriptionRecord): Promise<void>;
   findByOrg(orgId: string): Promise<SubscriptionRecord | null>;
+  /**
+   * Persists the subscription EXCEPT the usage counters (`runMinutesUsed`/`brainTokensUsed`) —
+   * those are OWNED by the dedicated charge methods below (review S14 #1): an admin read→save
+   * flow (plan change / seats / checkout / cancel / webhook status) racing a concurrent charge
+   * must never clobber a committed increment with its stale snapshot (lost charge). This also
+   * closes the identical pre-existing slice-4 `runMinutesUsed` race. Quotas stay writable here
+   * (plan changes remap them deliberately).
+   */
   save(rec: SubscriptionRecord): Promise<void>;
   /**
    * Atomically adds `minutes` to runMinutesUsed IFF it stays within runMinutesQuota; returns false
@@ -167,7 +175,9 @@ export interface SubscriptionRepository {
    * Atomically adds `tokens` to brainTokensUsed (slice 14). UNCONDITIONAL — unlike
    * `chargeRunMinutes`, a brain call's cost is known only AFTER the tokens are consumed, so the
    * charge can never be refused (the pre-call quota check is the gate; spec 14 §5.2). Touches
-   * only the counter; a no-op when the org has no subscription row.
+   * only the counter; a no-op when the org has no subscription row. Saturates at
+   * `BRAIN_TOKENS_USED_CAP` (2e9 int4 headroom, review S14 #2): SCALE never blocks or resets,
+   * so the counter clamps instead of overflowing inside the charge transaction.
    */
   chargeBrainTokens(orgId: string, tokens: number): Promise<void>;
   /** Resolves the tenant behind a provider webhook (slice 13): Stripe `customer` → org. */

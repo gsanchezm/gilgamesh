@@ -69,9 +69,10 @@ describe('Test Execution — runs', () => {
     await new TriggerRun(ctx).execute({ userId, projectId, targetKind: 'FEATURE', targetId: f.id });
     expect((await new GetOrgSubscription(ctx).execute({ userId, orgId })).runMinutesUsed).toBe(3);
 
-    // Exhaust the quota, then the next run is blocked.
+    // Exhaust the quota through the charge path (save() no longer persists the counters —
+    // review S14 #1), then the next run is blocked.
     const sub = (await ctx.subscriptions.findByOrg(orgId))!;
-    await ctx.subscriptions.save({ ...sub, runMinutesUsed: sub.runMinutesQuota });
+    await ctx.subscriptions.chargeRunMinutes(orgId, sub.runMinutesQuota - sub.runMinutesUsed);
     await expect(
       new TriggerRun(ctx).execute({ userId, projectId, targetKind: 'FEATURE', targetId: f.id }),
     ).rejects.toMatchObject({ code: 'QUOTA_EXCEEDED' });
