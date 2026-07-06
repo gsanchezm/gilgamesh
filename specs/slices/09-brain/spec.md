@@ -248,6 +248,17 @@ idea was dropped (see §13).
 - **Streamed-call usage:** the frozen `stream()` yields only `{delta}`; the adapter exposes an OPTIONAL
   slice-level extension (`streamWithUsage`) that also resolves final usage; `SendChatMessage`
   feature-detects it for CHAT metering. Folded into the port at the next keystone major.
+- **Org-BYOK call-time resolution (as built — closes the S9 deferred follow-up):** `SecretVault` gained
+  `get(scope)` and the S6 stub now RETAINS secrets in an in-process map (never in any repository/DB
+  row — only the `vault://<scope>` ref persists). `SelectingBrain` exposes a second OPTIONAL
+  slice-level extension `forOrg(orgId)` (+ `hasBrainForOrg` guard — the `streamWithUsage` precedent):
+  in `auto` mode each call re-reads the org's `anthropic` Integration row, parses the scope from its
+  `secretRef`, reads the key via `vault.get`, and delegates to a per-org `ClaudeBrain` (LRU-ish cache
+  keyed orgId+secretRef, cap 50 — a rotated/removed ref naturally misses, so disconnect bites on the
+  very next call) → else the platform-key adapter → else the stub; `offline` returns the selecting
+  instance itself (determinism + the BDD fault-injection seam preserved). `SendChatMessage` and
+  `GenerateDrafts` feature-detect `hasBrainForOrg` for their router/answer/draft calls; their deps
+  stay the frozen `AgentBrainPort`. The resolved key is never logged, thrown, or persisted.
 - **Metering is unconditional** (supersedes the earlier `BRAIN_METER_STUB=1` idea, which was
   dropped): the application layer meters every brain call — stub included — so the metering ACs
   are BDD-verifiable offline with no extra flag; stub rows are free length-based counts.

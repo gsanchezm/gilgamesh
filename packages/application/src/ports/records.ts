@@ -77,7 +77,8 @@ export type IntegrationGroup =
   | 'TEST_MANAGEMENT'
   | 'COMMUNICATION'
   | 'CICD'
-  | 'DEVICES_BROWSERS';
+  | 'DEVICES_BROWSERS'
+  | 'AI_PROVIDERS';
 
 /** A per-org integration connection (slice 6). `secretRef` is a vault reference — NEVER a raw token. */
 export interface IntegrationRecord {

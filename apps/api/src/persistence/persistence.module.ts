@@ -33,12 +33,14 @@ import {
   InMemoryUnitOfWork,
   InMemoryUserRepository,
   type FeatureRepository,
+  type IntegrationRepository,
   type MembershipRepository,
   type OrgRepository,
   type ProjectRepository,
   type RunRepository,
   type RunResultRepository,
   type ScenarioRepository,
+  type SecretVault,
   type SessionRepository,
   type SliceRepository,
   type SubscriptionRepository,
@@ -148,7 +150,13 @@ import { TOKENS } from './tokens';
     { provide: TOKENS.Clock, useValue: new SystemClock() },
     // Provider selection (S9-1): the stub unless BRAIN_MODE/ANTHROPIC_API_KEY select the real
     // Claude adapter; the key verifier follows the same mode (real 1-token ping only in auto).
-    { provide: TOKENS.Brain, useFactory: () => brainFromEnv() },
+    // In auto, `forOrg` resolves a connected org BYOK key per call (integrations row + vault).
+    {
+      provide: TOKENS.Brain,
+      useFactory: (integrations: IntegrationRepository, vault: SecretVault) =>
+        brainFromEnv(process.env, { integrations, vault }),
+      inject: [TOKENS.Integrations, TOKENS.SecretVault],
+    },
     { provide: TOKENS.BrainKeys, useFactory: () => brainKeyVerifierFromEnv() },
     { provide: TOKENS.BrainUsage, useValue: new InMemoryBrainUsageRepository() },
     { provide: TOKENS.Events, useValue: new InMemoryEventBus() },

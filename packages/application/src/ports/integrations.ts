@@ -17,12 +17,14 @@ export interface RepoProvider {
 }
 
 /**
- * Secret vault port [S6-NEW]. `put` stores a secret and returns an opaque reference; the stub DISCARDS the
- * secret and returns a synthetic ref, so a raw token never reaches persistence. No `get()` — the deterministic
- * provider never needs the token back (a real adapter would add one).
+ * Secret vault port [S6-NEW; S9 follow-up adds `get`]. `put` stores a secret under a scope and returns an
+ * opaque reference (`vault://<scope>` for the stub); `get` resolves the secret back by scope for call-time
+ * consumers (org-BYOK brain-key resolution). Secrets live ONLY in the vault — a raw token never reaches
+ * any repository/DB row; only the opaque ref is persisted.
  */
 export interface SecretVault {
   put(scope: string, secret: string): Promise<string>;
+  get(scope: string): Promise<string | null>;
 }
 
 /** AI-provider key verification (S9): throws VALIDATION on a rejected key. Stubbed offline; a 1-token ping in prod. */

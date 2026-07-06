@@ -2,10 +2,12 @@ import {
   type AgentBrainPort,
   DeterministicKernel,
   InMemoryEventBus,
+  type IntegrationRepository,
   type KnowledgeChunkRepository,
   KnowledgeRetriever,
   MockPaymentProvider,
   MockRepoProvider,
+  type SecretVault,
   StubSecretVault,
 } from '@gilgamesh/application';
 import { Global, Module } from '@nestjs/common';
@@ -72,7 +74,13 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     // Provider selection (S9-1): the stub unless BRAIN_MODE/ANTHROPIC_API_KEY select the real
     // Claude adapter; the key verifier follows the same mode. The EventBus stays in-process
     // in-memory (one API replica) — a Redis pub/sub swap is wiring-only later.
-    { provide: TOKENS.Brain, useFactory: () => brainFromEnv() },
+    // In auto, `forOrg` resolves a connected org BYOK key per call (integrations row + vault).
+    {
+      provide: TOKENS.Brain,
+      useFactory: (integrations: IntegrationRepository, vault: SecretVault) =>
+        brainFromEnv(process.env, { integrations, vault }),
+      inject: [TOKENS.Integrations, TOKENS.SecretVault],
+    },
     { provide: TOKENS.BrainKeys, useFactory: () => brainKeyVerifierFromEnv() },
     { provide: TOKENS.Events, useValue: new InMemoryEventBus() },
     {

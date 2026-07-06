@@ -51,9 +51,21 @@ export class StubBrainKeyVerifier implements BrainKeyVerifier {
   }
 }
 
-/** Stub {@link SecretVault}: discards the secret, returns a synthetic ref so no raw token is ever persisted. */
+/**
+ * Stub {@link SecretVault}: RETAINS secrets in an in-process map so call-time consumers (org-BYOK brain
+ * resolution) can read a connected key back by scope. Secrets still NEVER reach any repository/DB row —
+ * only the synthetic `vault://<scope>` ref is ever persisted. A real vault (KMS/Key Vault) drops in
+ * behind the same port.
+ */
 export class StubSecretVault implements SecretVault {
-  async put(scope: string, _secret: string): Promise<string> {
+  private readonly secrets = new Map<string, string>();
+
+  async put(scope: string, secret: string): Promise<string> {
+    this.secrets.set(scope, secret);
     return `vault://${scope}`;
+  }
+
+  async get(scope: string): Promise<string | null> {
+    return this.secrets.get(scope) ?? null;
   }
 }
