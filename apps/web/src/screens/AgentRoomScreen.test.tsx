@@ -8,12 +8,12 @@ function room(): AgentRoomData {
     project: { id: 'p-1', name: 'OmniPizza', slug: 'omnipizza', format: 'BDD' },
     agents: [
       {
-        slot: 'web', deityName: 'Quetzalcóatl', role: 'Web Automation', family: 'ui',
+        id: 'ag-web', slot: 'web', deityName: 'Quetzalcóatl', role: 'Web Automation', family: 'ui',
         familyColor: '#3F6FA3', glyph: 'QC', culture: 'Azteca', tool: 'Playwright',
         toolOptions: ['Playwright', 'Cypress'], enabled: true, status: 'ACTIVE',
       },
       {
-        slot: 'api', deityName: 'Iris', role: 'API Automation', family: 'backend',
+        id: 'ag-api', slot: 'api', deityName: 'Iris', role: 'API Automation', family: 'backend',
         familyColor: '#7E63A6', glyph: 'IR', culture: 'Grecia', tool: 'Postman',
         toolOptions: ['Postman', 'REST Assured', 'Karate'], enabled: false, status: 'IDLE',
       },
@@ -72,6 +72,16 @@ describe('AgentRoomScreen', () => {
 
     expect((await screen.findByRole('alert')).textContent).toContain('Could not update the agent.');
     expect(screen.getByText('1 / 2')).toBeTruthy(); // KPI not optimistically changed
+  });
+
+  it('passes the agent ID to the chat action (slice 11 — the tile-pinned entry)', async () => {
+    const onChatAgent = vi.fn();
+    render(<AgentRoomScreen client={fakeClient()} projectId="p-1" onChatAgent={onChatAgent} />);
+    await screen.findByText('Quetzalcóatl');
+
+    // Only the awake agent (Quetzalcóatl) offers Chat; the id (not the slot) rides the callback.
+    fireEvent.click(screen.getByRole('button', { name: 'Chat' }));
+    expect(onChatAgent).toHaveBeenCalledWith('ag-web');
   });
 
   it('awakens the whole team', async () => {

@@ -112,17 +112,27 @@ function AgentRoomRoute() {
       projectId={pid}
       onGoToCanvas={() => navigate(`/projects/${pid}/orchestrate`)}
       onOpenAgent={() => navigate(`/projects/${pid}/session`)}
-      onChatAgent={() => navigate(`/projects/${pid}/chat`)}
+      onChatAgent={(agentId) => navigate(`/projects/${pid}/chat?agent=${agentId}`)}
     />
   );
 }
 
 function ChatRoute() {
-  const { chat } = useClients();
+  const { chat, agents } = useClients();
   const { projectId } = useParams();
   const [params] = useSearchParams();
-  // `?agent=<agentId>` pins the session to one deity (the tile-pinned entry lands with the Chat re-skin).
-  return <ChatScreen client={chat} projectId={projectId ?? ''} pinnedAgentId={params.get('agent')} />;
+  const navigate = useNavigate();
+  const pid = projectId ?? '';
+  // `?agent=<agentId>` pins the session to one deity (the tile-pinned entry, slice 11).
+  return (
+    <ChatScreen
+      client={chat}
+      agentsClient={agents}
+      projectId={pid}
+      pinnedAgentId={params.get('agent')}
+      onBack={() => navigate(`/projects/${pid}/agents`)}
+    />
+  );
 }
 
 function TestLabRoute() {

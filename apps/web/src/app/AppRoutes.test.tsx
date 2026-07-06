@@ -12,7 +12,7 @@ function room(): AgentRoomData {
     project: { id: 'p-1', name: 'OmniPizza', slug: 'omnipizza', format: 'BDD' },
     agents: [
       {
-        slot: 'web', deityName: 'Quetzalcóatl', role: 'Web Automation', family: 'ui',
+        id: 'ag-web', slot: 'web', deityName: 'Quetzalcóatl', role: 'Web Automation', family: 'ui',
         familyColor: '#3F6FA3', glyph: 'QC', culture: 'Azteca', tool: 'Playwright',
         toolOptions: ['Playwright', 'Cypress'], enabled: true, status: 'ACTIVE',
       },
@@ -95,9 +95,10 @@ function makeClients(): Clients {
     chat: {
       createSession: vi.fn(async () => ({ id: 's1', projectId: 'p1', agentId: null, createdAt: '2026-07-05T00:00:00.000Z' })),
       sendMessage: vi.fn(async () => ({
-        id: 'm1', sessionId: 's1', role: 'USER' as const, agentId: null, content: 'hi', runId: null, at: '2026-07-05T00:00:00.000Z',
+        id: 'm1', sessionId: 's1', role: 'USER' as const, agentId: null, content: 'hi', runId: null, createdAt: '2026-07-05T00:00:00.000Z',
       })),
-      listMessages: vi.fn(async () => []),
+      listSessions: vi.fn(async () => []),
+      getMessages: vi.fn(async () => []),
     },
   };
 }
@@ -202,6 +203,30 @@ describe('AppRoutes', () => {
     // The agent-room view loaded inside the shell. Assert the screen's unique subtitle (the nav
     // rail now also has an "Agent room" label, so that text alone is no longer unique).
     expect(await screen.findByText('1 agents · OmniPizza')).toBeTruthy();
+  });
+
+  it('the agent tile Chat action deep-links into a pinned chat (slice 11 tile-pinned entry)', async () => {
+    const clients = makeClients();
+    render(
+      <ThemeProvider>
+        <SessionProvider bootstrap={async () => ({ activeOrgId: 'org-1' })}>
+          <ClientsProvider clients={clients}>
+            <MemoryRouter initialEntries={['/projects/p-1/agents']}>
+              <AppRoutes />
+            </MemoryRouter>
+          </ClientsProvider>
+        </SessionProvider>
+      </ThemeProvider>,
+    );
+
+    await screen.findByText('1 agents · OmniPizza');
+    fireEvent.click(screen.getByRole('button', { name: 'Chat' }));
+
+    // The ChatScreen mounted for the project (session rail loads) with the agent pinned from
+    // `?agent=ag-web`: the capture-07 pinned header shows the deity's status · tool line.
+    await waitFor(() => expect(clients.chat.listSessions).toHaveBeenCalledWith('p-1'));
+    expect(await screen.findByText('Active · Playwright')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '← Agents' })).toBeTruthy();
   });
 
   it('renders the Reports view for an authed session at /projects/:projectId/reports', async () => {

@@ -3,6 +3,8 @@ import { readCsrfToken } from './csrf';
 import { API_BASE, ok } from './http';
 
 export interface AgentRoomAgent {
+  /** Agent.id — the tile-pinned chat entry deep-links `/chat?agent=<id>` (slice 11). */
+  id: string;
   slot: AgentSlot;
   deityName: string;
   role: string;

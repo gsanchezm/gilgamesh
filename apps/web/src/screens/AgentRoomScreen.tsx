@@ -7,7 +7,8 @@ export interface AgentRoomScreenProps {
   client: AgentsClient;
   projectId: string;
   onOpenAgent?: (slot: AgentSlot) => void;
-  onChatAgent?: (slot: AgentSlot) => void;
+  /** Receives the agent's id — the chat deep-link pins the session to it (slice 11). */
+  onChatAgent?: (agentId: string) => void;
   onGoToCanvas?: () => void;
 }
 
@@ -186,7 +187,7 @@ export function AgentRoomScreen({
               onToggle={(next) => void toggle(a.slot, next)}
               onWake={() => void toggle(a.slot, true)}
               onOpen={onOpenAgent ? () => onOpenAgent(a.slot) : undefined}
-              onChat={onChatAgent ? () => onChatAgent(a.slot) : undefined}
+              onChat={onChatAgent ? () => onChatAgent(a.id) : undefined}
             />
           </li>
         ))}
