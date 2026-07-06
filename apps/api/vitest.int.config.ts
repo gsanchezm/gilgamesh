@@ -24,6 +24,8 @@ export default defineConfig({
         'postgresql://gilgamesh:gilgamesh@localhost:5432/gilgamesh?schema=public',
       // S9: the integration suite stays on the deterministic stub brain — no network, ever.
       BRAIN_MODE: 'offline',
+      // S17: same for mail — the recording stub, never an SMTP connection.
+      EMAIL_MODE: 'offline',
     },
   },
 });

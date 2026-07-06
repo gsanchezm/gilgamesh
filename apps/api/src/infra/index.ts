@@ -6,3 +6,4 @@ export * from './claude-brain';
 export * from './voyage-embedder';
 export * from './selecting-brain';
 export * from './anthropic-key-verifier';
+export * from './smtp-email';
