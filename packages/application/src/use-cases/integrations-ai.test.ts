@@ -33,6 +33,13 @@ describe('AI provider BYOK — anthropic integration (AC-BYOK-*)', () => {
     expect(everything).not.toContain('sk-ant-test-123');
   });
 
+  it('the stub vault RETAINS the secret in-process, readable by scope (S9 follow-up: SecretVault.get)', async () => {
+    await new ConnectIntegration(ctx).execute({ userId, orgId, key: 'anthropic', token: 'sk-ant-test-123' });
+    // Call-time BYOK resolution reads the key back by the scope parsed from `vault://<scope>`.
+    await expect(ctx.vault.get(`${orgId}/anthropic`)).resolves.toBe('sk-ant-test-123');
+    await expect(ctx.vault.get('someone-else/anthropic')).resolves.toBeNull();
+  });
+
   it('rejects an invalid key with VALIDATION and stores nothing (AC-BYOK-02)', async () => {
     await expect(
       new ConnectIntegration(ctx).execute({ userId, orgId, key: 'anthropic', token: 'invalid' }),

@@ -1,5 +1,5 @@
 import { ApplicationError } from '../errors';
-import type { AgentBrainPort } from '../ports/brain';
+import { hasBrainForOrg, type AgentBrainPort } from '../ports/brain';
 import type { Clock } from '../ports/clock';
 import type { IdGenerator } from '../ports/id';
 import type { Citation, KnowledgeRetrievalPort } from '../ports/knowledge';
@@ -113,7 +113,10 @@ export class GenerateDrafts {
     const retrieved = await this.deps.retrieval.retrieveScoped(prompt, 4, { orgId: project.orgId });
     const grounding = formatGrounding(retrieved);
 
-    const res = await this.deps.brain.complete({
+    // Org-BYOK call-time resolution (S9 follow-up): a forOrg-capable adapter resolves this org's
+    // brain (org key → platform key → stub) per call; plain adapters keep the direct path.
+    const brain = hasBrainForOrg(this.deps.brain) ? this.deps.brain.forOrg(project.orgId) : this.deps.brain;
+    const res = await brain.complete({
       tier: 'SONNET',
       system: grounding
         ? `${SYSTEM_PROMPT}\n\nReference knowledge — ground your drafts in this and cite the source:\n${grounding}`

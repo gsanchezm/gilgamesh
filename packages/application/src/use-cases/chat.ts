@@ -1,6 +1,6 @@
 import { AGENT_ROSTER, personaPrompt, type AgentSlot } from '@gilgamesh/domain';
 import { ApplicationError } from '../errors';
-import { hasStreamWithUsage, type AgentBrainPort, type BrainSurface, type BrainTier } from '../ports/brain';
+import { hasBrainForOrg, hasStreamWithUsage, type AgentBrainPort, type BrainSurface, type BrainTier } from '../ports/brain';
 import type { EventBus } from '../ports/events';
 import type { Clock } from '../ports/clock';
 import type { IdGenerator } from '../ports/id';
@@ -241,7 +241,11 @@ export class SendChatMessage {
     };
     await this.deps.chatMessages.create(userMsg);
 
-    const routing = await this.route(session, project, content);
+    // Org-BYOK call-time resolution (S9 follow-up): a forOrg-capable adapter resolves this org's
+    // brain (org key → platform key → stub) once per send; plain adapters keep the direct path.
+    const brain = hasBrainForOrg(this.deps.brain) ? this.deps.brain.forOrg(project.orgId) : this.deps.brain;
+
+    const routing = await this.route(brain, session, project, content);
     const entry = AGENT_ROSTER.find((e) => e.slot === routing.agent.slot)!;
 
     // Scoped grounding (spec §retrieval): org-visible chunks whose scope is the answering agent's
@@ -263,15 +267,15 @@ export class SendChatMessage {
     let chatUsage: { inputTokens: number; outputTokens: number } | null = null;
     try {
       const req = { tier: 'SONNET' as const, system, messages: [{ role: 'user', content }] };
-      if (hasStreamWithUsage(this.deps.brain)) {
-        const withUsage = this.deps.brain.streamWithUsage(req);
+      if (hasStreamWithUsage(brain)) {
+        const withUsage = brain.streamWithUsage(req);
         for await (const { delta } of withUsage.events) {
           full += delta;
           await this.deps.events.publish(topic, { type: 'DELTA', delta });
         }
         chatUsage = await withUsage.usage;
       } else {
-        for await (const { delta } of this.deps.brain.stream(req)) {
+        for await (const { delta } of brain.stream(req)) {
           full += delta;
           await this.deps.events.publish(topic, { type: 'DELTA', delta });
         }
@@ -380,7 +384,12 @@ export class SendChatMessage {
    * picks the slot — low confidence (< 0.6) or a disabled (`ToolBinding.enabled = false`) target
    * falls back to the lead. The lead covers as last resort even if its own binding is disabled.
    */
-  private async route(session: ChatSessionRecord, project: ProjectRecord, content: string): Promise<RoutingDecision> {
+  private async route(
+    brain: AgentBrainPort,
+    session: ChatSessionRecord,
+    project: ProjectRecord,
+    content: string,
+  ): Promise<RoutingDecision> {
     const agents = await this.deps.agents.listForOrg(project.orgId);
     const lead = agents.find((a) => a.slot === 'lead');
     if (!lead) throw new ApplicationError('NOT_FOUND', 'The agent catalog is not seeded for this organization.');
@@ -390,7 +399,7 @@ export class SendChatMessage {
       return { agent: pinned ?? lead, routed: false, fallback: !pinned };
     }
 
-    const res = await this.deps.brain.complete({
+    const res = await brain.complete({
       tier: 'HAIKU',
       system: ROUTER_SYSTEM,
       messages: [{ role: 'user', content: JSON.stringify({ classify: content }) }],

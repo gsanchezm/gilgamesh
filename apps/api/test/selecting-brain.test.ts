@@ -1,4 +1,13 @@
-import { ApplicationError, DeterministicBrain, StubBrainKeyVerifier } from '@gilgamesh/application';
+import {
+  ApplicationError,
+  DeterministicBrain,
+  hasBrainForOrg,
+  hasStreamWithUsage,
+  StubBrainKeyVerifier,
+  type AgentBrainPort,
+  type IntegrationRecord,
+  type UsageReportingBrain,
+} from '@gilgamesh/application';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AnthropicKeyVerifier, brainKeyVerifierFromEnv } from '../src/infra/anthropic-key-verifier';
 import { ClaudeBrain } from '../src/infra/claude-brain';
@@ -99,6 +108,179 @@ describe('provider selection (AC-BRAIN-01/02)', () => {
       })(),
     ).rejects.toThrow('synthetic brain outage');
     await expect(s.usage).rejects.toThrow('synthetic brain outage');
+  });
+});
+
+describe('forOrg — org-BYOK call-time resolution (S9 follow-up of AC-BRAIN-02)', () => {
+  const req = { tier: 'SONNET' as const, system: 'persona', messages: [{ role: 'user', content: 'hi' }] };
+
+  function fakeClaude(label: string) {
+    return {
+      complete: vi.fn(async () => ({ text: label, usage: { inputTokens: 1, outputTokens: 2 } })),
+      stream: vi.fn(() =>
+        (async function* () {
+          yield { delta: label };
+        })(),
+      ),
+      embed: vi.fn(async (texts: string[]) => texts.map(() => [0])),
+      streamWithUsage: vi.fn(() => ({
+        events: (async function* () {
+          yield { delta: label };
+        })(),
+        usage: Promise.resolve({ inputTokens: 7, outputTokens: 9, cacheReadTokens: 0, cacheCreateTokens: 0 }),
+      })),
+    };
+  }
+
+  const anthropicRow = (orgId: string, secretRef: string | null, connected = true): IntegrationRecord => ({
+    id: `int-${orgId}`,
+    orgId,
+    key: 'anthropic',
+    group: 'AI_PROVIDERS',
+    connected,
+    secretRef,
+    config: {},
+    connectedById: null,
+    connectedAt: null,
+  });
+
+  function makeByokBrain(over: {
+    rows?: Record<string, IntegrationRecord | undefined>;
+    secrets?: Record<string, string>;
+    maxOrgBrains?: number;
+  }) {
+    const platform = fakeClaude('platform');
+    const findByKey = vi.fn(async (orgId: string, _key: string) => over.rows?.[orgId] ?? null);
+    const get = vi.fn(async (scope: string) => over.secrets?.[scope] ?? null);
+    const makeClaude = vi.fn(
+      (apiKey: string) => fakeClaude(`org:${apiKey}`) as unknown as AgentBrainPort & UsageReportingBrain,
+    );
+    const brain = new SelectingBrain(
+      { stub: new DeterministicBrain(), claude: platform as unknown as ClaudeBrain },
+      { integrations: { findByKey }, vault: { get }, makeClaude, maxOrgBrains: over.maxOrgBrains },
+    );
+    return { brain, platform, findByKey, get, makeClaude };
+  }
+
+  it('BYOK connected: parses the scope from the secretRef, reads the vault, answers with the per-org brain', async () => {
+    const { brain, platform, get, makeClaude } = makeByokBrain({
+      rows: { 'org-1': anthropicRow('org-1', 'vault://org-1/anthropic') },
+      secrets: { 'org-1/anthropic': 'sk-org-1' },
+    });
+    expect(hasBrainForOrg(brain)).toBe(true);
+    const res = await brain.forOrg('org-1').complete(req);
+    expect(res.text).toBe('org:sk-org-1');
+    expect(get).toHaveBeenCalledWith('org-1/anthropic'); // scope = secretRef minus 'vault://'
+    expect(makeClaude).toHaveBeenCalledWith('sk-org-1');
+    expect(platform.complete).not.toHaveBeenCalled();
+  });
+
+  it('not connected: the platform-key brain answers; nothing is read or built', async () => {
+    const { brain, platform, get, makeClaude } = makeByokBrain({ rows: {} });
+    expect((await brain.forOrg('org-1').complete(req)).text).toBe('platform');
+    expect(get).not.toHaveBeenCalled();
+    expect(makeClaude).not.toHaveBeenCalled();
+    expect(platform.complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('BYOK row without a vault entry falls through to the platform key (spec 09 s12)', async () => {
+    const { brain, platform, makeClaude } = makeByokBrain({
+      rows: { 'org-1': anthropicRow('org-1', 'vault://org-1/anthropic') },
+      secrets: {},
+    });
+    expect((await brain.forOrg('org-1').complete(req)).text).toBe('platform');
+    expect(makeClaude).not.toHaveBeenCalled();
+    expect(platform.complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('caches the per-org instance by orgId+secretRef: one vault read + one build across calls', async () => {
+    const { brain, findByKey, get, makeClaude } = makeByokBrain({
+      rows: { 'org-1': anthropicRow('org-1', 'vault://org-1/anthropic') },
+      secrets: { 'org-1/anthropic': 'sk-org-1' },
+    });
+    const org = brain.forOrg('org-1');
+    await org.complete(req);
+    await org.complete(req);
+    await brain.forOrg('org-1').complete(req); // a fresh handle hits the same cache
+    expect(makeClaude).toHaveBeenCalledTimes(1);
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(findByKey).toHaveBeenCalledTimes(3); // the row is re-read EVERY call so disconnect bites
+  });
+
+  it('DISCONNECT invalidates on the very next call (call-time row read)', async () => {
+    const rows: Record<string, IntegrationRecord | undefined> = {
+      'org-1': anthropicRow('org-1', 'vault://org-1/anthropic'),
+    };
+    const { brain, platform } = makeByokBrain({ rows, secrets: { 'org-1/anthropic': 'sk-org-1' } });
+    const org = brain.forOrg('org-1');
+    expect((await org.complete(req)).text).toBe('org:sk-org-1');
+    rows['org-1'] = anthropicRow('org-1', null, false); // PATCH …/integrations/anthropic disconnect
+    expect((await org.complete(req)).text).toBe('platform');
+    expect(platform.complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('a rotated secretRef naturally misses the cache and rebuilds with the new key', async () => {
+    const rows: Record<string, IntegrationRecord | undefined> = {
+      'org-1': anthropicRow('org-1', 'vault://org-1/anthropic@v1'),
+    };
+    const { brain, makeClaude } = makeByokBrain({
+      rows,
+      secrets: { 'org-1/anthropic@v1': 'sk-old', 'org-1/anthropic@v2': 'sk-new' },
+    });
+    const org = brain.forOrg('org-1');
+    expect((await org.complete(req)).text).toBe('org:sk-old');
+    rows['org-1'] = anthropicRow('org-1', 'vault://org-1/anthropic@v2'); // key rotation
+    expect((await org.complete(req)).text).toBe('org:sk-new');
+    expect(makeClaude).toHaveBeenNthCalledWith(1, 'sk-old');
+    expect(makeClaude).toHaveBeenNthCalledWith(2, 'sk-new');
+  });
+
+  it('caps the cache LRU-ish: the least-recently-used org is evicted first', async () => {
+    const rows: Record<string, IntegrationRecord | undefined> = {
+      'org-1': anthropicRow('org-1', 'vault://org-1/anthropic'),
+      'org-2': anthropicRow('org-2', 'vault://org-2/anthropic'),
+      'org-3': anthropicRow('org-3', 'vault://org-3/anthropic'),
+    };
+    const secrets = { 'org-1/anthropic': 'sk-1', 'org-2/anthropic': 'sk-2', 'org-3/anthropic': 'sk-3' };
+    const { brain, makeClaude } = makeByokBrain({ rows, secrets, maxOrgBrains: 2 });
+    await brain.forOrg('org-1').complete(req); // build 1
+    await brain.forOrg('org-2').complete(req); // build 2 (cache full)
+    await brain.forOrg('org-1').complete(req); // hit -> refreshes org-1 recency
+    await brain.forOrg('org-3').complete(req); // build 3 -> evicts org-2 (LRU), not org-1
+    await brain.forOrg('org-1').complete(req); // still cached
+    expect(makeClaude).toHaveBeenCalledTimes(3);
+    await brain.forOrg('org-2').complete(req); // evicted -> rebuilt
+    expect(makeClaude).toHaveBeenCalledTimes(4);
+  });
+
+  it('streamWithUsage on the org handle passes the org brain REAL usage through (CHAT metering)', async () => {
+    const { brain } = makeByokBrain({
+      rows: { 'org-1': anthropicRow('org-1', 'vault://org-1/anthropic') },
+      secrets: { 'org-1/anthropic': 'sk-org-1' },
+    });
+    const org = brain.forOrg('org-1');
+    expect(hasStreamWithUsage(org)).toBe(true);
+    const s = (org as AgentBrainPort & UsageReportingBrain).streamWithUsage(req);
+    let text = '';
+    for await (const ev of s.events) text += ev.delta;
+    expect(text).toBe('org:sk-org-1');
+    await expect(s.usage).resolves.toMatchObject({ inputTokens: 7, outputTokens: 9 });
+  });
+
+  it('offline mode: forOrg keeps the deterministic stub path and never looks anything up', async () => {
+    const findByKey = vi.fn();
+    const get = vi.fn();
+    const brain = new SelectingBrain(
+      { stub: new DeterministicBrain() },
+      { integrations: { findByKey }, vault: { get }, makeClaude: vi.fn() },
+    );
+    expect(hasBrainForOrg(brain)).toBe(true);
+    const org = brain.forOrg('org-1');
+    const a = await org.complete(req);
+    const b = await org.complete(req);
+    expect(a.text).toBe(b.text); // deterministic (AC-BRAIN-01 preserved through forOrg)
+    expect(findByKey).not.toHaveBeenCalled();
+    expect(get).not.toHaveBeenCalled();
   });
 });
 
