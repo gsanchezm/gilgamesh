@@ -138,9 +138,12 @@ export class InMemoryPasswordResetRepository implements PasswordResetRepository 
   async findByTokenHash(tokenHash: string): Promise<PasswordResetRecord | null> {
     return this.rows.find((r) => r.tokenHash === tokenHash) ?? null;
   }
-  async markUsed(id: string, at: Date): Promise<void> {
+  async claimUnused(id: string, at: Date): Promise<boolean> {
+    // Synchronous check-and-set (no await between them) = atomic under JS interleaving.
     const rec = this.rows.find((r) => r.id === id);
-    if (rec) rec.usedAt = at;
+    if (!rec || rec.usedAt !== null) return false;
+    rec.usedAt = at;
+    return true;
   }
 }
 
@@ -608,6 +611,7 @@ export function createInMemoryContext(): InMemoryContext {
     orgs: new InMemoryOrgRepository(),
     memberships: new InMemoryMembershipRepository(),
     sessions: new InMemorySessionRepository(),
+    passwordResets: new InMemoryPasswordResetRepository(),
     projects: new InMemoryProjectRepository(),
     slices: new InMemorySliceRepository(),
     features: new InMemoryFeatureRepository(),
@@ -629,7 +633,6 @@ export function createInMemoryContext(): InMemoryContext {
   const ids = new SeqIdGenerator();
   return {
     ...repos,
-    passwordResets: new InMemoryPasswordResetRepository(),
     email: new StubEmail(),
     chatSessions: new InMemoryChatSessionRepository(),
     chatMessages: new InMemoryChatMessageRepository(),

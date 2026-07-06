@@ -6,6 +6,7 @@ import type {
   InvoiceRepository,
   MembershipRepository,
   OrgRepository,
+  PasswordResetRepository,
   ProjectRepository,
   RunRepository,
   RunResultRepository,
@@ -27,6 +28,7 @@ export interface Repositories {
   orgs: OrgRepository;
   memberships: MembershipRepository;
   sessions: SessionRepository;
+  passwordResets: PasswordResetRepository;
   projects: ProjectRepository;
   slices: SliceRepository;
   features: FeatureRepository;

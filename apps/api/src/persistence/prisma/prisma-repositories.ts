@@ -79,9 +79,15 @@ export class PrismaPasswordResetRepository implements PasswordResetRepository {
   findByTokenHash(tokenHash: string): Promise<PasswordResetRecord | null> {
     return this.db.passwordReset.findUnique({ where: { tokenHash } });
   }
-  async markUsed(id: string, at: Date): Promise<void> {
-    // updateMany = no-op (not P2025) if the row is gone, matching the port contract.
-    await this.db.passwordReset.updateMany({ where: { id }, data: { usedAt: at } });
+  async claimUnused(id: string, at: Date): Promise<boolean> {
+    // Conditional write — `usedAt: null` in the WHERE makes Postgres arbitrate a concurrent
+    // double-submit: the second transaction re-evaluates the predicate after the row lock and
+    // matches 0 rows (audit #6). updateMany = no P2025 if the row is gone.
+    const res = await this.db.passwordReset.updateMany({
+      where: { id, usedAt: null },
+      data: { usedAt: at },
+    });
+    return res.count === 1;
   }
 }
 

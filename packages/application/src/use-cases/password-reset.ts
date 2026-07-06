@@ -5,10 +5,10 @@ import type { IdGenerator } from '../ports/id';
 import type {
   AuditLogRepository,
   PasswordResetRepository,
-  SessionRepository,
   UserRepository,
 } from '../ports/repositories';
 import type { PasswordHasher, TokenGenerator } from '../ports/security';
+import type { UnitOfWork } from '../ports/unit-of-work';
 import { MIN_PASSWORD_LENGTH } from './register-user';
 
 /** Owner decision S12 / slice-1 §10.2: reset tokens expire in 30 minutes. */
@@ -84,10 +84,7 @@ export class RequestPasswordReset {
 }
 
 export interface ResetPasswordDeps {
-  users: UserRepository;
-  passwordResets: PasswordResetRepository;
-  sessions: SessionRepository;
-  audit: AuditLogRepository;
+  uow: UnitOfWork;
   hasher: PasswordHasher;
   tokens: TokenGenerator;
   ids: IdGenerator;
@@ -99,7 +96,9 @@ export interface ResetPasswordDeps {
  * Valid + unexpired + unconsumed token: claim it (usedAt — single-use, BEFORE the rewrite so a
  * double-submit can't double-apply), set the new Argon2id hash, revoke ALL the user's sessions,
  * audit auth.reset.completed. Anything else -> VALIDATION (422), password untouched. The policy
- * check runs first so a weak password never consumes the token.
+ * check runs first so a weak password never consumes the token. The whole flow is one UnitOfWork
+ * transaction with a CONDITIONAL claim as the single-use gate: a concurrent double-submit lets
+ * exactly one caller through, and a mid-flight failure rolls the claim back (audit #6).
  */
 export class ResetPassword {
   constructor(private readonly deps: ResetPasswordDeps) {}
@@ -113,28 +112,35 @@ export class ResetPassword {
     }
 
     const now = this.deps.clock.now();
-    const rec = await this.deps.passwordResets.findByTokenHash(this.deps.tokens.hash(input.token));
-    if (!rec || rec.usedAt !== null || rec.expiresAt.getTime() <= now.getTime()) {
-      throw new ApplicationError('VALIDATION', INVALID_TOKEN_MESSAGE);
-    }
-    const user = await this.deps.users.findById(rec.userId);
-    if (!user) throw new ApplicationError('VALIDATION', INVALID_TOKEN_MESSAGE);
+    const tokenHash = this.deps.tokens.hash(input.token);
+    await this.deps.uow.transaction(async ({ passwordResets, users, sessions, audit }) => {
+      const rec = await passwordResets.findByTokenHash(tokenHash);
+      if (!rec || rec.usedAt !== null || rec.expiresAt.getTime() <= now.getTime()) {
+        throw new ApplicationError('VALIDATION', INVALID_TOKEN_MESSAGE);
+      }
+      const user = await users.findById(rec.userId);
+      if (!user) throw new ApplicationError('VALIDATION', INVALID_TOKEN_MESSAGE);
 
-    await this.deps.passwordResets.markUsed(rec.id, now);
-    const passwordHash = await this.deps.hasher.hash(input.newPassword);
-    await this.deps.users.updatePassword(user.id, passwordHash, now);
-    await this.deps.sessions.revokeAllForUser(user.id);
+      // The atomic single-use gate: the loser of a double-submit sees false here and gets the
+      // same generic error as any invalid token.
+      if (!(await passwordResets.claimUnused(rec.id, now))) {
+        throw new ApplicationError('VALIDATION', INVALID_TOKEN_MESSAGE);
+      }
+      const passwordHash = await this.deps.hasher.hash(input.newPassword);
+      await users.updatePassword(user.id, passwordHash, now);
+      await sessions.revokeAllForUser(user.id);
 
-    await this.deps.audit.append({
-      id: this.deps.ids.next(),
-      orgId: null,
-      actorUserId: user.id,
-      action: 'auth.reset.completed',
-      targetType: 'User',
-      targetId: user.id,
-      metadata: {}, // never the token or any password
-      ip: null,
-      createdAt: now,
+      await audit.append({
+        id: this.deps.ids.next(),
+        orgId: null,
+        actorUserId: user.id,
+        action: 'auth.reset.completed',
+        targetType: 'User',
+        targetId: user.id,
+        metadata: {}, // never the token or any password
+        ip: null,
+        createdAt: now,
+      });
     });
   }
 }

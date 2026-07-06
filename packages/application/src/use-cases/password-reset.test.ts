@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createInMemoryContext, type InMemoryContext } from '../testing/in-memory';
+import {
+  createInMemoryContext,
+  InMemoryPasswordResetRepository,
+  type InMemoryContext,
+} from '../testing/in-memory';
 import { LoginUser } from './login-user';
 import { RegisterUser } from './register-user';
 import { RequestPasswordReset, ResetPassword, RESET_TOKEN_TTL_MS } from './password-reset';
@@ -163,5 +167,50 @@ describe('ResetPassword (AC-AUTH-11 / AC-AUTH-12 / AC-REC-02 / AC-REC-04)', () =
     await expect(reset.execute({ token: 'garbage-token', newPassword: 'N3w-Passphrase!!' })).rejects.toBeTruthy();
     expect(await ctx.sessions.findByTokenHash('th:tok-1')).toMatchObject({ revokedAt: null });
     expect(ctx.audit.rows.some((r) => r.action === 'auth.reset.completed')).toBe(false);
+  });
+
+  it('a concurrent double-submit consumes the token exactly once (atomic claim, audit #6)', async () => {
+    const results = await Promise.allSettled([
+      reset.execute({ token: rawToken, newPassword: 'N3w-Passphrase!!' }),
+      reset.execute({ token: rawToken, newPassword: '0ther-Passphrase!' }),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    // The loser gets the SAME generic error as any invalid token — no oracle for the race.
+    expect(rejected[0]!.reason).toMatchObject({ code: 'VALIDATION' });
+
+    // Exactly one of the two candidate passwords landed, and completion was audited once.
+    const user = await ctx.users.findById(userId);
+    expect(['hashed:N3w-Passphrase!!', 'hashed:0ther-Passphrase!']).toContain(user?.passwordHash);
+    expect(ctx.audit.rows.filter((r) => r.action === 'auth.reset.completed')).toHaveLength(1);
+  });
+});
+
+describe('InMemoryPasswordResetRepository.claimUnused (conditional single-use claim)', () => {
+  const rec = (id: string) => ({
+    id,
+    userId: 'u-1',
+    tokenHash: `th:${id}`,
+    expiresAt: new Date('2026-06-29T12:30:00.000Z'),
+    usedAt: null,
+    createdAt: new Date('2026-06-29T12:00:00.000Z'),
+  });
+
+  it('returns true only for the first claim and never overwrites usedAt', async () => {
+    const repo = new InMemoryPasswordResetRepository();
+    await repo.create(rec('pr-1'));
+    const first = new Date('2026-06-29T12:05:00.000Z');
+
+    expect(await repo.claimUnused('pr-1', first)).toBe(true);
+    expect(await repo.claimUnused('pr-1', new Date(first.getTime() + 60_000))).toBe(false);
+    expect(repo.rows[0]!.usedAt).toEqual(first);
+  });
+
+  it('returns false for a missing row', async () => {
+    const repo = new InMemoryPasswordResetRepository();
+    expect(await repo.claimUnused('nope', new Date())).toBe(false);
   });
 });

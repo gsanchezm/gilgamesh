@@ -54,8 +54,12 @@ export interface SessionRepository {
 export interface PasswordResetRepository {
   create(rec: PasswordResetRecord): Promise<void>;
   findByTokenHash(tokenHash: string): Promise<PasswordResetRecord | null>;
-  /** Claims the token (sets usedAt — single-use); a no-op if the row is gone. */
-  markUsed(id: string, at: Date): Promise<void>;
+  /**
+   * CONDITIONALLY claims the token (sets usedAt) only if it is still unconsumed; true when THIS
+   * call claimed it. The condition lives in the adapter's write (not app code), so a concurrent
+   * double-submit resolves atomically — exactly one caller wins (audit #6).
+   */
+  claimUnused(id: string, at: Date): Promise<boolean>;
 }
 
 export interface ProjectRepository {

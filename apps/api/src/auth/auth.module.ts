@@ -18,6 +18,7 @@ import {
   type SessionRepository,
   type SsoStateStore,
   type TokenGenerator,
+  type UnitOfWork,
   type UserRepository,
 } from '@gilgamesh/application';
 import { Module } from '@nestjs/common';
@@ -113,25 +114,13 @@ import { SsoController } from './sso.controller';
     {
       provide: ResetPassword,
       useFactory: (
-        users: UserRepository,
-        passwordResets: PasswordResetRepository,
-        sessions: SessionRepository,
-        audit: AuditLogRepository,
+        uow: UnitOfWork,
         hasher: PasswordHasher,
         tokens: TokenGenerator,
         ids: IdGenerator,
         clock: Clock,
-      ) => new ResetPassword({ users, passwordResets, sessions, audit, hasher, tokens, ids, clock }),
-      inject: [
-        TOKENS.Users,
-        TOKENS.PasswordResets,
-        TOKENS.Sessions,
-        TOKENS.Audit,
-        TOKENS.Hasher,
-        TOKENS.Tokens,
-        TOKENS.Ids,
-        TOKENS.Clock,
-      ],
+      ) => new ResetPassword({ uow, hasher, tokens, ids, clock }),
+      inject: [TOKENS.UnitOfWork, TOKENS.Hasher, TOKENS.Tokens, TOKENS.Ids, TOKENS.Clock],
     },
     // ---- Slice 15 (SSO / Google) -----------------------------------------------------
     {
