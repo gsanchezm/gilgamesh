@@ -32,7 +32,7 @@ pnpm --filter @gilgamesh/web dev               # Vite dev server (web)
 docker compose up -d postgres redis            # local Postgres 16 + pgvector AND Redis (needs Docker Desktop)
 pnpm --filter @gilgamesh/api prisma:migrate    # apply Prisma migrations to the DB
 pnpm --filter @gilgamesh/api test:int          # integration tests against real Postgres + Redis
-pnpm --filter @gilgamesh/api test:bdd          # Cucumber-js BDD acceptance vs API+Postgres (49 scenarios)
+pnpm --filter @gilgamesh/api test:bdd          # Cucumber-js BDD acceptance vs API+Postgres (182 scenarios)
 pnpm --filter @gilgamesh/web test:e2e          # Playwright browser smoke vs the running web+api+db stack
 ```
 
@@ -241,7 +241,17 @@ Codebase-audit follow-up. Tracking: `docs/research/audit-followup.md` · board: 
   batch RAG `upsertMany` (`Prisma.join`); shared `apps/web/src/lib/http.ts`. Verified: 409 Docker-free · `test:int`
   19 · BDD 94 · typecheck · lint.
 - **Bloque 3 (pending owner decision):** rate-limit fail-open policy · per-IP backoff (own slice) · pagination
-  (own slice) · RAG final posture · optimize heavy assets · pin GitHub Actions to SHA.
+  (own slice) · RAG final posture · optimize heavy assets · ~~pin GitHub Actions to SHA~~ (done, CI hardening).
+- **Batch C (2026-07-06, auditoría v2 — merged+pushed `e82292c`):** #6 atomic single-use reset-token claim
+  (`claimUnused` conditional WHERE `usedAt IS NULL` + the whole reset inside `UnitOfWork`; PasswordResets
+  joined the UoW bundle) · #5 timing-safe forgot-password (equal token work both paths; email dispatch
+  fire-and-forget, failures swallowed unlogged by design) · #2 `multer>=2.2.0` via `overrides:` in
+  pnpm-workspace.yaml · #8 pgvector HNSW index (`knowledge_hnsw_index` migration) + ANN query shape
+  (inner bare-distance `LIMIT k*4` + outer deterministic `(distance, id)` re-sort — a tie-break inside
+  the inner ORDER BY would bypass the index) · #11 AuthHero rAF pauses on hidden tab / reduced motion ·
+  #12 chat EventSource `withCredentials`. Verified: **815 Docker-free** · int 19 · BDD 182/1517 ·
+  Playwright 18. Remaining from auditoría v2: Vitest 3 toolchain upgrade (own stream) · real secret
+  vault (Key Vault adapter — production-BYOK prerequisite) · Bloque 3 (owner decision).
 
 ## Post-slice-7 — integrated on `main` (2026-07-01)
 

@@ -77,4 +77,7 @@ Real vs. stub-behind-a-port. Swapping a stub for the real adapter is a future sl
 - [x] **#1/#2** atomic knowledge upload + chunk FKs/indexes — ✅ on `main` (via look&feel merge)
 - [x] **#6/#7/#10** ListFeatures N+1 · TC-key race · batch RAG ingest — ✅ on `main` (via look&feel merge)
 - [x] **R2** shared `apps/web/src/lib/http.ts` — ✅ on `main` (via look&feel merge)
+- [x] **Batch C (auditoría v2)** — ✅ on `main` (`e82292c`): atomic reset-token claim (UoW) · timing-safe forgot · multer>=2.2.0 override · HNSW index + deterministic ANN query · AuthHero rAF pause · SSE withCredentials
+- [ ] **Vitest 3 toolchain** — 🔴 pnpm audit critical (vitest<3.2.6 + vite/esbuild) — dev/test surface only; breaking upgrade, own stream
+- [ ] **Real secret vault** — 🔴 `StubSecretVault` is in-memory; Key Vault adapter required before production BYOK
 - [ ] **Bloque 3 (owner decision):** rate-limit fail-open policy · per-IP backoff (own slice) · pagination (own slice) · RAG final posture · optimize heavy assets (E5) · pin GitHub Actions to SHA

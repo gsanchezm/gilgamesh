@@ -102,8 +102,8 @@ body {
 .gx-auth {
   min-height: 100vh;
   /* Port the prototype's composition: the hero fills the left (flex:1) and the form sits in a
-     fixed-width column pinned to the right (see .gx-auth__panel). This keeps the two adjacent and
-     the form the same width at any viewport — no center void, unlike a scaling 2-fr grid. */
+     right-side rail (see .gx-auth__panel). This keeps the two adjacent and the form the same width
+     at any viewport — no center void, unlike a scaling 2-fr grid. */
   display: flex;
   /* One seamless dark backdrop for BOTH columns (handoff capture 01): brightest under the brand on
      the left, falling off to the right, so the form floats on the same gradient — no visible seam.
@@ -190,9 +190,9 @@ body {
 }
 .gx-auth__panel {
   position: relative;
-  /* Fixed 520px right column with 76px side padding = 368px content, exactly like the prototype's
-     shared auth column (login / register / forgot all live here). */
-  width: 520px;
+  /* Keep the 368px auth column, but let the right rail widen on desktop so the form starts closer
+     to the hero instead of hugging the far-right edge on wide monitors. */
+  width: clamp(520px, 45vw, 860px);
   flex: none;
   display: flex;
   flex-direction: column;
