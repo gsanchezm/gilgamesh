@@ -14,6 +14,8 @@ import type {
   IntegrationGroup,
   IntegrationRecord,
   IntegrationRepository,
+  InvoiceRecord,
+  InvoiceRepository,
   KnowledgeChunkRecord,
   KnowledgeChunkRepository,
   KnowledgeDocumentRecord,
@@ -365,6 +367,9 @@ export class PrismaSubscriptionRepository implements SubscriptionRepository {
   async save(rec: SubscriptionRecord): Promise<void> {
     await this.db.subscription.update({ where: { id: rec.id }, data: rec });
   }
+  findByProviderCustomerId(providerCustomerId: string): Promise<SubscriptionRecord | null> {
+    return this.db.subscription.findFirst({ where: { providerCustomerId } });
+  }
   async chargeRunMinutes(orgId: string, minutes: number): Promise<boolean> {
     // Atomic conditional increment: the DB checks the quota and bumps the counter in one statement,
     // so concurrent runs can't both pass a stale check (no TOCTOU, no lost update).
@@ -376,6 +381,35 @@ export class PrismaSubscriptionRepository implements SubscriptionRepository {
     // 0 rows: either no subscription (don't block) or the quota guard rejected it (block).
     const exists = await this.db.subscription.count({ where: { orgId } });
     return exists === 0;
+  }
+}
+
+export class PrismaInvoiceRepository implements InvoiceRepository {
+  constructor(private readonly db: Prisma.TransactionClient) {}
+  listForOrg(orgId: string): Promise<InvoiceRecord[]> {
+    return this.db.invoice.findMany({ where: { orgId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
+  }
+  async upsertByProviderInvoiceId(rec: InvoiceRecord): Promise<void> {
+    if (!rec.providerInvoiceId) {
+      await this.db.invoice.create({ data: rec });
+      return;
+    }
+    // Idempotent webhook redelivery: the update path touches ONLY the lifecycle fields —
+    // id/orgId/createdAt are preserved, so a row can never duplicate or move across orgs.
+    await this.db.invoice.upsert({
+      where: { providerInvoiceId: rec.providerInvoiceId },
+      create: rec,
+      update: {
+        status: rec.status,
+        amountCents: rec.amountCents,
+        currency: rec.currency,
+        periodStart: rec.periodStart,
+        periodEnd: rec.periodEnd,
+        hostedInvoiceUrl: rec.hostedInvoiceUrl,
+        pdfUrl: rec.pdfUrl,
+        updatedAt: rec.updatedAt,
+      },
+    });
   }
 }
 

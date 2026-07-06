@@ -5,6 +5,8 @@ import {
   type Clock,
   ConfirmCheckout,
   type IdGenerator,
+  type InvoiceRepository,
+  ListInvoices,
   type MembershipRepository,
   type PaymentProvider,
   StartCheckout,
@@ -14,6 +16,8 @@ import {
 import { Module, type Provider } from '@nestjs/common';
 import { TOKENS as T } from '../persistence/tokens';
 import { BillingController } from './billing.controller';
+import { BillingWebhooksController } from './billing-webhooks.controller';
+import { InvoicesController } from './invoices.controller';
 
 type Ctor<U> = new (deps: {
   subscriptions: SubscriptionRepository;
@@ -40,15 +44,25 @@ function subProvider<U>(UseCase: Ctor<U>): Provider {
   };
 }
 
-/** Wires the slice-4 subscription/billing use cases (mock PaymentProvider) to the bound ports. */
+/**
+ * Wires the slice-4 subscription/billing use cases + the slice-13 payments surface (invoices list
+ * and the provider webhook sink) to the bound ports. The PaymentProvider itself is selected by the
+ * persistence wiring (`paymentsFromEnv`: mock offline, Stripe in auto).
+ */
 @Module({
-  controllers: [BillingController],
+  controllers: [BillingController, InvoicesController, BillingWebhooksController],
   providers: [
     subProvider(ChangeSubscription),
     subProvider(UpdateSeats),
     subProvider(StartCheckout),
     subProvider(ConfirmCheckout),
     subProvider(CancelSubscription),
+    {
+      provide: ListInvoices,
+      useFactory: (invoices: InvoiceRepository, memberships: MembershipRepository) =>
+        new ListInvoices({ invoices, memberships }),
+      inject: [T.Invoices, T.Memberships],
+    },
   ],
 })
 export class BillingModule {}

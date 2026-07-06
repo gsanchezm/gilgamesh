@@ -2,11 +2,14 @@ import {
   type AgentRepository,
   type AuditLogRepository,
   type AgentBrainPort,
+  ApplyPaymentEvent,
+  type Clock,
   DeterministicKernel,
+  type IdGenerator,
+  type InvoiceRepository,
   type KnowledgeChunkRepository,
   type KnowledgeDocumentRepository,
   KnowledgeRetriever,
-  MockPaymentProvider,
   MockRepoProvider,
   StubEmail,
   StubSecretVault,
@@ -18,6 +21,7 @@ import {
   InMemoryEventBus,
   InMemoryFeatureRepository,
   InMemoryIntegrationRepository,
+  InMemoryInvoiceRepository,
   InMemoryKnowledgeChunkRepository,
   InMemoryKnowledgeDocumentRepository,
   InMemoryMembershipRepository,
@@ -48,6 +52,7 @@ import {
   type SubscriptionRepository,
   type TestCaseRepository,
   type ToolBindingRepository,
+  type UnitOfWork,
   type UserRepository,
 } from '@gilgamesh/application';
 import { Global, Module } from '@nestjs/common';
@@ -56,6 +61,7 @@ import {
   brainFromEnv,
   brainKeyVerifierFromEnv,
   CryptoSessionTokenGenerator,
+  paymentsFromEnv,
   SystemClock,
   Uuid7IdGenerator,
 } from '../infra';
@@ -86,6 +92,7 @@ import { TOKENS } from './tokens';
     { provide: TOKENS.Agents, useValue: new InMemoryAgentRepository() },
     { provide: TOKENS.ToolBindings, useValue: new InMemoryToolBindingRepository() },
     { provide: TOKENS.Subscriptions, useValue: new InMemorySubscriptionRepository() },
+    { provide: TOKENS.Invoices, useValue: new InMemoryInvoiceRepository() },
     { provide: TOKENS.Audit, useValue: new InMemoryAuditLogRepository() },
     {
       // Wraps the SAME repo instances bound to the tokens above, so transactional writes
@@ -106,6 +113,7 @@ import { TOKENS } from './tokens';
         agents: AgentRepository,
         toolBindings: ToolBindingRepository,
         subscriptions: SubscriptionRepository,
+        invoices: InvoiceRepository,
         audit: AuditLogRepository,
         knowledge: KnowledgeChunkRepository,
         knowledgeDocuments: KnowledgeDocumentRepository,
@@ -125,6 +133,7 @@ import { TOKENS } from './tokens';
           agents,
           toolBindings,
           subscriptions,
+          invoices,
           audit,
           knowledge,
           knowledgeDocuments,
@@ -144,6 +153,7 @@ import { TOKENS } from './tokens';
         TOKENS.Agents,
         TOKENS.ToolBindings,
         TOKENS.Subscriptions,
+        TOKENS.Invoices,
         TOKENS.Audit,
         TOKENS.Knowledge,
         TOKENS.KnowledgeDocuments,
@@ -166,7 +176,25 @@ import { TOKENS } from './tokens';
     { provide: TOKENS.BrainUsage, useValue: new InMemoryBrainUsageRepository() },
     { provide: TOKENS.Events, useValue: new InMemoryEventBus() },
     { provide: TOKENS.Kernel, useValue: new DeterministicKernel() },
-    { provide: TOKENS.Payment, useValue: new MockPaymentProvider() },
+    // Provider selection (S13-B, the brain pattern): the deterministic mock unless PAYMENTS_MODE/
+    // STRIPE_SECRET_KEY select the real Stripe adapter. Both share the ApplyPaymentEvent seam and
+    // the local Invoice store, so webhooks and the confirm flow persist identically.
+    {
+      provide: TOKENS.Payment,
+      useFactory: (
+        uow: UnitOfWork,
+        ids: IdGenerator,
+        clock: Clock,
+        invoices: InvoiceRepository,
+        subscriptions: SubscriptionRepository,
+      ) =>
+        paymentsFromEnv(process.env, {
+          events: new ApplyPaymentEvent({ uow, ids, clock }),
+          invoices,
+          subscriptions,
+        }),
+      inject: [TOKENS.UnitOfWork, TOKENS.Ids, TOKENS.Clock, TOKENS.Invoices, TOKENS.Subscriptions],
+    },
     { provide: TOKENS.Knowledge, useValue: new InMemoryKnowledgeChunkRepository() },
     { provide: TOKENS.KnowledgeDocuments, useValue: new InMemoryKnowledgeDocumentRepository() },
     {
@@ -198,6 +226,7 @@ import { TOKENS } from './tokens';
     TOKENS.Agents,
     TOKENS.ToolBindings,
     TOKENS.Subscriptions,
+    TOKENS.Invoices,
     TOKENS.Audit,
     TOKENS.UnitOfWork,
     TOKENS.Hasher,

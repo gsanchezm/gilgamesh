@@ -69,6 +69,7 @@ describe('Onboarding bootstrap rollback (Prisma · real Postgres)', () => {
             findByOrg: (orgId) => repos.subscriptions.findByOrg(orgId),
             save: (rec) => repos.subscriptions.save(rec),
             chargeRunMinutes: (orgId, minutes) => repos.subscriptions.chargeRunMinutes(orgId, minutes),
+            findByProviderCustomerId: (id) => repos.subscriptions.findByProviderCustomerId(id),
           };
           return work({ ...repos, subscriptions } as Repositories);
         }),

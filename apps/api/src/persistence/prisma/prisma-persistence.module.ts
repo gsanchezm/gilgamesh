@@ -1,15 +1,20 @@
 import {
   type AgentBrainPort,
+  ApplyPaymentEvent,
+  type Clock,
   DeterministicKernel,
+  type IdGenerator,
   InMemoryEventBus,
   type IntegrationRepository,
+  type InvoiceRepository,
   type KnowledgeChunkRepository,
   KnowledgeRetriever,
-  MockPaymentProvider,
   MockRepoProvider,
   type SecretVault,
   StubEmail,
   StubSecretVault,
+  type SubscriptionRepository,
+  type UnitOfWork,
 } from '@gilgamesh/application';
 import { Global, Module } from '@nestjs/common';
 import {
@@ -17,6 +22,7 @@ import {
   brainFromEnv,
   brainKeyVerifierFromEnv,
   CryptoSessionTokenGenerator,
+  paymentsFromEnv,
   SystemClock,
   Uuid7IdGenerator,
 } from '../../infra';
@@ -30,6 +36,7 @@ import {
   PrismaChatSessionRepository,
   PrismaFeatureRepository,
   PrismaIntegrationRepository,
+  PrismaInvoiceRepository,
   PrismaKnowledgeChunkRepository,
   PrismaKnowledgeDocumentRepository,
   PrismaMembershipRepository,
@@ -71,6 +78,7 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     { provide: TOKENS.Agents, useFactory: (db: PrismaService) => new PrismaAgentRepository(db), inject: [PrismaService] },
     { provide: TOKENS.ToolBindings, useFactory: (db: PrismaService) => new PrismaToolBindingRepository(db), inject: [PrismaService] },
     { provide: TOKENS.Subscriptions, useFactory: (db: PrismaService) => new PrismaSubscriptionRepository(db), inject: [PrismaService] },
+    { provide: TOKENS.Invoices, useFactory: (db: PrismaService) => new PrismaInvoiceRepository(db), inject: [PrismaService] },
     { provide: TOKENS.Audit, useFactory: (db: PrismaService) => new PrismaAuditLogRepository(db), inject: [PrismaService] },
     { provide: TOKENS.UnitOfWork, useFactory: (db: PrismaService) => new PrismaUnitOfWork(db), inject: [PrismaService] },
     { provide: TOKENS.Hasher, useValue: new Argon2PasswordHasher() },
@@ -95,7 +103,25 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
       inject: [PrismaService],
     },
     { provide: TOKENS.Kernel, useValue: new DeterministicKernel() },
-    { provide: TOKENS.Payment, useValue: new MockPaymentProvider() },
+    // Provider selection (S13-B, the brain pattern): the deterministic mock unless PAYMENTS_MODE/
+    // STRIPE_SECRET_KEY select the real Stripe adapter. Webhook effects persist through the
+    // UoW-backed ApplyPaymentEvent seam (invoice + subscription status commit together).
+    {
+      provide: TOKENS.Payment,
+      useFactory: (
+        uow: UnitOfWork,
+        ids: IdGenerator,
+        clock: Clock,
+        invoices: InvoiceRepository,
+        subscriptions: SubscriptionRepository,
+      ) =>
+        paymentsFromEnv(process.env, {
+          events: new ApplyPaymentEvent({ uow, ids, clock }),
+          invoices,
+          subscriptions,
+        }),
+      inject: [TOKENS.UnitOfWork, TOKENS.Ids, TOKENS.Clock, TOKENS.Invoices, TOKENS.Subscriptions],
+    },
     {
       provide: TOKENS.Knowledge,
       useFactory: (db: PrismaService) => new PrismaKnowledgeChunkRepository(db),
@@ -148,6 +174,7 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     TOKENS.Agents,
     TOKENS.ToolBindings,
     TOKENS.Subscriptions,
+    TOKENS.Invoices,
     TOKENS.Audit,
     TOKENS.UnitOfWork,
     TOKENS.Hasher,

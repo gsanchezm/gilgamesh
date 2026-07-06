@@ -16,6 +16,7 @@ export const TOKENS = {
   Agents: 'AgentRepository',
   ToolBindings: 'ToolBindingRepository',
   Subscriptions: 'SubscriptionRepository',
+  Invoices: 'InvoiceRepository',
   Audit: 'AuditLogRepository',
   UnitOfWork: 'UnitOfWork',
   Hasher: 'PasswordHasher',

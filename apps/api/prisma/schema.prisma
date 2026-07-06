@@ -140,6 +140,7 @@ model Org {
   chatSessions ChatSession[]
   chatMessages ChatMessage[]
   brainUsage   BrainUsage[]
+  invoices     Invoice[]
 
   @@map("orgs")
 }
@@ -312,6 +313,39 @@ model Subscription {
   org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@map("subscriptions")
+}
+
+// Keystone §1 v0.5 — mirrors the provider's (Stripe) invoice lifecycle.
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+// Keystone §2 v0.5 — written by PaymentProvider webhooks (Stripe) or deterministically by the mock.
+model Invoice {
+  id                String        @id @db.Uuid
+  orgId             String        @map("org_id") @db.Uuid
+  // The provider's id (Stripe `in_…`); unique = the idempotent webhook-redelivery upsert key.
+  providerInvoiceId String?       @unique @map("provider_invoice_id")
+  status            InvoiceStatus
+  amountCents       Int           @map("amount_cents")
+  // Lowercase ISO-4217 (keystone §2).
+  currency          String        @default("usd")
+  periodStart       DateTime?     @map("period_start")
+  periodEnd         DateTime?     @map("period_end")
+  hostedInvoiceUrl  String?       @map("hosted_invoice_url")
+  pdfUrl            String?       @map("pdf_url")
+  createdAt         DateTime      @map("created_at")
+  updatedAt         DateTime      @map("updated_at")
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  // The list view: newest-first per org.
+  @@index([orgId, createdAt(sort: Desc)])
+  @@map("invoices")
 }
 
 model AuditLog {
