@@ -16,6 +16,9 @@ process.env.AUTH_RATE_LIMIT = process.env.AUTH_RATE_LIMIT || '1000000';
 // developer machine has ANTHROPIC_API_KEY set. Metering is unconditional (the application layer
 // meters every brain call, stub included), so the metering scenarios observe stub usage rows.
 process.env.BRAIN_MODE = process.env.BRAIN_MODE || 'offline';
+// Slice 13: force the deterministic mock payment provider for the same reason — the sweep never
+// calls stripe.com, even when the developer machine has STRIPE_SECRET_KEY set.
+process.env.PAYMENTS_MODE = process.env.PAYMENTS_MODE || 'offline';
 
 module.exports = {
   default: {

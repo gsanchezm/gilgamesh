@@ -1,8 +1,10 @@
 import { AfterAll, Before, BeforeAll, setDefaultTimeout } from '@cucumber/cucumber';
 import { type INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { AgentsModule } from '../../src/agents/agents.module';
 import { APP_PROVIDERS } from '../../src/app.module';
+import { configureBodyParser } from '../../src/common/body-parser';
 import { AuthModule } from '../../src/auth/auth.module';
 import { SecurityModule } from '../../src/auth/security.module';
 import { OrgsModule } from '../../src/orgs/orgs.module';
@@ -45,7 +47,10 @@ BeforeAll(async () => {
     ],
     providers: APP_PROVIDERS,
   }).compile();
-  app = moduleRef.createNestApplication();
+  app = moduleRef.createNestApplication<NestExpressApplication>();
+  // Same body-parser wiring as main.ts — the webhook raw-body branch is part of the contract
+  // (signature verification runs over the raw bytes, spec 13 AC-PAY-05).
+  configureBodyParser(app as NestExpressApplication);
   app.setGlobalPrefix('api/v1');
   await app.init();
   db = app.get(PrismaService);
@@ -68,6 +73,6 @@ Before(async function (this: GilgameshWorld) {
   this.lastProjectId = null;
   this.projectsByName = new Map();
   await db.$executeRawUnsafe(
-    'TRUNCATE orgs, users, memberships, sessions, password_resets, projects, slices, features, scenarios, test_cases, runs, run_results, agents, tool_bindings, subscriptions, audit_logs, knowledge_chunks, integrations, chat_sessions, chat_messages, brain_usage CASCADE',
+    'TRUNCATE orgs, users, memberships, sessions, password_resets, projects, slices, features, scenarios, test_cases, runs, run_results, agents, tool_bindings, subscriptions, invoices, audit_logs, knowledge_chunks, integrations, chat_sessions, chat_messages, brain_usage CASCADE',
   );
 });
