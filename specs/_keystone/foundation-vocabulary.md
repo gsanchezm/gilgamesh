@@ -4,7 +4,7 @@
 > signatures, and the OpenAPI/schema skeleton. Every foundation artifact MUST adhere to it
 > **verbatim** — same entity names, field names, enum values, IDs, and port signatures.
 > If an artifact needs a name not defined here, it adds it here first (don't invent locally).
-> Authored centrally (full design context). Expansions fan out from this. v0.1 — 2026-06-29.
+> Authored centrally (full design context). Expansions fan out from this. v0.2 — 2026-07-05.
 
 ## 0. Conventions
 - TypeScript everywhere. Package names `@gilgamesh/<name>`.
@@ -36,6 +36,8 @@ BillingCycle       = MONTHLY | ANNUAL
 SubscriptionStatus = TRIALING | ACTIVE | PAST_DUE | CANCELED
 KnowledgeDocStatus = UPLOADED | INDEXING | INDEXED | FAILED
 BrainTier          = HAIKU | SONNET | OPUS
+ChatMessageRole    = USER | AGENT | SYSTEM
+KnowledgeScope (key) = <AgentSlot key> | shared   # lowercase keys; nullable on KnowledgeChunk
 ```
 
 ## 2. Entities (data-model dictionary — fields are authoritative; types abbreviated)
@@ -56,7 +58,13 @@ BrainTier          = HAIKU | SONNET | OPUS
 - **Integration** — id, orgId, key(stable, §8), group:IntegrationGroup, connected(bool), secretRef?(Key Vault ref — NEVER raw token), config(json non-secret), connectedById?, connectedAt?. Unique(orgId,key).
 - **Subscription** — id, orgId(unique), plan:Plan, billingCycle:BillingCycle, seats(int), status:SubscriptionStatus, runMinutesQuota(int), runMinutesUsed(int), providerCustomerId?, providerSubscriptionId?, currentPeriodEnd?. Mock provider now.
 - **KnowledgeDoc** — id, orgId, projectId?, name, sizeBytes, storageKey, status:KnowledgeDocStatus, createdById, createdAt. Private RAG source.
-- **KnowledgeChunk** — id, orgId, docId, ordinal, content(text), embedding(vector(1536)). pgvector; tenant-scoped retrieval.
+- **KnowledgeChunk** — id, orgId, docId, ordinal, content(text), embedding(vector(1536)),
+  scope?:KnowledgeScope(indexed; `shared` or NULL = visible to all agents; an AgentSlot key = visible
+  only to that agent's retrieval). pgvector; tenant-scoped retrieval.
+- **ChatSession** — id, orgId, projectId, agentId?(pinned agent when opened from an agent tile; null =
+  routed per message), createdById, createdAt, updatedAt.
+- **ChatMessage** — id, orgId, sessionId, role:ChatMessageRole, agentId?(the answering/attributed agent),
+  content(text), runId?(links a message that triggered a Run), createdAt.
 - **AuditLog** — id, orgId, actorUserId?, action, targetType, targetId?, metadata(json), ip?, createdAt. Sensitive-action audit.
 
 ## 3. Canonical agent roster (DESKTOP prototype — decided) + per-role tool options (Strategy)
@@ -134,7 +142,8 @@ interface IdentityProvider {                                // Local(email/pass)
 interface ArtifactStorage { put(key:string, data:Buffer|NodeJS.ReadableStream, contentType:string): Promise<void>; signedUrl(key:string, ttlSec:number): Promise<string>; }
 interface EventBus { publish(topic:string, e:unknown): Promise<void>; subscribe(topic:string, h:(e:unknown)=>void): () => void; }
 // Repository<T> per aggregate: User, Org, Membership, Session, Project, Slice, Feature, Scenario,
-//   TestCase, Agent, ToolBinding, Run, RunNode, Artifact, Integration, Subscription, KnowledgeDoc, AuditLog.
+//   TestCase, Agent, ToolBinding, Run, RunNode, Artifact, Integration, Subscription, KnowledgeDoc,
+//   ChatSession, ChatMessage, AuditLog.
 ```
 
 ## 6. OpenAPI v1 — resource & schema skeleton (full bodies expanded by the API-contract artifact)
@@ -146,6 +155,8 @@ Resources (paths): `/auth/{register,login,logout,me,forgot-password,reset-passwo
 `/runs/{id}/report`, `/runs/{id}/nodes/{nodeId}`, `/artifacts/{id}` (returns signed URL) ·
 `/orgs/{orgId}/integrations`, `PATCH /orgs/{orgId}/integrations/{key}` ·
 `/projects/{id}/knowledge` (POST upload, GET list, DELETE) ·
+`POST /projects/{id}/chat` (create ChatSession) · `POST /chat/{sessionId}/messages` (send message) ·
+`GET /chat/{sessionId}/events` (SSE stream, same pattern as `/runs/{id}/events`) ·
 `/orgs/{orgId}/subscription`, `/orgs/{orgId}/subscription/checkout` · `/orgs/{orgId}/audit`.
 Schema names = entity names in §2 + request/response DTOs `*Create`,`*Update`,`*View`,`MeView`(session context: user + memberships + activeOrgId),`ProjectAgentView`(Agent + per-project ToolBinding + derived AgentRuntimeStatus),`RunEvent`,`ReportView`,`Problem`(RFC9457 errors).
 Cross-cutting: every request resolves tenant from session→`orgId`; every list/detail filters by `orgId`; `Problem+json` errors; cursor pagination; rate-limit headers.
@@ -172,3 +183,10 @@ FREE $0 (1 workspace · 2 services · 500 executions) · STARTER $29/mo (unlimit
 5,000 executions · 3 users) · GROWTH $99/mo (15 services · 25,000 executions · unlimited users) · SCALE
 $499/mo base includes 10 workspaces + $99/extra workspace (unlimited executions/services, SSO/RBAC/SLA).
 Annual billing charges 10 months (2 months free).
+
+## 10. Changelog
+- **v0.2 — 2026-07-05** — Agent Chat (text) amendment: +`ChatSession`/`ChatMessage` (§2) ·
+  +`ChatMessageRole`/`KnowledgeScope` (§1) · `KnowledgeChunk.scope?` (§2) · +chat routes (§6) ·
+  +Chat repositories (§5). Nothing frozen was renamed, removed, or restructured.
+- **v0.1 — 2026-06-29** — initial frozen vocabulary. (2026-07-01: `Plan` enum + §9 moved to the 4-tier
+  workspace pricing — amended without a version bump; predates this changelog.)
