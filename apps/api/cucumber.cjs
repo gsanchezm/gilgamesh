@@ -16,6 +16,9 @@ process.env.AUTH_RATE_LIMIT = process.env.AUTH_RATE_LIMIT || '1000000';
 // developer machine has ANTHROPIC_API_KEY set. Metering is unconditional (the application layer
 // meters every brain call, stub included), so the metering scenarios observe stub usage rows.
 process.env.BRAIN_MODE = process.env.BRAIN_MODE || 'offline';
+// Slice 15: the deterministic StubIdentityProvider answers the SSO routes — an EXPLICIT opt-in
+// (missing Google env alone means "unconfigured", never the stub; see specs/slices/15-sso-google).
+process.env.SSO_MODE = process.env.SSO_MODE || 'offline';
 
 module.exports = {
   default: {
