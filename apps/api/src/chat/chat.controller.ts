@@ -57,25 +57,78 @@ export class ChatController {
    * session's persisted messages, then stay SUBSCRIBED to the `chat:{sessionId}` EventBus topic
    * and push live MESSAGE/DELTA/DONE events with a heartbeat; client disconnect unsubscribes.
    *
-   * Harness compatibility: supertest/fetch-based clients buffer the body until the stream ENDS,
-   * so a request whose `accept` does not include `text/event-stream` — or that sets `?replay=1` —
-   * keeps the S8 semantics: replay + `DONE` + close. Only a real live client holds the connection.
+   * Live push is an EXPLICIT opt-in (`?live=1`) — deterministic and proxy-proof (review S9 dropped
+   * the Accept-header sniffing). Without it the S8 semantics hold: replay + `DONE` + close, which
+   * is what buffering clients (supertest/fetch/the web replay resync) rely on.
+   *
+   * Lifecycle (review S9): in live mode the subscription starts BEFORE the persisted read — events
+   * published meanwhile are buffered and flushed after the replay, deduped by replayed message id —
+   * every write is guarded against a closed socket, and a disconnect at ANY point (even during the
+   * initial DB read) tears down the subscription + heartbeat.
    */
   @Get(':sessionId/events')
   async events(
     @CurrentUser() userId: string,
     @Param('sessionId') sessionId: string,
-    @Query('replay') replay: string | undefined,
+    @Query('live') live: string | undefined,
     @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
+    let closed = false;
+    let heartbeat: NodeJS.Timeout | null = null;
+    let unsubscribe: (() => void) | null = null;
+    const cleanup = () => {
+      closed = true;
+      if (heartbeat) clearInterval(heartbeat);
+      heartbeat = null;
+      unsubscribe?.(); // no leaked handler on the bus (AC-SSE-01)
+      unsubscribe = null;
+    };
+    // Registered before any awaited work so an early disconnect is never missed.
+    req.on('close', cleanup);
+
+    const write = (frame: string): void => {
+      if (closed || res.writableEnded || res.destroyed) return;
+      try {
+        res.write(frame);
+      } catch {
+        cleanup();
+      }
+    };
+    const frameOf = (e: unknown): string => {
+      const type = typeof (e as { type?: unknown })?.type === 'string' ? (e as { type: string }).type : 'MESSAGE';
+      return `event: ${type}\ndata: ${JSON.stringify(e)}\n\n`;
+    };
+
+    const wantsLive = live === '1';
+    // Live mode subscribes BEFORE the persisted read: anything published during the read/replay is
+    // buffered and flushed afterwards (deduped by message id), so no event falls into the gap.
+    const buffered: unknown[] = [];
+    let replaying = true;
+    if (wantsLive) {
+      unsubscribe = this.bus.subscribe(`chat:${sessionId}`, (e) => {
+        if (replaying) buffered.push(e);
+        else write(frameOf(e));
+      });
+    }
+
     // Authz/tenant checks run BEFORE any byte is written, so failures still map to Problem+json.
-    const messages = await this.getChatEvents.execute({ userId, sessionId });
+    let messages;
+    try {
+      messages = await this.getChatEvents.execute({ userId, sessionId });
+    } catch (e) {
+      cleanup();
+      throw e;
+    }
+    if (closed) return;
+
     res.status(200);
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+    const replayed = new Set<string>();
     for (const m of messages) {
+      replayed.add(m.id);
       const data = {
         id: m.id,
         sessionId: m.sessionId,
@@ -85,28 +138,27 @@ export class ChatController {
         runId: m.runId,
         at: m.createdAt.toISOString(),
       };
-      res.write(`event: MESSAGE\ndata: ${JSON.stringify(data)}\n\n`);
+      write(`event: MESSAGE\ndata: ${JSON.stringify(data)}\n\n`);
     }
 
-    const wantsLive = (req.headers.accept ?? '').includes('text/event-stream') && replay !== '1';
     if (!wantsLive) {
-      res.write('event: DONE\ndata: {}\n\n');
-      res.end();
+      write('event: DONE\ndata: {}\n\n');
+      if (!res.writableEnded) res.end();
       return;
     }
 
     res.flushHeaders();
-    const unsubscribe = this.bus.subscribe(`chat:${sessionId}`, (e) => {
-      const type = typeof (e as { type?: unknown })?.type === 'string' ? (e as { type: string }).type : 'MESSAGE';
-      res.write(`event: ${type}\ndata: ${JSON.stringify(e)}\n\n`);
-    });
-    const heartbeat = setInterval(() => {
-      res.write(':hb\n\n'); // SSE comment line — ignored by EventSource, keeps the pipe warm
+    replaying = false;
+    for (const e of buffered) {
+      const id = (e as { id?: unknown })?.id;
+      if (typeof id === 'string' && replayed.has(id)) continue; // already replayed
+      write(frameOf(e));
+    }
+    buffered.length = 0;
+    heartbeat = setInterval(() => {
+      write(':hb\n\n'); // SSE comment line — ignored by EventSource, keeps the pipe warm
     }, HEARTBEAT_MS);
     heartbeat.unref?.();
-    req.on('close', () => {
-      clearInterval(heartbeat);
-      unsubscribe(); // no leaked handler on the bus (AC-SSE-01)
-    });
+    if (closed) cleanup();
   }
 }

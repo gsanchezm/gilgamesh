@@ -59,7 +59,10 @@ describe('ClaudeBrain — Anthropic Messages API over fetch (S9)', () => {
     const brain = new ClaudeBrain({ apiKey: KEY });
     const res = await brain.complete(req());
 
-    expect(res).toEqual({ text: 'Hello there', usage: { inputTokens: 12, outputTokens: 5 } });
+    expect(res).toEqual({
+      text: 'Hello there',
+      usage: { inputTokens: 12, outputTokens: 5, cacheReadTokens: 0, cacheCreateTokens: 0 },
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe(ANTHROPIC_MESSAGES_URL);
@@ -106,7 +109,7 @@ describe('ClaudeBrain — Anthropic Messages API over fetch (S9)', () => {
     for await (const ev of s.events) deltas.push(ev.delta);
 
     expect(deltas).toEqual(['Hel', 'lo']);
-    await expect(s.usage).resolves.toEqual({ inputTokens: 10, outputTokens: 7 });
+    await expect(s.usage).resolves.toEqual({ inputTokens: 10, outputTokens: 7, cacheReadTokens: 0, cacheCreateTokens: 0 });
     const body = JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body));
     expect(body.stream).toBe(true);
   });

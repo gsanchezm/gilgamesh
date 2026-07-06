@@ -249,6 +249,12 @@ idea was dropped (see §13).
 - **Metering is unconditional** (supersedes the earlier `BRAIN_METER_STUB=1` idea, which was
   dropped): the application layer meters every brain call — stub included — so the metering ACs
   are BDD-verifiable offline with no extra flag; stub rows are free length-based counts.
+- **Live opt-in `?live=1` (as built)** — live push is an explicit query opt-in, never sniffed from
+  the Accept header (proxy-proof, deterministic for buffering clients); the C3 subscription starts
+  BEFORE the replay and buffers/dedups so no event falls into the replay/subscribe gap (review S9).
+- **Optional cache usage fields (as built)** — `usage.cacheReadTokens/cacheCreateTokens` are an
+  additive extension on the brain result shapes; the Claude adapter records the API's
+  `cache_read/creation_input_tokens` (excluded from `input_tokens` by the API), stubs omit them.
 - **Config env vars:** `ANTHROPIC_API_KEY`, `BRAIN_MODE` (`auto`|`offline`), `BRAIN_SMOKE`, model-id
   overrides per tier.
 

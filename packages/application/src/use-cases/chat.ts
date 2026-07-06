@@ -360,7 +360,7 @@ export class SendChatMessage {
     orgId: string,
     surface: BrainSurface,
     tier: BrainTier,
-    usage: { inputTokens: number; outputTokens: number },
+    usage: { inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheCreateTokens?: number },
   ): Promise<void> {
     await this.deps.brainUsage.append({
       id: this.deps.ids.next(),
@@ -369,8 +369,8 @@ export class SendChatMessage {
       surface,
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
-      cacheReadTokens: 0,
-      cacheCreateTokens: 0,
+      cacheReadTokens: usage.cacheReadTokens ?? 0,
+      cacheCreateTokens: usage.cacheCreateTokens ?? 0,
       createdAt: this.deps.clock.now(),
     });
   }

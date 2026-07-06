@@ -72,6 +72,8 @@ interface SseFrame {
 interface WireUsage {
   input_tokens?: number;
   output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
 }
 
 interface WireStreamEvent {
@@ -156,7 +158,13 @@ export class ClaudeBrain implements AgentBrainPort, UsageReportingBrain {
         .join('');
       return {
         text,
-        usage: { inputTokens: json.usage?.input_tokens ?? 0, outputTokens: json.usage?.output_tokens ?? 0 },
+        usage: {
+          inputTokens: json.usage?.input_tokens ?? 0,
+          outputTokens: json.usage?.output_tokens ?? 0,
+          // Cached prefixes are EXCLUDED from input_tokens by the API — record them (review S9).
+          cacheReadTokens: json.usage?.cache_read_input_tokens ?? 0,
+          cacheCreateTokens: json.usage?.cache_creation_input_tokens ?? 0,
+        },
       };
     } finally {
       release();
@@ -172,9 +180,19 @@ export class ClaudeBrain implements AgentBrainPort, UsageReportingBrain {
 
   /** S9 §13 extension: stream deltas + the final real usage (message_start/message_delta). */
   streamWithUsage(req: BrainCompleteRequest): BrainStreamWithUsage {
-    let resolveUsage!: (u: { inputTokens: number; outputTokens: number }) => void;
+    let resolveUsage!: (u: {
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens?: number;
+      cacheCreateTokens?: number;
+    }) => void;
     let rejectUsage!: (e: unknown) => void;
-    const usage = new Promise<{ inputTokens: number; outputTokens: number }>((res, rej) => {
+    const usage = new Promise<{
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens?: number;
+      cacheCreateTokens?: number;
+    }>((res, rej) => {
       resolveUsage = res;
       rejectUsage = rej;
     });
@@ -188,6 +206,8 @@ export class ClaudeBrain implements AgentBrainPort, UsageReportingBrain {
       try {
         let inputTokens = 0;
         let outputTokens = 0;
+        let cacheReadTokens = 0;
+        let cacheCreateTokens = 0;
         for await (const frame of sseFrames(res.body)) {
           let parsed: WireStreamEvent;
           try {
@@ -197,6 +217,8 @@ export class ClaudeBrain implements AgentBrainPort, UsageReportingBrain {
           }
           if (parsed.type === 'message_start') {
             inputTokens = parsed.message?.usage?.input_tokens ?? 0;
+            cacheReadTokens = parsed.message?.usage?.cache_read_input_tokens ?? 0;
+            cacheCreateTokens = parsed.message?.usage?.cache_creation_input_tokens ?? 0;
           } else if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta') {
             yield { delta: parsed.delta.text ?? '' };
           } else if (parsed.type === 'message_delta') {
@@ -205,7 +227,7 @@ export class ClaudeBrain implements AgentBrainPort, UsageReportingBrain {
             throw new ClaudeApiError(500, 'The Claude stream reported an error event.');
           }
         }
-        resolveUsage({ inputTokens, outputTokens });
+        resolveUsage({ inputTokens, outputTokens, cacheReadTokens, cacheCreateTokens });
       } catch (e) {
         rejectUsage(e);
         throw e;
@@ -272,6 +294,8 @@ export class ClaudeBrain implements AgentBrainPort, UsageReportingBrain {
       }
       if (res.ok) return { res, release: () => clearTimeout(timer) };
       clearTimeout(timer);
+      // Drain the failed body so undici returns the connection to the pool (review S9).
+      void res.body?.cancel().catch(() => undefined);
       if ((res.status === 429 || res.status >= 500) && attempt === 0) continue;
       // Status only — never the response body (and never the key) in the error message.
       throw new ClaudeApiError(res.status, `The Claude API responded with status ${res.status}.`);

@@ -144,13 +144,14 @@ describe('Agent Chat API', () => {
     ).toBe(422);
   });
 
-  it('C3 replays and closes when the client is not a live SSE consumer (?replay=1 too)', async () => {
+  it('C3 replays and closes unless live push is explicitly opted into (review S9)', async () => {
     const sessionId = await createSession();
     await mutate(request(server()).post(`/chat/${sessionId}/messages`)).send({ content: 'replay please' });
 
-    // Even a text/event-stream client falls back to replay-and-close with ?replay=1 (harness escape).
+    // Even a text/event-stream client gets replay-and-close without ?live=1 — the opt-in is
+    // explicit and proxy-proof, never sniffed from the Accept header.
     const events = await read(
-      request(server()).get(`/chat/${sessionId}/events?replay=1`).set('Accept', 'text/event-stream'),
+      request(server()).get(`/chat/${sessionId}/events`).set('Accept', 'text/event-stream'),
     );
     expect(events.status).toBe(200);
     expect(events.text).toContain('replay please');
@@ -170,7 +171,7 @@ describe('Agent Chat API', () => {
         {
           host: '127.0.0.1',
           port,
-          path: `/chat/${sessionId}/events`,
+          path: `/chat/${sessionId}/events?live=1`,
           headers: { accept: 'text/event-stream', cookie: auth.cookie },
         },
         (res) => {

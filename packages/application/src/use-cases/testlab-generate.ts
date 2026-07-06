@@ -128,8 +128,8 @@ export class GenerateDrafts {
       surface: 'GENERATE',
       inputTokens: res.usage.inputTokens,
       outputTokens: res.usage.outputTokens,
-      cacheReadTokens: 0,
-      cacheCreateTokens: 0,
+      cacheReadTokens: res.usage.cacheReadTokens ?? 0,
+      cacheCreateTokens: res.usage.cacheCreateTokens ?? 0,
       createdAt: this.deps.clock.now(),
     });
     const parsed = parseDrafts(res.text);

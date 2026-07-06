@@ -19,7 +19,8 @@ export interface BrainCompleteRequest {
 
 export interface BrainCompleteResult {
   text: string;
-  usage: { inputTokens: number; outputTokens: number };
+  /** Cache fields are an additive S9 extension (spec 09 s13): absent/0 for adapters without caching. */
+  usage: { inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheCreateTokens?: number };
 }
 
 export interface AgentBrainPort {
@@ -33,7 +34,7 @@ export type BrainSurface = 'CHAT' | 'ROUTER' | 'GENERATE' | 'EMBED';
 
 export interface BrainStreamWithUsage {
   events: AsyncIterable<{ delta: string }>;
-  usage: Promise<{ inputTokens: number; outputTokens: number }>;
+  usage: Promise<{ inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheCreateTokens?: number }>;
 }
 
 /**

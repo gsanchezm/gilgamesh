@@ -23,7 +23,8 @@ export class AnthropicKeyVerifier implements BrainKeyVerifier {
     try {
       await probe.complete({ tier: 'HAIKU', system: '', messages: [{ role: 'user', content: 'ping' }] });
     } catch (e) {
-      if (e instanceof ClaudeApiError && (e.status === 401 || e.status === 403)) {
+      // Any non-retryable 4xx from the probe means the key was rejected/malformed (review S9).
+      if (e instanceof ClaudeApiError && e.status >= 400 && e.status < 500 && e.status !== 429) {
         throw new ApplicationError('VALIDATION', 'The provider rejected the API key.');
       }
       throw e;
