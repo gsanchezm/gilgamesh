@@ -16,6 +16,8 @@
     "ingest:corpus": "node scripts/ingest-corpus.mjs"
   },
   "dependencies": {
+    "@azure/identity": "^4.13.1",
+    "@azure/keyvault-secrets": "^4.11.2",
     "@gilgamesh/application": "workspace:*",
     "@gilgamesh/domain": "workspace:*",
     "@nestjs/common": "^11.0.1",
