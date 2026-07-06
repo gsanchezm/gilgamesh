@@ -39,6 +39,9 @@ export class FakeTokenGenerator implements TokenGenerator {
   generate(): { token: string; tokenHash: string } {
     this.n += 1;
     const token = `tok-${this.n}`;
-    return { token, tokenHash: `th:${token}` };
+    return { token, tokenHash: this.hash(token) };
+  }
+  hash(token: string): string {
+    return `th:${token}`;
   }
 }

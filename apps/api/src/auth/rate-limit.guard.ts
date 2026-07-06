@@ -15,7 +15,7 @@ interface LimitedPath {
   bucket?: 'path' | 'suffix';
 }
 
-// Throttled endpoints: auth (AC-AUTH-13 / §10.2; forgot/reset land with slice #7) and the
+// Throttled endpoints: auth (AC-AUTH-13 / §10.2; forgot/reset implemented by slice 12) and the
 // cost-bearing brain calls — AI generate (AC-GEN-04) and chat send (AC-CHAT-06).
 const LIMITED_PATHS: LimitedPath[] = [
   { suffix: '/auth/login' },

@@ -65,7 +65,7 @@ Real vs. stub-behind-a-port. Swapping a stub for the real adapter is a future sl
 - [x] **Reports** — ✅ read-only over slice-3 `Run`/`RunResult`, **route wired** at `/projects/:id/reports`; per-tool "Tools" breakdown deferred (needs a tool/discipline dimension on `RunResult`)
 - [ ] **Session replay (web/android)** — 🔴 needs per-action timeline data slice-3 doesn't persist yet
 - [ ] **Mobile app (Expo)** — 🔴 not started
-- [ ] **Forgot / reset password + Email** — 🔴 deferred (decision S1-B)
+- [x] **Forgot / reset password + Email** — ✅ slice 12 on `main`: enumeration-safe 202, sha256-only 30-min single-use token, reset revokes all sessions, `EmailPort` stub (real SMTP/SES later); Forgot/Reset screens wired
 - [ ] **Google / SSO login** — 🔴 controls disabled (AC-AUTH-15)
 - [x] **Per-org RAG grounding** — ✅ on `main`: `GenerateDrafts` grounds on the org's own chunks (scope `shared`/NULL) + the global corpus via slot-optional `retrieveScoped`; agent-scoped chunks stay private to their agent's chat
 - [x] **PDF / .docx ingest** — ✅ on `main` (`parse-document`); Knowledge now ingests `.md`/`.txt`/`.pdf`/`.docx`

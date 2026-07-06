@@ -1820,3 +1820,27 @@ body {
 .gx-chat__field {
   flex: 1;
 }
+
+/* ---- gx-recovery (slice 12 — forgot/reset password; appended block, do not fold into others) ---- */
+.gx-recovery__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 8px;
+}
+.gx-recovery__confirmText {
+  margin: 0;
+  color: var(--text, #e8ecf5);
+  line-height: 1.5;
+}
+.gx-recovery__hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted, #8b93a7);
+}
+.gx-recovery__errorBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}

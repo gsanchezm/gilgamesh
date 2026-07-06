@@ -8,6 +8,7 @@ import type {
   IntegrationRepository,
   MembershipRepository,
   OrgRepository,
+  PasswordResetRepository,
   ProjectRepository,
   RunRepository,
   RunResultRepository,
@@ -40,6 +41,7 @@ import type {
   KnowledgeDocumentRecord,
   MembershipRecord,
   OrgRecord,
+  PasswordResetRecord,
   ProjectRecord,
   Role,
   RunRecord,
@@ -58,6 +60,7 @@ import { DeterministicKernel } from '../kernel/deterministic-kernel';
 import { MockPaymentProvider } from '../payment/mock-payment-provider';
 import { MockRepoProvider, StubBrainKeyVerifier, StubSecretVault } from '../integrations/mock-repo-provider';
 import type { EventBus } from '../ports/events';
+import { StubEmail } from '../email/stub-email';
 import { FakeClock, FakePasswordHasher, FakeTokenGenerator, SeqIdGenerator } from './fakes';
 
 export class InMemoryUserRepository implements UserRepository {
@@ -71,6 +74,10 @@ export class InMemoryUserRepository implements UserRepository {
   }
   async create(rec: UserRecord): Promise<void> {
     this.byId.set(rec.id, rec);
+  }
+  async updatePassword(id: string, passwordHash: string, updatedAt: Date): Promise<void> {
+    const existing = this.byId.get(id);
+    if (existing) this.byId.set(id, { ...existing, passwordHash, updatedAt });
   }
 }
 
@@ -116,6 +123,21 @@ export class InMemorySessionRepository implements SessionRepository {
   }
   async revokeAllForUser(userId: string): Promise<void> {
     for (const s of this.byId.values()) if (s.userId === userId) s.revokedAt = new Date();
+  }
+}
+
+export class InMemoryPasswordResetRepository implements PasswordResetRepository {
+  /** Exposed for tests (the port itself never lists). */
+  readonly rows: PasswordResetRecord[] = [];
+  async create(rec: PasswordResetRecord): Promise<void> {
+    this.rows.push(rec);
+  }
+  async findByTokenHash(tokenHash: string): Promise<PasswordResetRecord | null> {
+    return this.rows.find((r) => r.tokenHash === tokenHash) ?? null;
+  }
+  async markUsed(id: string, at: Date): Promise<void> {
+    const rec = this.rows.find((r) => r.id === id);
+    if (rec) rec.usedAt = at;
   }
 }
 
@@ -475,6 +497,8 @@ export interface InMemoryContext {
   orgs: InMemoryOrgRepository;
   memberships: InMemoryMembershipRepository;
   sessions: InMemorySessionRepository;
+  passwordResets: InMemoryPasswordResetRepository;
+  email: StubEmail;
   projects: InMemoryProjectRepository;
   slices: InMemorySliceRepository;
   features: InMemoryFeatureRepository;
@@ -534,6 +558,8 @@ export function createInMemoryContext(): InMemoryContext {
   const brain = new DeterministicBrain();
   return {
     ...repos,
+    passwordResets: new InMemoryPasswordResetRepository(),
+    email: new StubEmail(),
     chatSessions: new InMemoryChatSessionRepository(),
     chatMessages: new InMemoryChatMessageRepository(),
     brainUsage: new InMemoryBrainUsageRepository(),

@@ -157,9 +157,10 @@ model User {
   createdAt    DateTime   @map("created_at")
   updatedAt    DateTime   @map("updated_at")
 
-  memberships Membership[]
-  sessions    Session[]
-  auditEvents AuditLog[]   @relation("AuditLogActor")
+  memberships    Membership[]
+  sessions       Session[]
+  passwordResets PasswordReset[]
+  auditEvents    AuditLog[]      @relation("AuditLogActor")
 
   @@map("users")
 }
@@ -194,6 +195,22 @@ model Session {
   @@index([userId])
   @@index([expiresAt])
   @@map("sessions")
+}
+
+// Slice 12 (keystone v0.4): single-use password-recovery token. Only the sha256 hash is stored
+// (the raw token lives solely in the email link); usedAt set on consume; TTL 30 min (decision S12).
+model PasswordReset {
+  id        String    @id @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_resets")
 }
 
 model Project {
