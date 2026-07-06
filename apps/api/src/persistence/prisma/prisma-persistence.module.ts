@@ -1,7 +1,8 @@
 import {
   type AgentBrainPort,
   ApplyPaymentEvent,
-  type BrainUsageRepository,
+  BrainBilling,
+  type BrainTokenMeter,
   type Clock,
   DeterministicKernel,
   type IdGenerator,
@@ -104,6 +105,14 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
       useFactory: (db: PrismaService) => new PrismaBrainUsageRepository(db),
       inject: [PrismaService],
     },
+    {
+      // Slice 14: the shared token check/charge seam — the BrainUsage row and the
+      // Subscription.brainTokensUsed increment commit in one Prisma transaction.
+      provide: TOKENS.BrainBilling,
+      useFactory: (uow: UnitOfWork, subscriptions: SubscriptionRepository, ids: IdGenerator, clock: Clock) =>
+        new BrainBilling({ uow, subscriptions, ids, clock }),
+      inject: [TOKENS.UnitOfWork, TOKENS.Subscriptions, TOKENS.Ids, TOKENS.Clock],
+    },
     { provide: TOKENS.Kernel, useValue: new DeterministicKernel() },
     // Provider selection (S13-B, the brain pattern): the deterministic mock unless PAYMENTS_MODE/
     // STRIPE_SECRET_KEY select the real Stripe adapter. Webhook effects persist through the
@@ -136,15 +145,10 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     },
     {
       provide: TOKENS.KnowledgeRetrieval,
-      // S16: scoped grounding meters EMBED BrainUsage rows for the filter org.
-      useFactory: (
-        brain: AgentBrainPort,
-        knowledge: KnowledgeChunkRepository,
-        brainUsage: BrainUsageRepository,
-        ids: IdGenerator,
-        clock: Clock,
-      ) => new KnowledgeRetriever({ brain, knowledge, meter: { brainUsage, ids, clock } }),
-      inject: [TOKENS.Brain, TOKENS.Knowledge, TOKENS.BrainUsage, TOKENS.Ids, TOKENS.Clock],
+      // S16 metering + S14 charging: scoped grounding writes EMBED rows AND charges the filter org.
+      useFactory: (brain: AgentBrainPort, knowledge: KnowledgeChunkRepository, meter: BrainTokenMeter) =>
+        new KnowledgeRetriever({ brain, knowledge, meter }),
+      inject: [TOKENS.Brain, TOKENS.Knowledge, TOKENS.BrainBilling],
     },
     {
       provide: TOKENS.ChatSessions,
@@ -196,6 +200,7 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     TOKENS.Brain,
     TOKENS.BrainKeys,
     TOKENS.BrainUsage,
+    TOKENS.BrainBilling,
     TOKENS.Events,
     TOKENS.Kernel,
     TOKENS.Payment,

@@ -32,6 +32,8 @@ export const TOKENS = {
   ChatSessions: 'ChatSessionRepository',
   ChatMessages: 'ChatMessageRepository',
   BrainUsage: 'BrainUsageRepository',
+  // Slice 14: the shared token check/charge seam (BrainUsage row + brainTokensUsed, atomically).
+  BrainBilling: 'BrainBilling',
   Events: 'EventBus',
   BrainKeys: 'BrainKeyVerifier',
   Integrations: 'IntegrationRepository',

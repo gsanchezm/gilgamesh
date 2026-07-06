@@ -306,6 +306,9 @@ model Subscription {
   status                 SubscriptionStatus
   runMinutesQuota        Int                @map("run_minutes_quota")
   runMinutesUsed         Int                @map("run_minutes_used")
+  // Slice 14 (keystone v0.6): monthly AI Brain token allowance + billable tokens charged.
+  brainTokensQuota       Int                @map("brain_tokens_quota")
+  brainTokensUsed        Int                @map("brain_tokens_used")
   providerCustomerId     String?            @map("provider_customer_id")
   providerSubscriptionId String?            @map("provider_subscription_id")
   currentPeriodEnd       DateTime?          @map("current_period_end")

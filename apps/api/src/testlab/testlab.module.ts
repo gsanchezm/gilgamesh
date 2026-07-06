@@ -2,7 +2,7 @@ import {
   type AgentBrainPort,
   type AgentRepository,
   type AuditLogRepository,
-  type BrainUsageRepository,
+  type BrainTokenMeter,
   type Clock,
   CreateFeature,
   CreateSlice,
@@ -216,14 +216,14 @@ const providers: Provider[] = [
     useFactory: (
       brain: AgentBrainPort,
       retrieval: KnowledgeRetrievalPort,
-      brainUsage: BrainUsageRepository,
+      billing: BrainTokenMeter,
       projects: ProjectRepository,
       memberships: MembershipRepository,
       audit: AuditLogRepository,
       ids: IdGenerator,
       clock: Clock,
-    ) => new GenerateDrafts({ brain, retrieval, brainUsage, projects, memberships, audit, ids, clock }),
-    inject: [T.Brain, T.KnowledgeRetrieval, T.BrainUsage, T.Projects, T.Memberships, T.Audit, T.Ids, T.Clock],
+    ) => new GenerateDrafts({ brain, retrieval, billing, projects, memberships, audit, ids, clock }),
+    inject: [T.Brain, T.KnowledgeRetrieval, T.BrainBilling, T.Projects, T.Memberships, T.Audit, T.Ids, T.Clock],
   },
 ];
 

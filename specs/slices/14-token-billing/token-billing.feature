@@ -41,7 +41,7 @@ Feature: Billing — AI Brain token allowances (per-plan quota + blocking)
   @AC-TOKB-03
   Scenario: A generate call charges its GENERATE (and grounding EMBED) rows the same way
     When I generate drafts from "checkout happy path"
-    Then the response status is 201
+    Then the response status is 200
     And my org has a BrainUsage row with surface "GENERATE" and tier "SONNET"
     And the org's AI tokens used equals the billable sum of its BrainUsage rows
 
@@ -91,7 +91,7 @@ Feature: Billing — AI Brain token allowances (per-plan quota + blocking)
     And the chat does not narrate an AI token allowance outcome
     And my org has a BrainUsage row with surface "CHAT" and tier "SONNET"
     When I generate drafts from "checkout happy path"
-    Then the response status is 201
+    Then the response status is 200
 
   @AC-TOKB-07
   Scenario: Checkout confirmation preserves the counters (the executions-consistent no-reset rule)

@@ -1,6 +1,6 @@
 import {
   type AgentBrainPort,
-  type BrainUsageRepository,
+  type BrainTokenMeter,
   type Clock,
   type IdGenerator,
   IngestKnowledge,
@@ -22,18 +22,19 @@ import { KnowledgeSeeder } from './knowledge.seeder';
 const T = TOKENS;
 
 const providers: Provider[] = [
-  // S16: the knowledge pipeline meters EMBED BrainUsage rows (surface EMBED) per org-attributable call.
+  // S16 metering + S14 billing: the knowledge pipeline writes EMBED BrainUsage rows AND charges the
+  // attributed org atomically; an exhausted allowance blocks the org-attributed paths (402).
   {
     provide: SearchKnowledge,
-    useFactory: (knowledge: KnowledgeChunkRepository, brain: AgentBrainPort, brainUsage: BrainUsageRepository, ids: IdGenerator, clock: Clock) =>
-      new SearchKnowledge({ knowledge, brain, meter: { brainUsage, ids, clock } }),
-    inject: [T.Knowledge, T.Brain, T.BrainUsage, T.Ids, T.Clock],
+    useFactory: (knowledge: KnowledgeChunkRepository, brain: AgentBrainPort, meter: BrainTokenMeter) =>
+      new SearchKnowledge({ knowledge, brain, meter }),
+    inject: [T.Knowledge, T.Brain, T.BrainBilling],
   },
   {
     provide: IngestKnowledge,
-    useFactory: (knowledge: KnowledgeChunkRepository, brain: AgentBrainPort, brainUsage: BrainUsageRepository, ids: IdGenerator, clock: Clock) =>
-      new IngestKnowledge({ knowledge, brain, meter: { brainUsage, ids, clock } }),
-    inject: [T.Knowledge, T.Brain, T.BrainUsage, T.Ids, T.Clock],
+    useFactory: (knowledge: KnowledgeChunkRepository, brain: AgentBrainPort, meter: BrainTokenMeter) =>
+      new IngestKnowledge({ knowledge, brain, meter }),
+    inject: [T.Knowledge, T.Brain, T.BrainBilling],
   },
   {
     provide: UploadKnowledgeDocument,
@@ -43,9 +44,9 @@ const providers: Provider[] = [
       memberships: MembershipRepository,
       ids: IdGenerator,
       clock: Clock,
-      brainUsage: BrainUsageRepository,
-    ) => new UploadKnowledgeDocument({ uow, brain, memberships, ids, clock, meter: { brainUsage, ids, clock } }),
-    inject: [T.UnitOfWork, T.Brain, T.Memberships, T.Ids, T.Clock, T.BrainUsage],
+      meter: BrainTokenMeter,
+    ) => new UploadKnowledgeDocument({ uow, brain, memberships, ids, clock, meter }),
+    inject: [T.UnitOfWork, T.Brain, T.Memberships, T.Ids, T.Clock, T.BrainBilling],
   },
   {
     provide: ListKnowledgeDocuments,

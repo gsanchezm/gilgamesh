@@ -31,6 +31,8 @@ function subscription(overrides: Partial<SubscriptionRecord> = {}): Subscription
     status: 'TRIALING',
     runMinutesQuota: 25000,
     runMinutesUsed: 0,
+    brainTokensQuota: 10_000_000,
+    brainTokensUsed: 0,
     providerCustomerId: null,
     providerSubscriptionId: null,
     currentPeriodEnd: null,

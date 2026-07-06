@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import {
   PrismaAgentRepository,
   PrismaAuditLogRepository,
+  PrismaBrainUsageRepository,
   PrismaFeatureRepository,
   PrismaInvoiceRepository,
   PrismaKnowledgeChunkRepository,
@@ -45,6 +46,8 @@ export function makePrismaRepos(client: Prisma.TransactionClient): Repositories 
     audit: new PrismaAuditLogRepository(client),
     knowledge: new PrismaKnowledgeChunkRepository(client),
     knowledgeDocuments: new PrismaKnowledgeDocumentRepository(client),
+    // In the bundle since S14: the BrainUsage row + the token charge commit together (BrainBilling).
+    brainUsage: new PrismaBrainUsageRepository(client),
   };
 }
 

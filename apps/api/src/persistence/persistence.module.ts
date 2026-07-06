@@ -3,6 +3,8 @@ import {
   type AuditLogRepository,
   type AgentBrainPort,
   ApplyPaymentEvent,
+  BrainBilling,
+  type BrainTokenMeter,
   type BrainUsageRepository,
   type Clock,
   DeterministicKernel,
@@ -122,6 +124,7 @@ import { TOKENS } from './tokens';
         audit: AuditLogRepository,
         knowledge: KnowledgeChunkRepository,
         knowledgeDocuments: KnowledgeDocumentRepository,
+        brainUsage: BrainUsageRepository,
       ) =>
         new InMemoryUnitOfWork({
           users,
@@ -143,6 +146,7 @@ import { TOKENS } from './tokens';
           audit,
           knowledge,
           knowledgeDocuments,
+          brainUsage,
         }),
       inject: [
         TOKENS.Users,
@@ -164,7 +168,16 @@ import { TOKENS } from './tokens';
         TOKENS.Audit,
         TOKENS.Knowledge,
         TOKENS.KnowledgeDocuments,
+        TOKENS.BrainUsage,
       ],
+    },
+    {
+      // Slice 14: the shared token check/charge seam — the BrainUsage row and the
+      // Subscription.brainTokensUsed increment commit in one UoW transaction.
+      provide: TOKENS.BrainBilling,
+      useFactory: (uow: UnitOfWork, subscriptions: SubscriptionRepository, ids: IdGenerator, clock: Clock) =>
+        new BrainBilling({ uow, subscriptions, ids, clock }),
+      inject: [TOKENS.UnitOfWork, TOKENS.Subscriptions, TOKENS.Ids, TOKENS.Clock],
     },
     { provide: TOKENS.Hasher, useValue: new Argon2PasswordHasher() },
     { provide: TOKENS.Ids, useValue: new Uuid7IdGenerator() },
@@ -206,15 +219,10 @@ import { TOKENS } from './tokens';
     { provide: TOKENS.KnowledgeDocuments, useValue: new InMemoryKnowledgeDocumentRepository() },
     {
       provide: TOKENS.KnowledgeRetrieval,
-      // S16: scoped grounding meters EMBED BrainUsage rows for the filter org.
-      useFactory: (
-        brain: AgentBrainPort,
-        knowledge: KnowledgeChunkRepository,
-        brainUsage: BrainUsageRepository,
-        ids: IdGenerator,
-        clock: Clock,
-      ) => new KnowledgeRetriever({ brain, knowledge, meter: { brainUsage, ids, clock } }),
-      inject: [TOKENS.Brain, TOKENS.Knowledge, TOKENS.BrainUsage, TOKENS.Ids, TOKENS.Clock],
+      // S16 metering + S14 charging: scoped grounding writes EMBED rows AND charges the filter org.
+      useFactory: (brain: AgentBrainPort, knowledge: KnowledgeChunkRepository, meter: BrainTokenMeter) =>
+        new KnowledgeRetriever({ brain, knowledge, meter }),
+      inject: [TOKENS.Brain, TOKENS.Knowledge, TOKENS.BrainBilling],
     },
     { provide: TOKENS.ChatSessions, useValue: new InMemoryChatSessionRepository() },
     { provide: TOKENS.ChatMessages, useValue: new InMemoryChatMessageRepository() },
@@ -253,6 +261,7 @@ import { TOKENS } from './tokens';
     TOKENS.Brain,
     TOKENS.BrainKeys,
     TOKENS.BrainUsage,
+    TOKENS.BrainBilling,
     TOKENS.Events,
     TOKENS.Kernel,
     TOKENS.Payment,

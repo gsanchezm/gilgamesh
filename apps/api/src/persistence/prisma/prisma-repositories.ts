@@ -388,6 +388,15 @@ export class PrismaSubscriptionRepository implements SubscriptionRepository {
     const exists = await this.db.subscription.count({ where: { orgId } });
     return exists === 0;
   }
+  async chargeBrainTokens(orgId: string, tokens: number): Promise<void> {
+    // Unconditional atomic increment (S14, spec §5.2): the cost is known only AFTER the brain call,
+    // so the charge can never be refused — the pre-call quota check is the gate. Touches only the
+    // counter (concurrent plan/checkout writes can't be clobbered); a no-op with no subscription row.
+    await this.db.$executeRaw`
+      UPDATE subscriptions
+      SET brain_tokens_used = brain_tokens_used + ${tokens}
+      WHERE org_id = ${orgId}::uuid`;
+  }
 }
 
 export class PrismaInvoiceRepository implements InvoiceRepository {
