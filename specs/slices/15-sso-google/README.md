@@ -84,7 +84,7 @@ Closes AC-AUTH-15 (slice-1 deferral: the Google button rendered disabled since s
 - SAML / Entra / any second provider (the port + routes already accommodate them).
 - Account **linking** UI (an existing local user signing in with Google simply logs in — same email).
 - Refresh tokens / offline access (`access_type=offline`) — we only need the id_token once.
-- A Redis `SsoStateStore` adapter (multi-replica) — port-ready.
+- ~~A Redis `SsoStateStore` adapter (multi-replica) — port-ready.~~ **CLOSED — see §14 addendum.**
 - Web capability/config surface (`GET /config`) — the chosen web approach needs none.
 - Sign-out at Google (RP-initiated logout).
 
@@ -327,4 +327,35 @@ invalid · `email_verified` false/absent · `DISABLED` account. Infra faults (st
 - Account linking / "connected identities" surface (kind `OIDC` next to a local password).
 - Should an SSO-born user get a "set a password" nudge? (Today: the reset-password flow works.)
 - SAML (`kind: 'SAML'`) once an enterprise IdP lands; Entra ID as the second OIDC provider.
-- Redis `SsoStateStore` when the API goes multi-replica.
+- ~~Redis `SsoStateStore` when the API goes multi-replica.~~ **CLOSED — see §14 addendum.**
+
+---
+
+## 14. Addendum — Redis `SsoStateStore` (2026-07-06, branch `feat-sso-redis-state`)
+
+Closes the §2/§13 deferral: the OIDC transaction state no longer requires a single API replica.
+
+**`RedisSsoStateStore`** (`apps/api/src/infra/redis-sso-state-store.ts`, ioredis — already a
+dependency) implements the unchanged `SsoStateStore` port:
+
+- **`put`** = one `SET sso:<state> <json> PX <ttlMs>` — expiry is **native Redis TTL** (the same
+  10-min `SSO_STATE_TTL_MS` the in-memory store uses, passed by the caller), so keys self-evict
+  and a `/start` flood cannot grow memory unboundedly (no explicit cap needed — the in-memory
+  store's oldest-evicted cap was a Map-growth guard; here the per-IP rate limit bounds the flood
+  and TTL bounds retention).
+- **`take`** = one **atomic `GETDEL`** — the claim returns AND deletes in a single command, so a
+  replayed `state` can never race a slow first callback **even with two concurrent callbacks on
+  different API replicas** (the same take-first guarantee §10.1 demands, now cross-replica).
+- **Selection** (`auth.module.ts`, the `RATE_LIMIT_STORE` idiom in `app.module.ts`): `REDIS_URL`
+  set → Redis store; else the `InMemorySsoStateStore` — the Docker-free suites and dev stay
+  dependency-free. No new env vars.
+- **Secrecy:** the `state` value and the stored entry (nonce / PKCE verifier) are never logged
+  and never embedded in an error; a corrupt stored value claims as `null`.
+
+**Proven by:** unit tests over an injected fake redis client
+(`apps/api/src/infra/redis-sso-state-store.test.ts` — the `SmtpTransport` seam idiom: prefixed
+`SET … PX`, GETDEL claim, single-use, unknown → null, corrupt → null, factory + `quit` on
+destroy) · one integration test against real Redis
+(`apps/api/test/integration/sso-state.int.test.ts`, the `rate-limit.int.test.ts` pattern:
+round-trip, concurrent-claim race → exactly one winner, native-TTL expiry) — runs with the
+serialized `test:int` gate.

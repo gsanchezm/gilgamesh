@@ -22,7 +22,7 @@ import {
   type UserRepository,
 } from '@gilgamesh/application';
 import { Module } from '@nestjs/common';
-import { identityProviderFromEnv } from '../infra';
+import { identityProviderFromEnv, RedisSsoStateStore } from '../infra';
 import { TOKENS } from '../persistence/tokens';
 import { AuthController } from './auth.controller';
 import { SsoController } from './sso.controller';
@@ -147,10 +147,14 @@ import { SsoController } from './sso.controller';
       ],
     },
     {
-      // Single-instance in-memory store (fine for Docker-free wirings + one replica); the Redis
-      // adapter swaps in HERE later — the binding, not the persistence wirings, owns that choice.
+      // REDIS_URL → Redis store (multi-replica: native TTL + atomic GETDEL single-use claims);
+      // else the single-instance in-memory store, which keeps the Docker-free wirings and dev
+      // dependency-free — the exact RATE_LIMIT_STORE selection idiom (app.module.ts).
       provide: TOKENS.SsoStates,
-      useFactory: (clock: Clock) => new InMemorySsoStateStore(clock),
+      useFactory: (clock: Clock) =>
+        process.env.REDIS_URL
+          ? new RedisSsoStateStore(process.env.REDIS_URL)
+          : new InMemorySsoStateStore(clock),
       inject: [TOKENS.Clock],
     },
     {
