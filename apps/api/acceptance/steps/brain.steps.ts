@@ -115,7 +115,7 @@ Then(
   },
 );
 
-Given('the {string} integration is connected', async function (this: GilgameshWorld, key: string) {
+Given('the {string} integration is already connected', async function (this: GilgameshWorld, key: string) {
   const res = await this.applyAuth(server(this).patch(integrationsPath(this, key))).send({
     action: 'connect',
     token: 'sk-ant-valid-e2e',

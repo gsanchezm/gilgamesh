@@ -28,7 +28,7 @@ Feature: Brain — bring-your-own-key (anthropic integration)
 
   @AC-BYOK-03
   Scenario: Disconnect clears the connection
-    Given the "anthropic" integration is connected
+    Given the "anthropic" integration is already connected
     When I disconnect the "anthropic" integration
     Then the response status is 200
     And the "anthropic" integration is not connected
