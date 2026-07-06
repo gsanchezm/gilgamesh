@@ -164,6 +164,15 @@ describe('AppRoutes', () => {
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
   });
 
+  it('surfaces the SSO back-channel notice on /login?sso=unavailable (slice 15, AC-SSO-10)', async () => {
+    renderApp(makeClients(), '/login?sso=unavailable');
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Google sign-in is not available on this server yet.');
+    // The Google entry itself is a real link to the API start route.
+    const google = screen.getByRole('link', { name: 'Google' });
+    expect(google.getAttribute('href')).toBe('/api/v1/auth/sso/google/start');
+  });
+
   it('registers then continues into onboarding carrying the Company (AC-ONB-14)', async () => {
     const clients = makeClients();
     renderApp(clients, '/register');
@@ -230,6 +239,54 @@ describe('AppRoutes', () => {
     await waitFor(() => expect(clients.chat.listSessions).toHaveBeenCalledWith('p-1'));
     expect(await screen.findByText('Active · Playwright')).toBeTruthy();
     expect(screen.getByRole('button', { name: '← Agents' })).toBeTruthy();
+  });
+
+  it('logs out from the shell: revokes via the client and lands back on login (AC-OUT-02)', async () => {
+    const clients = makeClients();
+    render(
+      <ThemeProvider>
+        <SessionProvider bootstrap={async () => ({ activeOrgId: 'org-1' })}>
+          <ClientsProvider clients={clients}>
+            <MemoryRouter initialEntries={['/projects/p-1/agents']}>
+              <AppRoutes />
+            </MemoryRouter>
+          </ClientsProvider>
+        </SessionProvider>
+      </ThemeProvider>,
+    );
+
+    await screen.findByText('1 agents · OmniPizza');
+    fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
+
+    // The client revoke fired once and the SPA signed out + navigated: the login screen replaces
+    // the shell (from here, protected routes bounce back to /login — the RequireAuth test above).
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
+    expect(clients.auth.logout).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('1 agents · OmniPizza')).toBeNull();
+  });
+
+  it('still signs out locally when the server logout call fails (AC-OUT-02 resilience)', async () => {
+    const clients = makeClients();
+    clients.auth.logout = vi.fn(async () => {
+      throw new Error('Could not sign out.');
+    });
+    render(
+      <ThemeProvider>
+        <SessionProvider bootstrap={async () => ({ activeOrgId: 'org-1' })}>
+          <ClientsProvider clients={clients}>
+            <MemoryRouter initialEntries={['/projects/p-1/agents']}>
+              <AppRoutes />
+            </MemoryRouter>
+          </ClientsProvider>
+        </SessionProvider>
+      </ThemeProvider>,
+    );
+
+    await screen.findByText('1 agents · OmniPizza');
+    fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
+
+    // Even when the revoke 500s/network-fails, the client session is dropped and login renders.
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
   });
 
   it('navigates login → forgot-password and submits the recovery request (AC-REC-05)', async () => {

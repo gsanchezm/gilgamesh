@@ -22,6 +22,10 @@ const LIMITED_PATHS: LimitedPath[] = [
   { suffix: '/auth/register' },
   { suffix: '/auth/forgot-password' },
   { suffix: '/auth/reset-password' },
+  // SSO (slice 15, AC-SSO-08): GETs carry no email, so these bind per (path + IP). Explicit
+  // per-provider entries — an unknown {provider} 404s before doing any work anyway.
+  { suffix: '/auth/sso/google/start', method: 'GET' },
+  { suffix: '/auth/sso/google/callback', method: 'GET' },
   { suffix: '/test-cases/generate' },
   // POST-only so a future GET message-list is not throttled, and bucketed by SUFFIX so minting
   // fresh sessions cannot mint fresh buckets — the brain-cost limit binds per IP (review S8).

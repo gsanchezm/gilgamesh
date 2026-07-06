@@ -25,6 +25,10 @@ export default defineConfig({
       // S9/S13: the integration suite stays on the deterministic stubs — no network, ever.
       BRAIN_MODE: 'offline',
       PAYMENTS_MODE: 'offline',
+      // S15: the deterministic StubIdentityProvider answers the SSO routes — no Google, ever.
+      SSO_MODE: 'offline',
+      // S17: same for mail — the recording stub, never an SMTP connection.
+      EMAIL_MODE: 'offline',
     },
   },
 });

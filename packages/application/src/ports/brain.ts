@@ -65,3 +65,29 @@ export interface OrgScopedBrain {
 export function hasBrainForOrg(brain: AgentBrainPort): brain is AgentBrainPort & OrgScopedBrain {
   return typeof (brain as { forOrg?: unknown }).forOrg === 'function';
 }
+
+/** S16: what the texts are being embedded FOR — Voyage `input_type` (retrieval question vs stored corpus). */
+export type EmbeddingKind = 'query' | 'document';
+
+export interface EmbedWithUsageResult {
+  embeddings: number[][];
+  /** Provider-counted total tokens for the batch (Voyage `usage.total_tokens`); the stub reports a
+   *  deterministic whitespace-token estimate so offline EMBED metering still carries real counts. */
+  usage: { totalTokens: number };
+}
+
+/**
+ * OPTIONAL slice-16 extension (spec 16 §5 — the `streamWithUsage`/`forOrg` precedent): the frozen
+ * `embed()` takes only texts and returns only vectors, so an adapter that distinguishes query vs
+ * document embeddings (Voyage `input_type`) and knows its token usage exposes `embedAs`. The
+ * knowledge pipeline feature-detects it via {@link hasEmbedAs}, defaulting to `document`; adapters
+ * without the extension keep working through the frozen `embed()`. Folded into the port at the
+ * next keystone major.
+ */
+export interface KindAwareEmbeddingBrain {
+  embedAs(texts: string[], kind: EmbeddingKind): Promise<EmbedWithUsageResult>;
+}
+
+export function hasEmbedAs(brain: AgentBrainPort): brain is AgentBrainPort & KindAwareEmbeddingBrain {
+  return typeof (brain as { embedAs?: unknown }).embedAs === 'function';
+}

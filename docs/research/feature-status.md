@@ -55,7 +55,7 @@ Real vs. stub-behind-a-port. Swapping a stub for the real adapter is a future sl
 - [x] Integrations (github/gitlab/bitbucket/ado_repos; token never persisted) — ✅ real
 - [ ] Test execution + results — 🔵 `DeterministicKernel` stub (real TOM/chaos-proxy kernel pending)
 - [x] AI brain (chat · routing · draft generation) — ✅ **real `ClaudeBrain` adapter on `main` (slice 9)** behind `SelectingBrain`: real answers with `ANTHROPIC_API_KEY` (or org BYOK — call-time resolution pending `SecretVault.get()`), deterministic stub offline/CI; per-org `BrainUsage` metering + usage view + tool registry + live C3 SSE (`?live=1`)
-- [ ] RAG embeddings — 🔵 lexical FNV-1a 1536-dim (Anthropic has no embeddings API; semantic = separate provider decision, e.g. Voyage)
+- [x] RAG embeddings — ✅ **real Voyage `voyage-4` semantic embeddings (slice 16)** behind the frozen `AgentBrainPort.embed` + the `embedAs(texts, kind)` extension: 1024-dim `vector(1024)` column (keystone v0.5 BREAKING; destructive migration + re-ingest), real with `VOYAGE_API_KEY`, deterministic lexical FNV-1a 1024-dim offline/CI; EMBED `BrainUsage` metering (Voyage BYOK deferred)
 - [ ] Payments / checkout — 🔵 `MockPaymentProvider` (real Stripe + invoices/webhooks deferred)
 
 ## 3) Missing / deferred (with the blocker)

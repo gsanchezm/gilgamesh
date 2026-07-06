@@ -1,5 +1,6 @@
-import { AGENT_ROSTER, personaPrompt } from '@gilgamesh/domain';
+import { AGENT_ROSTER, EMBED_DIM, personaPrompt } from '@gilgamesh/domain';
 import { describe, expect, it } from 'vitest';
+import { hasEmbedAs } from '../ports/brain';
 import { CHAT_ROUTER_PREFIX } from '../use-cases/chat';
 import { DeterministicBrain } from './stub-brain';
 
@@ -143,5 +144,27 @@ describe('DeterministicBrain — legacy draft generation unchanged (AC-GEN-02)',
     const parsed = JSON.parse(res.text);
     expect(parsed.features).toHaveLength(1);
     expect(parsed.features[0].content).toContain('Feature:');
+  });
+});
+
+describe('DeterministicBrain — embedAs (S16 optional extension, AC-EMB-02/04)', () => {
+  it('is feature-detectable and returns the SAME lexical 1024-dim vectors as the frozen embed()', async () => {
+    expect(hasEmbedAs(brain)).toBe(true);
+    const texts = ['boundary value analysis', 'example mapping workshop'];
+    const viaPort = await brain.embed(texts);
+    const asQuery = await brain.embedAs(texts, 'query');
+    const asDocument = await brain.embedAs(texts, 'document');
+    // The lexical hash has no query/document asymmetry — kind is accepted for wire parity with Voyage.
+    expect(asQuery.embeddings).toEqual(viaPort);
+    expect(asDocument.embeddings).toEqual(viaPort);
+    expect(viaPort[0]).toHaveLength(EMBED_DIM);
+  });
+
+  it('reports a deterministic whitespace-token estimate as usage (offline EMBED rows stay meaningful)', async () => {
+    const r = await brain.embedAs(['two tokens', 'three little tokens'], 'document');
+    expect(r.usage.totalTokens).toBe(5);
+    const again = await brain.embedAs(['two tokens', 'three little tokens'], 'query');
+    expect(again.usage.totalTokens).toBe(5);
+    expect((await brain.embedAs([], 'document')).usage.totalTokens).toBe(0);
   });
 });

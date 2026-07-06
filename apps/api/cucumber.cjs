@@ -19,6 +19,13 @@ process.env.BRAIN_MODE = process.env.BRAIN_MODE || 'offline';
 // Slice 13: force the deterministic mock payment provider for the same reason — the sweep never
 // calls stripe.com, even when the developer machine has STRIPE_SECRET_KEY set.
 process.env.PAYMENTS_MODE = process.env.PAYMENTS_MODE || 'offline';
+// Slice 15: the deterministic StubIdentityProvider answers the SSO routes — an EXPLICIT opt-in
+// (missing Google env alone means "unconfigured", never the stub; see specs/slices/15-sso-google).
+process.env.SSO_MODE = process.env.SSO_MODE || 'offline';
+// Slice 17: force the recording mail stub — the sweep's auth-recovery scenarios read tokens out
+// of recorded mail via TOKENS.Email and must never open an SMTP connection, even when the
+// developer machine has SMTP_URL set.
+process.env.EMAIL_MODE = process.env.EMAIL_MODE || 'offline';
 
 module.exports = {
   default: {

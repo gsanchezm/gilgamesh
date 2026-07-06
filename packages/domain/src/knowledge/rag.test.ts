@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cosineSimilarity, embedText, MAX_EMBED_CHARS, scrubChunk } from './rag';
+import { cosineSimilarity, EMBED_DIM, embedText, MAX_EMBED_CHARS, scrubChunk } from './rag';
 
 describe('scrubChunk', () => {
   it('strips page furniture + the ISTQB copyright line and normalizes <br>', () => {
@@ -23,11 +23,12 @@ describe('scrubChunk', () => {
 });
 
 describe('embedText', () => {
-  it('is deterministic, text-dependent and L2-normalized (1536-dim)', () => {
+  it('is deterministic, text-dependent and L2-normalized (1024-dim, keystone v0.5)', () => {
     const a = embedText('example mapping discovery workshop');
     const b = embedText('example mapping discovery workshop');
     const c = embedText('performance load testing throughput');
-    expect(a).toHaveLength(1536);
+    expect(a).toHaveLength(1024);
+    expect(EMBED_DIM).toBe(1024); // Voyage voyage-4 default; Voyage 4 has no 1536 option (v0.5 BREAKING)
     expect(a).toEqual(b);
     expect(a).not.toEqual(c);
     expect(Math.sqrt(a.reduce((s, x) => s + x * x, 0))).toBeCloseTo(1, 5);

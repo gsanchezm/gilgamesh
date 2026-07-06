@@ -2,7 +2,7 @@
 // Gilgamesh — PostgreSQL Flexible Server module (DESIGN ONLY — never deployed)
 // -----------------------------------------------------------------------------
 // Backs every keystone §2 entity (Org, User, Project, Run, Artifact metadata, ...)
-// and keystone §2 KnowledgeChunk.embedding vector(1536) via the *pgvector* extension.
+// and keystone §2 KnowledgeChunk.embedding vector(1024) via the *pgvector* extension.
 // Row-level tenant isolation by orgId is enforced in the APPLICATION layer (every
 // query carries orgId — keystone §0); infra simply provides a single locked-down DB.
 //
@@ -121,7 +121,7 @@ resource db 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2024-08-01' = {
 }
 
 // Allowlist pgvector (and common extensions) so the app can `CREATE EXTENSION vector`.
-// azure.extensions is a server parameter; vector backs KnowledgeChunk.embedding vector(1536).
+// azure.extensions is a server parameter; vector backs KnowledgeChunk.embedding vector(1024).
 resource extensionsAllowlist 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2024-08-01' = {
   parent: postgres
   name: 'azure.extensions'

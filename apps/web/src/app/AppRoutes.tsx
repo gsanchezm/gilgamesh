@@ -39,12 +39,15 @@ function LoginRoute() {
   const { auth } = useClients();
   const { signIn, authed, booting } = useSession();
   const navigate = useNavigate();
+  // `?sso=unavailable|failed` rides the SSO redirect back to /login (slice 15).
+  const [params] = useSearchParams();
   if (booting) return <Booting />;
   // An already-authenticated user (e.g. session restored on reload) shouldn't see the login form.
   if (authed) return <Navigate to="/onboarding" replace />;
   return (
     <LoginScreen
       authClient={auth}
+      sso={params.get('sso')}
       onSuccess={(result) => {
         signIn(result.activeOrgId);
         navigate('/onboarding');

@@ -515,7 +515,9 @@ model KnowledgeChunk {
   headingPath   String[]                    @map("heading_path")
   section       String
   content       String
-  embedding     Unsupported("vector(1536)")
+  // Keystone v0.5 (BREAKING, owner-approved): 1024 — the Voyage voyage-4 dimension (was 1536).
+  // Migration embedding_vector_1024 is DESTRUCTIVE (chunks + documents wiped; re-ingest required).
+  embedding     Unsupported("vector(1024)")
   tokenEstimate Int                         @map("token_estimate")
   // Slice 8 (keystone v0.2): per-agent visibility — an AgentSlot key, 'shared', or NULL (= all agents).
   scope         String?
