@@ -569,9 +569,14 @@ divergent `refactor/audit-hardening` branch. Reconciled + executed SDD/TDD, all 
 - **Keystone v0.6 aprobado** (revisado por el owner ANTES del commit): +`voyage` (§8) ·
   `Subscription.brainTokensQuota/Used` (§2) · allowances §9 (FREE 100k · STARTER 2M · GROWTH 10M ·
   SCALE unlimited) · nota stale de Subscription corregida.
-- **Agentes:** mix de CLIs externos + Claude (owner: "intentar CLIs externos"; ambos verificados
-  no-interactivos en esta sesión). Asignación anunciada: A→claude · B→agy · C→codex · D→agy(2ª) ·
-  E→claude(2ª). Review adversarial cruzada (autor ≠ reviewer); A/B/C/D tocan rutas protegidas
+- **Agentes:** el owner pidió intentar CLIs externos; el experimento se agotó el mismo día:
+  (1) agy solo edita con `--dangerously-skip-permissions` → denegado por el clasificador de
+  auto-mode; owner redirigió B/D a codex. (2) codex `exec -s workspace-write` en ESTA máquina
+  Windows no puede arrancar NINGÚN proceso hijo (0xC0000142 en pwd/Get-Content); los 3 codex
+  terminaron sin tocar nada (disciplina keystone correcta); su único modo funcional sería
+  `--dangerously-bypass-approvals-and-sandbox`. (3) Owner decidió **fallback a claude los 3**.
+  Asignación final: A→claude · B→claude · C→claude · D→claude · E→claude. Review adversarial
+  cruzada entre subagentes (autor ≠ reviewer); A/B/C/D tocan rutas protegidas
   (billing/auth/secretos/migraciones) → cola de revisión humana con el reporte del reviewer.
 - **Plan de integración:** merges FF secuenciales **C → D → B → A → E** con re-test, servidores
   frescos y `db:deploy` previo. Fusion points declarados: wirings de persistencia/infra (C/D/B) ·
