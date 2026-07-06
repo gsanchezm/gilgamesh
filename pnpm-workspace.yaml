@@ -1,6 +1,10 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+# Audit #2 (batch C): @nestjs/platform-express pins multer <2.2.0, which carries
+# GHSA-72gw-mp4g-v24j (DoS via deeply nested field names) + an aborted-upload DoS.
+overrides:
+  multer: '>=2.2.0'
 allowBuilds:
   '@prisma/client': true
   '@prisma/engines': true
