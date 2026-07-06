@@ -43,7 +43,7 @@ Backend = does the data/logic exist · UI = re-skinned to the `capturas/NN` targ
 
 Extra flow screen (no dedicated capture):
 
-- [~] Onboarding wizard — re-skin to the prototype (`isOnboarding`) + consume Company→`orgName` is **WIP on `feature/onboarding-reskin`** (`5ab3f59`, unverified, not merged).
+- [x] Onboarding wizard — ✅ on `main` (`d58ba93`): re-skin + Company→`orgName` (AC-ONB-14; incl. a React Router 7 `startTransition` race fix so the carried company survives the authed-guard redirect). Verified: BDD 115/915 · Playwright onboarding-company e2e.
 
 ## 2) Engine / backend capabilities
 

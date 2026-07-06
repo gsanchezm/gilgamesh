@@ -8,7 +8,9 @@ import { type Auth, authFrom } from './support/auth';
 let app: INestApplication;
 
 beforeAll(async () => {
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+  const moduleRef = await Test.createTestingModule({
+    imports: [AppModule],
+  }).compile();
   app = moduleRef.createNestApplication();
   await app.init();
 });
@@ -19,17 +21,18 @@ afterAll(async () => {
 
 async function signIn(email: string): Promise<Auth> {
   // Registration auto-signs-in and sets the session + csrf cookies.
-  const res = await request(app.getHttpServer())
-    .post('/auth/register')
-    .send({ firstName: 'Ishtar', lastName: 'Uruk', email, password: 'C0rrect-Horse!' });
+  const res = await request(app.getHttpServer()).post('/auth/register').send({
+    firstName: 'Ishtar',
+    lastName: 'Uruk',
+    email,
+    password: 'C0rrect-Horse!',
+  });
   return authFrom(res);
 }
 
 describe('Projects (onboarding)', () => {
   it('requires authentication (401)', async () => {
-    const res = await request(app.getHttpServer())
-      .post('/projects')
-      .send({ projectName: 'X', format: 'BDD' });
+    const res = await request(app.getHttpServer()).post('/projects').send({ projectName: 'X', format: 'BDD' });
     expect(res.status).toBe(401);
   });
 
@@ -39,7 +42,12 @@ describe('Projects (onboarding)', () => {
       .post('/projects')
       .set('Cookie', auth.cookie)
       .set('X-CSRF-Token', auth.csrf)
-      .send({ projectName: 'OmniPizza Web', format: 'BDD', repoProvider: 'github' });
+      .send({
+        orgName: 'Acme Inc.',
+        projectName: 'OmniPizza Web',
+        format: 'BDD',
+        repoProvider: 'github',
+      });
     expect(res.status).toBe(201);
     expect(res.body.slug).toBe('omnipizza-web');
     expect(res.body.projectId).toBeTruthy();

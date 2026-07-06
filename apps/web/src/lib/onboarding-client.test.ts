@@ -1,14 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { httpOnboardingClient } from './onboarding-client';
 
-type FetchInit = { method?: string; credentials?: string; headers: Record<string, string>; body: string };
+type FetchInit = {
+  method?: string;
+  credentials?: string;
+  headers: Record<string, string>;
+  body: string;
+};
 
 describe('httpOnboardingClient', () => {
   beforeEach(() => {
     document.cookie = 'csrf=tok-123';
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({ ok: true, json: async () => ({ projectId: 'p1', slug: 'omnipizza' }) })),
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ projectId: 'p1', slug: 'omnipizza' }),
+      })),
     );
   });
 
@@ -18,7 +26,11 @@ describe('httpOnboardingClient', () => {
   });
 
   it('sends the CSRF token, credentials and JSON body on createProject', async () => {
-    const result = await httpOnboardingClient.createProject({ projectName: 'OmniPizza', format: 'BDD' });
+    const result = await httpOnboardingClient.createProject({
+      orgName: 'Acme Inc.',
+      projectName: 'OmniPizza',
+      format: 'BDD',
+    });
     expect(result).toEqual({ projectId: 'p1', slug: 'omnipizza' });
 
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
@@ -29,6 +41,10 @@ describe('httpOnboardingClient', () => {
     expect(init.credentials).toBe('include');
     expect(init.headers['X-CSRF-Token']).toBe('tok-123');
     expect(init.headers['Content-Type']).toBe('application/json');
-    expect(JSON.parse(init.body)).toEqual({ projectName: 'OmniPizza', format: 'BDD' });
+    expect(JSON.parse(init.body)).toEqual({
+      orgName: 'Acme Inc.',
+      projectName: 'OmniPizza',
+      format: 'BDD',
+    });
   });
 });
