@@ -39,7 +39,6 @@ export function AuthHero() {
     let phase = 0;
     let raf = 0;
     const draw = () => {
-      raf = requestAnimationFrame(draw);
       const dpr = window.devicePixelRatio || 1;
       const w = cv.clientWidth;
       const h = cv.clientHeight;
@@ -136,8 +135,33 @@ export function AuthHero() {
       }
       ctx.globalAlpha = 1;
     };
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      draw();
+    };
+
+    // prefers-reduced-motion: one static frame, no animation loop (audit #11).
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      draw();
+      return;
+    }
+
+    // Pause the rAF loop while the tab is hidden — the helix is pure decoration and would
+    // otherwise keep burning CPU/GPU in background tabs (audit #11).
+    const onVisibility = () => {
+      if (document.hidden) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      } else if (!raf) {
+        raf = requestAnimationFrame(loop);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    if (!document.hidden) raf = requestAnimationFrame(loop);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      cancelAnimationFrame(raf);
+    };
   }, []);
 
   return (
