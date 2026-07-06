@@ -117,6 +117,13 @@ describe('BillingScreen', () => {
     expect(await screen.findByText('Could not load the AI usage.')).toBeTruthy();
   });
 
+  it('shows the Scale extra-workspace pricing line from the catalog (AC-B4T-03)', async () => {
+    render(<BillingScreen client={fakeClient()} orgId="o1" />);
+    await screen.findByText(/Free · TRIALING/);
+    fireEvent.change(screen.getByLabelText('Plan'), { target: { value: 'SCALE' } });
+    expect(screen.getByText(/Extra workspaces are \$99\/month each after the first 10\./)).toBeTruthy();
+  });
+
   it('surfaces a plan-change error without crashing', async () => {
     const client = fakeClient({
       changePlan: vi.fn(async () => {
