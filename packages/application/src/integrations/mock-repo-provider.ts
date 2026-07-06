@@ -1,6 +1,6 @@
 import { isSourceRepoKey } from '@gilgamesh/domain';
 import { ApplicationError } from '../errors';
-import type { RepoFile, RepoInfo, RepoProvider, SecretVault } from '../ports/integrations';
+import type { BrainKeyVerifier, RepoFile, RepoInfo, RepoProvider, SecretVault } from '../ports/integrations';
 
 /**
  * Deterministic, offline {@link RepoProvider} stub (slice 6, owner decision S6-A): no OAuth, no network.
@@ -39,6 +39,15 @@ export class MockRepoProvider implements RepoProvider {
           'Feature: Checkout\n  Scenario: Pay with a card\n    Given a cart with items\n    When they pay by card\n    Then the order is placed\n  Scenario: Empty cart is rejected\n    Given an empty cart\n    When they try to pay\n    Then they see an error\n',
       },
     ];
+  }
+}
+
+/** Stub {@link BrainKeyVerifier} (S9): offline; rejects an empty key or the literal 'invalid' marker. */
+export class StubBrainKeyVerifier implements BrainKeyVerifier {
+  async verify(input: { key: string; token: string }): Promise<void> {
+    if (!input.token.trim() || input.token === 'invalid') {
+      throw new ApplicationError('VALIDATION', 'The provider rejected the API key.');
+    }
   }
 }
 

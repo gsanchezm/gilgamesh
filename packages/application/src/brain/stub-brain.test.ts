@@ -85,6 +85,15 @@ describe('DeterministicBrain — canned persona answers (AC-ROUTE-05)', () => {
     expect(await chat('perf', 'hello')).not.toBe(await chat('sec', 'hello'));
   });
 
+  it('streamWithUsage resolves the usage alongside the streamed answer (S9 metering)', async () => {
+    const entry = AGENT_ROSTER.find((e) => e.slot === 'perf')!;
+    const req = { tier: 'SONNET' as const, system: personaPrompt(entry), messages: [{ role: 'user', content: 'hello' }] };
+    const { events, usage } = brain.streamWithUsage(req);
+    let text = '';
+    for await (const { delta } of events) text += delta;
+    expect((await usage).outputTokens).toBe(text.length);
+  });
+
   it('streams the same answer it completes', async () => {
     const entry = AGENT_ROSTER.find((e) => e.slot === 'a11y')!;
     const req = {

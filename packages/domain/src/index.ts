@@ -14,3 +14,5 @@ export * from './knowledge/scope';
 export * from './knowledge/chunk-text';
 export * from './knowledge/parse-document';
 export * from './integrations/integrations';
+export * from './integrations/ai-providers';
+export * from './brain/aggregate-usage';

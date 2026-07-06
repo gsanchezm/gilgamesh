@@ -24,3 +24,8 @@ export interface RepoProvider {
 export interface SecretVault {
   put(scope: string, secret: string): Promise<string>;
 }
+
+/** AI-provider key verification (S9): throws VALIDATION on a rejected key. Stubbed offline; a 1-token ping in prod. */
+export interface BrainKeyVerifier {
+  verify(input: { key: string; token: string }): Promise<void>;
+}

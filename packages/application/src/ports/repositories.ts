@@ -1,6 +1,7 @@
 import type {
   AgentRecord,
   AuditLogRecord,
+  BrainUsageRecord,
   ChatMessageRecord,
   ChatSessionRecord,
   FeatureRecord,
@@ -162,6 +163,11 @@ export interface ChatMessageRepository {
   listForSession(sessionId: string): Promise<ChatMessageRecord[]>;
   /** Links the triggering message to its Run after the standard run path commits; no-op if gone. */
   setRunId(id: string, runId: string): Promise<void>;
+}
+
+export interface BrainUsageRepository {
+  append(rec: BrainUsageRecord): Promise<void>;
+  listForOrg(orgId: string): Promise<BrainUsageRecord[]>;
 }
 
 export interface AuditLogRepository {

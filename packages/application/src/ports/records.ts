@@ -1,4 +1,5 @@
 import type { AgentSlot, AgentFamily, KnowledgeScope } from '@gilgamesh/domain';
+import type { BrainSurface, BrainTier } from './brain';
 
 export type Role = 'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER';
 export type ChatMessageRole = 'USER' | 'AGENT' | 'SYSTEM';
@@ -269,6 +270,19 @@ export interface ChatMessageRecord {
   agentId: string | null;
   content: string;
   runId: string | null;
+  createdAt: Date;
+}
+
+/** One metered brain call (keystone v0.3). Aggregated per org for the usage view; billing hooks in later. */
+export interface BrainUsageRecord {
+  id: string;
+  orgId: string;
+  tier: BrainTier;
+  surface: BrainSurface;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreateTokens: number;
   createdAt: Date;
 }
 

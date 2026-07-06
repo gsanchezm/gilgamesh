@@ -14,6 +14,8 @@ export * from './use-cases/testlab-generate';
 export * from './use-cases/runs';
 export * from './use-cases/subscription';
 export * from './use-cases/chat';
+export * from './use-cases/chat-tools';
+export * from './use-cases/brain-usage';
 export * from './use-cases/knowledge';
 export * from './use-cases/knowledge-documents';
 export * from './use-cases/integrations';

@@ -27,3 +27,24 @@ export interface AgentBrainPort {
   stream(req: BrainCompleteRequest): AsyncIterable<{ delta: string }>;
   embed(texts: string[]): Promise<number[][]>;
 }
+
+/** Keystone v0.3 `BrainSurface` — where a brain call originated (the metering dimension). */
+export type BrainSurface = 'CHAT' | 'ROUTER' | 'GENERATE' | 'EMBED';
+
+export interface BrainStreamWithUsage {
+  events: AsyncIterable<{ delta: string }>;
+  usage: Promise<{ inputTokens: number; outputTokens: number }>;
+}
+
+/**
+ * OPTIONAL slice-9 extension (spec 09 s13): the frozen `stream()` yields only deltas, so an
+ * adapter that knows its final usage exposes it here; `SendChatMessage` feature-detects it for
+ * CHAT metering. Folded into the port at the next keystone major.
+ */
+export interface UsageReportingBrain {
+  streamWithUsage(req: BrainCompleteRequest): BrainStreamWithUsage;
+}
+
+export function hasStreamWithUsage(brain: AgentBrainPort): brain is AgentBrainPort & UsageReportingBrain {
+  return typeof (brain as { streamWithUsage?: unknown }).streamWithUsage === 'function';
+}

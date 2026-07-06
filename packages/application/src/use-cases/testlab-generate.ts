@@ -4,7 +4,7 @@ import type { Clock } from '../ports/clock';
 import type { IdGenerator } from '../ports/id';
 import type { Citation, KnowledgeRetrievalPort } from '../ports/knowledge';
 import type { ProjectFormat, TestCasePriority } from '../ports/records';
-import type { AuditLogRepository, MembershipRepository, ProjectRepository } from '../ports/repositories';
+import type { AuditLogRepository, BrainUsageRepository, MembershipRepository, ProjectRepository } from '../ports/repositories';
 import { requireProjectAccess } from './authz';
 import { formatGrounding } from './knowledge';
 
@@ -40,6 +40,7 @@ const SYSTEM_PROMPT =
 interface GenerateDeps {
   brain: AgentBrainPort;
   retrieval: KnowledgeRetrievalPort;
+  brainUsage: BrainUsageRepository;
   projects: ProjectRepository;
   memberships: MembershipRepository;
   audit: AuditLogRepository;
@@ -118,6 +119,18 @@ export class GenerateDrafts {
         ? `${SYSTEM_PROMPT}\n\nReference knowledge — ground your drafts in this and cite the source:\n${grounding}`
         : SYSTEM_PROMPT,
       messages: [{ role: 'user', content: JSON.stringify({ prompt, format, count }) }],
+    });
+    // S9 metering (keystone v0.3): one BrainUsage row per brain call.
+    await this.deps.brainUsage.append({
+      id: this.deps.ids.next(),
+      orgId: project.orgId,
+      tier: 'SONNET',
+      surface: 'GENERATE',
+      inputTokens: res.usage.inputTokens,
+      outputTokens: res.usage.outputTokens,
+      cacheReadTokens: 0,
+      cacheCreateTokens: 0,
+      createdAt: this.deps.clock.now(),
     });
     const parsed = parseDrafts(res.text);
     // Enforce the count cap at the use-case boundary so the invariant holds regardless of which

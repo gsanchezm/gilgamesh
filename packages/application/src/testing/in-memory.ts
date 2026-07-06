@@ -1,6 +1,7 @@
 import type {
   AgentRepository,
   AuditLogRepository,
+  BrainUsageRepository,
   ChatMessageRepository,
   ChatSessionRepository,
   FeatureRepository,
@@ -30,6 +31,7 @@ import type { Repositories, UnitOfWork } from '../ports/unit-of-work';
 import type {
   AgentRecord,
   AuditLogRecord,
+  BrainUsageRecord,
   ChatMessageRecord,
   ChatSessionRecord,
   FeatureRecord,
@@ -54,7 +56,8 @@ import type {
 import { DeterministicBrain } from '../brain/stub-brain';
 import { DeterministicKernel } from '../kernel/deterministic-kernel';
 import { MockPaymentProvider } from '../payment/mock-payment-provider';
-import { MockRepoProvider, StubSecretVault } from '../integrations/mock-repo-provider';
+import { MockRepoProvider, StubBrainKeyVerifier, StubSecretVault } from '../integrations/mock-repo-provider';
+import type { EventBus } from '../ports/events';
 import { FakeClock, FakePasswordHasher, FakeTokenGenerator, SeqIdGenerator } from './fakes';
 
 export class InMemoryUserRepository implements UserRepository {
@@ -423,6 +426,31 @@ export class InMemoryChatMessageRepository implements ChatMessageRepository {
   }
 }
 
+export class InMemoryBrainUsageRepository implements BrainUsageRepository {
+  readonly rows: BrainUsageRecord[] = [];
+  async append(rec: BrainUsageRecord): Promise<void> {
+    this.rows.push(rec);
+  }
+  async listForOrg(orgId: string): Promise<BrainUsageRecord[]> {
+    return this.rows.filter((r) => r.orgId === orgId);
+  }
+}
+
+/** In-process pub/sub implementing the frozen s5 EventBus (slice 9 live SSE). */
+export class InMemoryEventBus implements EventBus {
+  private readonly handlers = new Map<string, Set<(e: unknown) => void>>();
+  async publish(topic: string, e: unknown): Promise<void> {
+    for (const h of [...(this.handlers.get(topic) ?? [])]) h(e);
+  }
+  subscribe(topic: string, h: (e: unknown) => void): () => void {
+    if (!this.handlers.has(topic)) this.handlers.set(topic, new Set());
+    this.handlers.get(topic)!.add(h);
+    return () => {
+      this.handlers.get(topic)?.delete(h);
+    };
+  }
+}
+
 export class InMemoryAuditLogRepository implements AuditLogRepository {
   readonly rows: AuditLogRecord[] = [];
   async append(rec: AuditLogRecord): Promise<void> {
@@ -462,6 +490,9 @@ export interface InMemoryContext {
   knowledgeDocuments: InMemoryKnowledgeDocumentRepository;
   chatSessions: InMemoryChatSessionRepository;
   chatMessages: InMemoryChatMessageRepository;
+  brainUsage: InMemoryBrainUsageRepository;
+  events: InMemoryEventBus;
+  brainKeys: StubBrainKeyVerifier;
   integrations: InMemoryIntegrationRepository;
   repoProvider: MockRepoProvider;
   vault: StubSecretVault;
@@ -505,6 +536,9 @@ export function createInMemoryContext(): InMemoryContext {
     ...repos,
     chatSessions: new InMemoryChatSessionRepository(),
     chatMessages: new InMemoryChatMessageRepository(),
+    brainUsage: new InMemoryBrainUsageRepository(),
+    events: new InMemoryEventBus(),
+    brainKeys: new StubBrainKeyVerifier(),
     integrations: new InMemoryIntegrationRepository(),
     repoProvider: new MockRepoProvider(),
     vault: new StubSecretVault(),

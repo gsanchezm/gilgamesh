@@ -1,4 +1,5 @@
 import {
+  AI_PROVIDER_CATALOG,
   DomainError,
   parseFeature,
   repoProviderForKey,
@@ -9,7 +10,7 @@ import {
 import { ApplicationError } from '../errors';
 import type { Clock } from '../ports/clock';
 import type { IdGenerator } from '../ports/id';
-import type { RepoProvider, SecretVault } from '../ports/integrations';
+import type { BrainKeyVerifier, RepoProvider, SecretVault } from '../ports/integrations';
 import type { FeatureRecord, IntegrationGroup, IntegrationRecord, Role, ScenarioRecord } from '../ports/records';
 import type {
   AuditLogRepository,
@@ -26,6 +27,12 @@ const ADMINS: Role[] = ['OWNER', 'ADMIN'];
 const AUTHORS = ['OWNER', 'ADMIN', 'MEMBER'] as const;
 const SOURCE_REPOS: IntegrationGroup = 'SOURCE_REPOS';
 
+/** The full connectable catalog: source repos (S6) + AI providers (S9), each with its keystone group. */
+const CATALOG: { key: string; name: string; group: IntegrationGroup }[] = [
+  ...SOURCE_REPO_CATALOG.map((e) => ({ key: e.key as string, name: e.name, group: SOURCE_REPOS })),
+  ...AI_PROVIDER_CATALOG.map((e) => ({ key: e.key as string, name: e.name, group: 'AI_PROVIDERS' as IntegrationGroup })),
+];
+
 /** Source-attributable view — NEVER carries `secretRef` or the raw token (S6-B). */
 export interface IntegrationView {
   key: string;
@@ -40,6 +47,7 @@ interface IntegrationDeps {
   integrations: IntegrationRepository;
   memberships: MembershipRepository;
   repoProvider: RepoProvider;
+  brainKeys: BrainKeyVerifier;
   vault: SecretVault;
   audit: AuditLogRepository;
   ids: IdGenerator;
@@ -57,11 +65,16 @@ async function requireOrgAdmin(deps: { memberships: MembershipRepository }, user
   if (!ADMINS.includes(role)) throw new ApplicationError('FORBIDDEN', 'Owners and admins only.');
 }
 
-function viewOf(key: string, name: string, rec: IntegrationRecord | undefined): IntegrationView {
+function viewOf(
+  key: string,
+  name: string,
+  group: IntegrationGroup,
+  rec: IntegrationRecord | undefined,
+): IntegrationView {
   return {
     key,
     name,
-    group: SOURCE_REPOS,
+    group,
     connected: rec?.connected ?? false,
     config: rec?.config ?? {},
     connectedAt: rec?.connectedAt ?? null,
@@ -90,7 +103,7 @@ export class ListIntegrations {
     await requireMember(this.deps, input.userId, input.orgId);
     const rows = await this.deps.integrations.listForOrg(input.orgId);
     const byKey = new Map(rows.map((r) => [r.key, r]));
-    return SOURCE_REPO_CATALOG.map((entry) => viewOf(entry.key, entry.name, byKey.get(entry.key)));
+    return CATALOG.map((entry) => viewOf(entry.key, entry.name, entry.group, byKey.get(entry.key)));
   }
 }
 
@@ -106,10 +119,13 @@ export class ConnectIntegration {
     config?: Record<string, unknown>;
   }): Promise<IntegrationView> {
     await requireOrgAdmin(this.deps, input.userId, input.orgId);
-    if (!isSourceRepoKey(input.key)) {
-      throw new ApplicationError('VALIDATION', `Unknown source-repo integration: ${input.key}`);
+    const entry = CATALOG.find((e) => e.key === input.key);
+    if (!entry) throw new ApplicationError('VALIDATION', `Unknown integration: ${input.key}`);
+    if (isSourceRepoKey(input.key)) {
+      await this.deps.repoProvider.verify({ key: input.key, token: input.token }); // throws on empty/unknown
+    } else {
+      await this.deps.brainKeys.verify({ key: input.key, token: input.token }); // AI provider key (S9)
     }
-    await this.deps.repoProvider.verify({ key: input.key, token: input.token }); // throws on empty/unknown
     const secretRef = await this.deps.vault.put(`${input.orgId}/${input.key}`, input.token); // token discarded
 
     const existing = await this.deps.integrations.findByKey(input.orgId, input.key);
@@ -117,7 +133,7 @@ export class ConnectIntegration {
       id: existing?.id ?? this.deps.ids.next(),
       orgId: input.orgId,
       key: input.key,
-      group: SOURCE_REPOS,
+      group: entry.group,
       connected: true,
       secretRef,
       config: input.config ?? existing?.config ?? {},
@@ -126,7 +142,7 @@ export class ConnectIntegration {
     };
     await this.deps.integrations.upsert(rec);
     await audit(this.deps, input.orgId, input.userId, 'integration.connected', input.key);
-    return viewOf(input.key, nameOf(input.key), rec);
+    return viewOf(input.key, entry.name, entry.group, rec);
   }
 }
 
@@ -136,11 +152,10 @@ export class DisconnectIntegration {
 
   async execute(input: { userId: string; orgId: string; key: string }): Promise<IntegrationView> {
     await requireOrgAdmin(this.deps, input.userId, input.orgId);
-    if (!isSourceRepoKey(input.key)) {
-      throw new ApplicationError('VALIDATION', `Unknown source-repo integration: ${input.key}`);
-    }
+    const entry = CATALOG.find((e) => e.key === input.key);
+    if (!entry) throw new ApplicationError('VALIDATION', `Unknown integration: ${input.key}`);
     const existing = await this.deps.integrations.findByKey(input.orgId, input.key);
-    if (!existing || !existing.connected) return viewOf(input.key, nameOf(input.key), existing ?? undefined);
+    if (!existing || !existing.connected) return viewOf(input.key, entry.name, entry.group, existing ?? undefined);
 
     const rec: IntegrationRecord = {
       ...existing,
@@ -151,12 +166,8 @@ export class DisconnectIntegration {
     };
     await this.deps.integrations.upsert(rec);
     await audit(this.deps, input.orgId, input.userId, 'integration.disconnected', input.key);
-    return viewOf(input.key, nameOf(input.key), rec);
+    return viewOf(input.key, entry.name, entry.group, rec);
   }
-}
-
-function nameOf(key: string): string {
-  return SOURCE_REPO_CATALOG.find((e) => e.key === key)?.name ?? key;
 }
 
 export interface ImportedFeatureView {

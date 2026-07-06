@@ -3,6 +3,8 @@ import type {
   AgentBrainPort,
   BrainCompleteRequest,
   BrainCompleteResult,
+  BrainStreamWithUsage,
+  UsageReportingBrain,
 } from '../ports/brain';
 import { CHAT_ROUTER_PREFIX } from '../use-cases/chat';
 
@@ -16,7 +18,7 @@ import { CHAT_ROUTER_PREFIX } from '../use-cases/chat';
  *  3. Test-draft generation (slice 2): a `{prompt, format, count}` user message → draft JSON
  *     (the shape is the contract owned by the GenerateDrafts use case).
  */
-export class DeterministicBrain implements AgentBrainPort {
+export class DeterministicBrain implements AgentBrainPort, UsageReportingBrain {
   async complete(req: BrainCompleteRequest): Promise<BrainCompleteResult> {
     const last = req.messages[req.messages.length - 1]?.content ?? '';
 
@@ -41,6 +43,19 @@ export class DeterministicBrain implements AgentBrainPort {
 
   async embed(texts: string[]): Promise<number[][]> {
     return texts.map((t) => embedText(t));
+  }
+
+  /** S9 optional extension (spec 09 s13): stream + final usage, so streamed calls can be metered. */
+  streamWithUsage(req: BrainCompleteRequest): BrainStreamWithUsage {
+    let resolveUsage!: (u: { inputTokens: number; outputTokens: number }) => void;
+    const usage = new Promise<{ inputTokens: number; outputTokens: number }>((r) => (resolveUsage = r));
+    const complete = this.complete.bind(this);
+    const events = (async function* () {
+      const res = await complete(req);
+      yield { delta: res.text };
+      resolveUsage(res.usage);
+    })();
+    return { events, usage };
   }
 
   /** Slice-2 behavior, unchanged: reproducible well-formed draft JSON derived from the request. */

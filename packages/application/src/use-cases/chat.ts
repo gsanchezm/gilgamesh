@@ -1,6 +1,7 @@
 import { AGENT_ROSTER, personaPrompt, type AgentSlot } from '@gilgamesh/domain';
 import { ApplicationError } from '../errors';
-import type { AgentBrainPort } from '../ports/brain';
+import { hasStreamWithUsage, type AgentBrainPort, type BrainSurface, type BrainTier } from '../ports/brain';
+import type { EventBus } from '../ports/events';
 import type { Clock } from '../ports/clock';
 import type { IdGenerator } from '../ports/id';
 import type { KnowledgeRetrievalPort } from '../ports/knowledge';
@@ -15,6 +16,7 @@ import type {
 import type {
   AgentRepository,
   AuditLogRepository,
+  BrainUsageRepository,
   ChatMessageRepository,
   ChatSessionRepository,
   FeatureRepository,
@@ -23,6 +25,7 @@ import type {
   ToolBindingRepository,
 } from '../ports/repositories';
 import { requireProjectAccess } from './authz';
+import { validateToolArgs } from './chat-tools';
 import { formatGrounding } from './knowledge';
 import type { RunView } from './runs';
 import type { GeneratedDraftsView } from './testlab-generate';
@@ -91,6 +94,20 @@ function toView(m: ChatMessageRecord): ChatMessageView {
     content: m.content,
     runId: m.runId,
     createdAt: m.createdAt,
+  };
+}
+
+/** The C3/SSE wire shape for a persisted message (the `ChatEvent` MESSAGE frame — spec 08 s13). */
+function wireMessage(m: ChatMessageRecord) {
+  return {
+    type: 'MESSAGE',
+    id: m.id,
+    sessionId: m.sessionId,
+    role: m.role,
+    agentId: m.agentId,
+    content: m.content,
+    runId: m.runId,
+    at: m.createdAt.toISOString(),
   };
 }
 
@@ -178,6 +195,8 @@ interface SendDeps {
   features: FeatureRepository;
   brain: AgentBrainPort;
   retrieval: KnowledgeRetrievalPort;
+  brainUsage: BrainUsageRepository;
+  events: EventBus;
   audit: AuditLogRepository;
   ids: IdGenerator;
   clock: Clock;
@@ -236,23 +255,48 @@ export class SendChatMessage {
       ? `${personaPrompt(entry)}\n\nReference context:\n${grounding}`
       : personaPrompt(entry);
 
-    let full = '';
-    for await (const { delta } of this.deps.brain.stream({
-      tier: 'SONNET',
-      system,
-      messages: [{ role: 'user', content }],
-    })) {
-      full += delta;
-    }
+    const topic = `chat:${session.id}`;
+    await this.deps.events.publish(topic, wireMessage(userMsg));
 
-    const tool = parseToolCall(full);
+    let full = '';
+    let brainDown = false;
+    let chatUsage: { inputTokens: number; outputTokens: number } | null = null;
+    try {
+      const req = { tier: 'SONNET' as const, system, messages: [{ role: 'user', content }] };
+      if (hasStreamWithUsage(this.deps.brain)) {
+        const withUsage = this.deps.brain.streamWithUsage(req);
+        for await (const { delta } of withUsage.events) {
+          full += delta;
+          await this.deps.events.publish(topic, { type: 'DELTA', delta });
+        }
+        chatUsage = await withUsage.usage;
+      } else {
+        for await (const { delta } of this.deps.brain.stream(req)) {
+          full += delta;
+          await this.deps.events.publish(topic, { type: 'DELTA', delta });
+        }
+        // No usage side-channel on the frozen stream(): meter with a length estimate.
+        chatUsage = { inputTokens: system.length + content.length, outputTokens: full.length };
+      }
+    } catch {
+      // A brain outage narrates instead of failing the send — the USER message is already persisted
+      // (spec 09 AC-BRAIN-03).
+      brainDown = true;
+    }
+    if (chatUsage) await this.meter(project.orgId, 'CHAT', 'SONNET', chatUsage);
+
     let outcome: ToolOutcome;
-    if (tool) {
-      outcome = await this.invokeTool(tool, input.userId, project, session.id);
-      if (outcome.runId) await this.deps.chatMessages.setRunId(userMsg.id, outcome.runId);
+    if (brainDown) {
+      outcome = { answerText: 'The pantheon brain is unavailable right now — please try again in a moment.' };
     } else {
-      const sources = [...new Set(retrieved.map((r) => r.citation.source))];
-      outcome = { answerText: sources.length ? `${full}\n\nSources: ${sources.join(', ')}` : full };
+      const tool = parseToolCall(full);
+      if (tool) {
+        outcome = await this.invokeTool(tool, input.userId, project, session.id);
+        if (outcome.runId) await this.deps.chatMessages.setRunId(userMsg.id, outcome.runId);
+      } else {
+        const sources = [...new Set(retrieved.map((r) => r.citation.source))];
+        outcome = { answerText: sources.length ? `${full}\n\nSources: ${sources.join(', ')}` : full };
+      }
     }
 
     const answer: ChatMessageRecord = {
@@ -266,9 +310,10 @@ export class SendChatMessage {
       createdAt: this.deps.clock.now(),
     };
     await this.deps.chatMessages.create(answer);
+    await this.deps.events.publish(topic, wireMessage(answer));
 
     if (outcome.systemNarration) {
-      await this.deps.chatMessages.create({
+      const narration: ChatMessageRecord = {
         id: this.deps.ids.next(),
         orgId: project.orgId,
         sessionId: session.id,
@@ -277,7 +322,9 @@ export class SendChatMessage {
         content: outcome.systemNarration.content,
         runId: outcome.systemNarration.runId,
         createdAt: this.deps.clock.now(),
-      });
+      };
+      await this.deps.chatMessages.create(narration);
+      await this.deps.events.publish(topic, wireMessage(narration));
     }
 
     const now = this.deps.clock.now();
@@ -301,9 +348,31 @@ export class SendChatMessage {
       createdAt: now,
     });
 
+    await this.deps.events.publish(topic, { type: 'DONE' });
+
     // Build the returned view from the known outcome — never from in-place record mutation, which
     // holds in-memory but not under Prisma's updateMany (review S8 parity fix).
     return { message: toView({ ...userMsg, runId: outcome.runId ?? userMsg.runId }), answer: toView(answer) };
+  }
+
+  /** One BrainUsage row per brain call (S9 metering; keystone v0.3). */
+  private async meter(
+    orgId: string,
+    surface: BrainSurface,
+    tier: BrainTier,
+    usage: { inputTokens: number; outputTokens: number },
+  ): Promise<void> {
+    await this.deps.brainUsage.append({
+      id: this.deps.ids.next(),
+      orgId,
+      tier,
+      surface,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      cacheReadTokens: 0,
+      cacheCreateTokens: 0,
+      createdAt: this.deps.clock.now(),
+    });
   }
 
   /**
@@ -326,6 +395,7 @@ export class SendChatMessage {
       system: ROUTER_SYSTEM,
       messages: [{ role: 'user', content: JSON.stringify({ classify: content }) }],
     });
+    await this.meter(project.orgId, 'ROUTER', 'HAIKU', res.usage);
     let slot: string | null = null;
     let confidence = 0;
     try {
@@ -353,14 +423,20 @@ export class SendChatMessage {
     project: ProjectRecord,
     sessionId: string,
   ): Promise<ToolOutcome> {
-    // A tool outside the whitelist is refused, not invoked — no audit row (spec §8 AC-CRUN-04).
-    if (!['enqueue_run', 'create_test_case', 'generate_feature'].includes(call.tool)) {
+    // Registry-validated (S9, AC-TOOL-02/04): outside the whitelist -> refused with no audit row;
+    // schema-invalid args -> narrated + audited, the underlying use case never runs.
+    const validation = validateToolArgs(call.tool, call.args);
+    if (validation === 'UNREGISTERED') {
       return {
         answerText: `Tool "${call.tool}" is not available. The chat can only invoke: create_test_case, generate_feature, enqueue_run.`,
       };
     }
     const audited = (targetId: string | null, outcome: string) =>
       this.auditTool(project.orgId, userId, sessionId, call.tool, targetId, outcome);
+    if (validation) {
+      await audited(null, 'INVALID_ARGS');
+      return { answerText: `Tool "${call.tool}" blocked (INVALID_ARGS): ${validation}.` };
+    }
 
     try {
       if (call.tool === 'enqueue_run') {
@@ -393,7 +469,7 @@ export class SendChatMessage {
         const tc = await this.deps.tools.createTestCase.execute({
           userId,
           projectId: project.id,
-          title: title || 'Untitled from chat',
+          title,
           priority: 'MEDIUM',
         });
         await audited(tc.id, 'OK');

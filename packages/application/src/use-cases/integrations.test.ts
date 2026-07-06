@@ -27,9 +27,9 @@ describe('Integrations — connect a source repo (stub provider)', () => {
     projectId = onboarded.projectId;
   });
 
-  it('lists the SOURCE_REPOS catalog disconnected initially (AC-INT-01)', async () => {
+  it('lists the full catalog disconnected initially (AC-INT-01; +AI_PROVIDERS since keystone v0.3)', async () => {
     const list = await new ListIntegrations(ctx).execute({ userId, orgId });
-    expect(list.map((i) => i.key)).toEqual(['github', 'gitlab', 'bitbucket', 'ado_repos']);
+    expect(list.map((i) => i.key)).toEqual(['github', 'gitlab', 'bitbucket', 'ado_repos', 'anthropic']);
     expect(list.every((i) => i.connected === false)).toBe(true);
   });
 

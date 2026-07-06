@@ -368,6 +368,68 @@ describe('Agent Chat — sessions, routing, retrieval, tools', () => {
     expect(ctx.audit.rows.some((r) => r.action === 'chat.tool.invoked')).toBe(false);
   });
 
+  // ---- Slice 9: brain resilience, registry validation, metering, live events ----
+
+  it('narrates a brain outage instead of failing the send (AC-BRAIN-03)', async () => {
+    const failing: AgentBrainPort = {
+      complete: (req) => ctx.brain.complete(req),
+      stream: async function* () {
+        throw new Error('synthetic brain outage');
+        yield { delta: '' }; // eslint-disable-line no-unreachable
+      },
+      embed: (t) => ctx.brain.embed(t),
+    };
+    const session = await makeSession();
+    const res = await makeSend(failing).execute({ userId, sessionId: session.id, content: 'hello pantheon' });
+    expect(res.answer.content.toLowerCase()).toContain('unavailable');
+    const rows = await ctx.chatMessages.listForSession(session.id);
+    expect(rows.map((m) => m.role)).toEqual(['USER', 'AGENT']);
+  });
+
+  it('schema-invalid tool args are narrated + audited, the use case never runs (AC-TOOL-02)', async () => {
+    await makeFeature();
+    const rogue: AgentBrainPort = {
+      complete: (req) => ctx.brain.complete(req),
+      stream: async function* () {
+        yield { delta: JSON.stringify({ tool: 'enqueue_run' }) };
+      },
+      embed: (t) => ctx.brain.embed(t),
+    };
+    const session = await makeSession();
+    const res = await makeSend(rogue).execute({ userId, sessionId: session.id, content: 'run something' });
+    expect(res.answer.content).toContain('INVALID_ARGS');
+    expect(await ctx.runs.listForProject(projectId)).toHaveLength(0);
+    const audit = ctx.audit.rows.find((r) => r.action === 'chat.tool.invoked')!;
+    expect(audit.metadata).toMatchObject({ tool: 'enqueue_run', outcome: 'INVALID_ARGS' });
+  });
+
+  it('meters the router and the answer per org (AC-METER-01)', async () => {
+    const session = await makeSession();
+    await makeSend().execute({ userId, sessionId: session.id, content: 'our checkout p95 latency explodes under load' });
+    const rows = ctx.brainUsage.rows.filter((r) => r.orgId === orgId);
+    expect(rows.some((r) => r.surface === 'ROUTER' && r.tier === 'HAIKU')).toBe(true);
+    expect(rows.some((r) => r.surface === 'CHAT' && r.tier === 'SONNET' && r.outputTokens > 0)).toBe(true);
+  });
+
+  it('a pinned send writes no ROUTER usage row (AC-METER-01)', async () => {
+    const session = await makeSession(await agentId('sec'));
+    await makeSend().execute({ userId, sessionId: session.id, content: 'how should we test this' });
+    expect(ctx.brainUsage.rows.some((r) => r.surface === 'ROUTER')).toBe(false);
+    expect(ctx.brainUsage.rows.some((r) => r.surface === 'CHAT')).toBe(true);
+  });
+
+  it('publishes live chat events on the bus (AC-SSE-01)', async () => {
+    const session = await makeSession();
+    const seen: { type: string }[] = [];
+    const unsubscribe = ctx.events.subscribe(`chat:${session.id}`, (e) => seen.push(e as { type: string }));
+    await makeSend().execute({ userId, sessionId: session.id, content: 'hello pantheon' });
+    unsubscribe();
+    const types = seen.map((e) => e.type);
+    expect(types.filter((t) => t === 'MESSAGE').length).toBeGreaterThanOrEqual(2); // USER + AGENT
+    expect(types).toContain('DELTA');
+    expect(types[types.length - 1]).toBe('DONE');
+  });
+
   // ---- Events (C3 replay) ----
 
   it('replays the session messages as ordered events; tenant-isolated (AC-CRUN-03/AC-CHAT-03)', async () => {
