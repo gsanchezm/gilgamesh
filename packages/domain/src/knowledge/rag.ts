@@ -2,10 +2,12 @@
  * Pure RAG primitives (Clean Architecture — no framework imports): corpus cleaning + a deterministic,
  * offline lexical-hash embedder + cosine similarity. The embedder is a STUB (bag-of-words hashing, real
  * lexical signal but not semantic) so the Knowledge slice's ingest/search/grounding pipeline is fully
- * testable without a model/network; the real semantic embeddings drop in behind `AgentBrainPort.embed`
- * in the Brain slice.
+ * testable without a model/network; the real semantic embeddings live behind `AgentBrainPort.embed`
+ * (slice 16: Voyage `voyage-4`, selected by `VOYAGE_API_KEY` at the composition root).
  */
-export const EMBED_DIM = 1536;
+/** Keystone v0.5 (BREAKING, owner-approved): 1024 — the Voyage `voyage-4` dimension (no 1536 option).
+ *  The offline lexical stub emits the SAME dimension so both paths share one vector(1024) column. */
+export const EMBED_DIM = 1024;
 /** Hard cap on text fed to the embedder — real chunks are < ~4 KB; this bounds hashing work on any
  *  pathologically long input (e.g. a giant search query), so iteration is never user-unbounded. */
 export const MAX_EMBED_CHARS = 20_000;
