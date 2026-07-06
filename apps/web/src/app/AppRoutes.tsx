@@ -10,6 +10,7 @@ import { LoginScreen } from '../screens/LoginScreen';
 import { OnboardingWizard } from '../screens/OnboardingWizard';
 import { PricingScreen } from '../screens/PricingScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
+import { ReportsScreen } from '../screens/ReportsScreen';
 import { TestLabScreen } from '../screens/TestLabScreen';
 import { AppLayout } from './AppLayout';
 import { useClients } from './clients';
@@ -123,6 +124,12 @@ function TestLabRoute() {
   );
 }
 
+function ReportsRoute() {
+  const { runs } = useClients();
+  const { projectId } = useParams();
+  return <ReportsScreen runsClient={runs} projectId={projectId ?? ''} />;
+}
+
 function IntegrationsRoute() {
   const { integrations } = useClients();
   const { activeOrgId } = useSession();
@@ -169,7 +176,7 @@ export function AppRoutes() {
         <Route path="/projects/:projectId/agents" element={<AgentRoomRoute />} />
         <Route path="/projects/:projectId/lab" element={<TestLabRoute />} />
         <Route path="/projects/:projectId/orchestrate" element={<ComingSoonScreen title="Orchestration" />} />
-        <Route path="/projects/:projectId/reports" element={<ComingSoonScreen title="Reports" />} />
+        <Route path="/projects/:projectId/reports" element={<ReportsRoute />} />
         <Route path="/projects/:projectId/chat" element={<ChatRoute />} />
         <Route path="/projects/:projectId/session" element={<ComingSoonScreen title="Session" />} />
         <Route path="/billing" element={<BillingRoute />} />

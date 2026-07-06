@@ -194,4 +194,27 @@ describe('AppRoutes', () => {
     // rail now also has an "Agent room" label, so that text alone is no longer unique).
     expect(await screen.findByText('1 agents · OmniPizza')).toBeTruthy();
   });
+
+  it('renders the Reports view for an authed session at /projects/:projectId/reports', async () => {
+    const clients = makeClients();
+    render(
+      <ThemeProvider>
+        <SessionProvider bootstrap={async () => ({ activeOrgId: 'org-1' })}>
+          <ClientsProvider clients={clients}>
+            <MemoryRouter initialEntries={['/projects/p1/reports']}>
+              <AppRoutes />
+            </MemoryRouter>
+          </ClientsProvider>
+        </SessionProvider>
+      </ThemeProvider>,
+    );
+
+    // The ReportsScreen subtitle is unique to the real view (the ComingSoon placeholder never renders it).
+    expect(
+      await screen.findByText('Test automation report — aggregated across every run in this project.'),
+    ).toBeTruthy();
+    // The route wires the runs client with the projectId from the URL (the fake returns no runs).
+    expect(await screen.findByText(/No runs yet/i)).toBeTruthy();
+    await waitFor(() => expect(clients.runs.listRuns).toHaveBeenCalledWith('p1'));
+  });
 });

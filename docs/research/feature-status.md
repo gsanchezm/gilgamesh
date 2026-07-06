@@ -13,7 +13,7 @@ authoritative detail rather than repeating it, so it can't drift:
 capture / partial · 🔵 stub behind a port (runs offline; real engine pending) · 🔴 not built / blocked.
 
 _As of 2026-07-01. Slices 1–6 + look&feel (slice 7) + the audit fixes are all merged on `main`.
-Latest on `main`: **Reports** view (capture 08, read-only; route not wired) + **PDF/.docx knowledge
+Latest on `main`: **Reports** view (capture 08, read-only; route wired 2026-07-05) + **PDF/.docx knowledge
 parsers**. The **Onboarding wizard re-skin** (Company→`orgName`) is WIP on branch
 `feature/onboarding-reskin` (`5ab3f59`, unverified, not merged)._
 
@@ -33,7 +33,7 @@ Backend = does the data/logic exist · UI = re-skinned to the `capturas/NN` targ
 | 05 | Dashboard — light theme | ✅ | ✅ | |
 | 06 | Orchestration (DAG) | 🔴 | 🔴 | blocked on TOM kernel |
 | 07 | Chat / voice | ✅ | 🟡 | **slice 8 (text) on `main`**: sessions + HAIKU-routing + scoped RAG + 3-tool whitelist, all behind the stub brain; functional `ChatScreen` at `/projects/:id/chat` (capture re-skin + voice pending; real answers land with the Brain slice) |
-| 08 | Reports | ✅ | 🟡 | built on `main` (`ReportsScreen` + `summarizeAcrossRuns`); **route not wired**; per-tool "Tools" breakdown deferred |
+| 08 | Reports | ✅ | ✅ | `ReportsScreen` + `summarizeAcrossRuns`; route wired at `/projects/:id/reports` (+ Playwright e2e); per-tool "Tools" breakdown deferred |
 | 09 | Knowledge base | ✅ | ✅ | + per-org upload + `.pdf`/`.docx` ingest |
 | 10 | Test Lab | ✅ | ✅ | Integrated TestLabSummaryStats & refactored layout |
 | 11 | Integrations | ✅ | ✅ | re-skinned to capture 11 (`08e78f9`) |
@@ -62,7 +62,7 @@ Real vs. stub-behind-a-port. Swapping a stub for the real adapter is a future sl
 
 - [ ] **Orchestration DAG canvas** — 🔴 blocked on the real TOM microkernel (keystone §7)
 - [x] **Chat (text)** — ✅ slice 8 on `main` behind the stub brain (real answers + live SSE push land with the Brain slice); **voice** 🔴 still blocked on Brain/Claude + STT/TTS
-- [x] **Reports** — ✅ built on `main` (read-only over slice-3 `Run`/`RunResult`); **route not wired** + per-tool "Tools" breakdown deferred (needs a tool/discipline dimension on `RunResult`)
+- [x] **Reports** — ✅ read-only over slice-3 `Run`/`RunResult`, **route wired** at `/projects/:id/reports`; per-tool "Tools" breakdown deferred (needs a tool/discipline dimension on `RunResult`)
 - [ ] **Session replay (web/android)** — 🔴 needs per-action timeline data slice-3 doesn't persist yet
 - [ ] **Mobile app (Expo)** — 🔴 not started
 - [ ] **Forgot / reset password + Email** — 🔴 deferred (decision S1-B)
