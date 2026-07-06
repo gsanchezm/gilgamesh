@@ -73,6 +73,59 @@ describe('httpAuthClient.register', () => {
   });
 });
 
+describe('httpAuthClient.forgotPassword', () => {
+  it('POSTs to /auth/forgot-password with credentials and NO CSRF token (public route)', async () => {
+    document.cookie = 'csrf=tok-should-be-ignored';
+    mockFetch(async () => ({ ok: true, status: 202, json: async () => ({ message: 'generic' }) }));
+
+    await httpAuthClient.forgotPassword({ email: 'ishtar@uruk.io' });
+
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    const [url, init] = fetchMock.mock.calls[0] as [string, FetchInit & { body?: string }];
+    expect(String(url)).toMatch(/\/auth\/forgot-password$/);
+    expect(init.method).toBe('POST');
+    expect(init.credentials).toBe('include');
+    expect(init.headers?.['X-CSRF-Token']).toBeUndefined();
+    expect(init.body).toBe(JSON.stringify({ email: 'ishtar@uruk.io' }));
+  });
+
+  it('throws the Problem detail when throttled', async () => {
+    mockFetch(async () => ({
+      ok: false,
+      status: 429,
+      json: async () => ({ detail: 'Too many requests. Please retry later.' }),
+    }));
+    await expect(httpAuthClient.forgotPassword({ email: 'ishtar@uruk.io' })).rejects.toThrow(
+      'Too many requests',
+    );
+  });
+});
+
+describe('httpAuthClient.resetPassword', () => {
+  it('POSTs the token + newPassword to /auth/reset-password and resolves on 204', async () => {
+    mockFetch(async () => ({ ok: true, status: 204, json: async () => ({}) }));
+
+    await httpAuthClient.resetPassword({ token: 'raw-tok', newPassword: 'N3w-Passphrase!!' });
+
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    const [url, init] = fetchMock.mock.calls[0] as [string, FetchInit & { body?: string }];
+    expect(String(url)).toMatch(/\/auth\/reset-password$/);
+    expect(init.method).toBe('POST');
+    expect(init.body).toBe(JSON.stringify({ token: 'raw-tok', newPassword: 'N3w-Passphrase!!' }));
+  });
+
+  it('throws the Problem detail for an invalid/expired token (422)', async () => {
+    mockFetch(async () => ({
+      ok: false,
+      status: 422,
+      json: async () => ({ detail: 'That reset link is invalid or has expired.' }),
+    }));
+    await expect(
+      httpAuthClient.resetPassword({ token: 'stale', newPassword: 'N3w-Passphrase!!' }),
+    ).rejects.toThrow('invalid or has expired');
+  });
+});
+
 describe('httpAuthClient.logout', () => {
   it('POSTs with the CSRF token + credentials', async () => {
     document.cookie = 'csrf=tok-7';

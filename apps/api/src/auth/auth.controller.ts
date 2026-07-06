@@ -1,11 +1,22 @@
 import { randomBytes } from 'node:crypto';
-import { GetMe, LoginUser, LogoutUser, type MeView, RegisterUser } from '@gilgamesh/application';
+import {
+  FORGOT_PASSWORD_MESSAGE,
+  GetMe,
+  LoginUser,
+  LogoutUser,
+  type MeView,
+  RegisterUser,
+  RequestPasswordReset,
+  ResetPassword,
+} from '@gilgamesh/application';
 import { Body, Controller, Get, HttpCode, Post, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { CSRF_COOKIE, SESSION_COOKIE } from './cookie-names';
 import { CurrentUser, SessionId } from './current-user.decorator';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SessionAuthGuard } from './session-auth.guard';
 
 function setSessionCookie(res: Response, token: string, maxAgeMs?: number): void {
@@ -44,6 +55,8 @@ export class AuthController {
     private readonly loginUser: LoginUser,
     private readonly getMe: GetMe,
     private readonly logoutUser: LogoutUser,
+    private readonly requestPasswordReset: RequestPasswordReset,
+    private readonly resetPassword: ResetPassword,
   ) {}
 
   @Post('register')
@@ -73,6 +86,23 @@ export class AuthController {
     setSessionCookie(res, result.sessionToken, maxAgeMs);
     setCsrfCookie(res, maxAgeMs);
     return { userId: result.userId, activeOrgId: result.activeOrgId };
+  }
+
+  // Public, rate-limited (LIMITED_PATHS), CSRF-exempt (PUBLIC_AUTH). Always the same generic
+  // 202 regardless of whether the account exists (AC-AUTH-10 — no enumeration).
+  @Post('forgot-password')
+  @HttpCode(202)
+  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<{ message: string }> {
+    await this.requestPasswordReset.execute({ email: dto.email });
+    return { message: FORGOT_PASSWORD_MESSAGE };
+  }
+
+  // Public, rate-limited, CSRF-exempt. Valid token -> 204 (new hash, ALL sessions revoked,
+  // token consumed); invalid/expired/consumed -> 422 via the Problem filter (AC-AUTH-11/12).
+  @Post('reset-password')
+  @HttpCode(204)
+  async resetPasswordRoute(@Body() dto: ResetPasswordDto): Promise<void> {
+    await this.resetPassword.execute({ token: dto.token, newPassword: dto.newPassword });
   }
 
   @Get('me')

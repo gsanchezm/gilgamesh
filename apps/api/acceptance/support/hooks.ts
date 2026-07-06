@@ -68,6 +68,6 @@ Before(async function (this: GilgameshWorld) {
   this.lastProjectId = null;
   this.projectsByName = new Map();
   await db.$executeRawUnsafe(
-    'TRUNCATE orgs, users, memberships, sessions, projects, slices, features, scenarios, test_cases, runs, run_results, agents, tool_bindings, subscriptions, audit_logs, knowledge_chunks, integrations, chat_sessions, chat_messages, brain_usage CASCADE',
+    'TRUNCATE orgs, users, memberships, sessions, password_resets, projects, slices, features, scenarios, test_cases, runs, run_results, agents, tool_bindings, subscriptions, audit_logs, knowledge_chunks, integrations, chat_sessions, chat_messages, brain_usage CASCADE',
   );
 });
