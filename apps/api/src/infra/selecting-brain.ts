@@ -30,11 +30,14 @@ import { VoyageBrainEmbedder, voyageFromEnv, voyageOptionsFromEnv } from './voya
  * fault-injection seam, which patches `stream` on the bound brain, are preserved). The resolved
  * API key lives only inside the built adapter — it is NEVER logged or embedded in errors.
  *
- * Org-voyage BYOK (S19, spec 19 AC-VBYOK-05): the SAME per-call discipline for embeddings — the
- * org's `voyage` Integration row → `SecretVault.get` → a per-org {@link VoyageBrainEmbedder}
- * (its own orgId+secretRef LRU cache) → else the platform Voyage embedder → else the lexical
- * stub. Gated only on the explicit `BRAIN_MODE=offline` pin (wired via `makeVoyage`), NOT on the
- * platform keys: a deployment without `VOYAGE_API_KEY` still honors org keys.
+ * Org-voyage BYOK (S19, spec 19 AC-VBYOK-05/07): the SAME per-call discipline for embeddings —
+ * the org's `voyage` Integration row → `SecretVault.get` → a per-org {@link VoyageBrainEmbedder}
+ * (its own orgId+secretRef LRU cache) → else the platform Voyage embedder. Behind the COHERENCE
+ * GATE (owner decision, 2026-07-06): active only when the platform space is already Voyage — the
+ * org key substitutes billing/attribution within the same `voyage-4` space. Over a lexical
+ * platform space (no `VOYAGE_API_KEY`) a connected org key sits vaulted but unused: embedding
+ * queries with it would fork the space the stored corpus lives in (cross-space cosine is
+ * garbage). Long-term fix = per-chunk embedding provenance + re-embed on connect (future slice).
  */
 export type BrainMode = 'offline' | 'auto';
 
@@ -145,10 +148,14 @@ export class SelectingBrain implements AgentBrainPort, UsageReportingBrain, OrgS
    * immediately) and delegates to the per-org, platform, or stub adapter.
    */
   forOrg(orgId: string): AgentBrainPort {
-    // Chat BYOK (S9) needs the platform Claude adapter + its factory; voyage BYOK (S19) needs only
-    // its factory — an org's key must work without a platform `VOYAGE_API_KEY` (spec 19, S19-4).
+    // Chat BYOK (S9) needs the platform Claude adapter + its factory. Voyage BYOK (S19) needs its
+    // factory AND the platform Voyage embedder — the COHERENCE GATE (owner decision S19 coherence
+    // gate, 2026-07-06): the stored corpus is embedded in the PLATFORM space, so an org key may
+    // only substitute billing/attribution inside an already-voyage space (same model, same space).
+    // Over a lexical platform space the org key must NOT embed anything: cross-space cosine is
+    // garbage, and connecting a key must never silently degrade that org's search/grounding.
     const chatByok = !!(this.brains.claude && this.byok?.makeClaude);
-    const voyageByok = !!this.byok?.makeVoyage;
+    const voyageByok = !!(this.byok?.makeVoyage && this.brains.voyage);
     // Neither wired (offline, or no resolution deps): this instance IS the right path — returning
     // `this` keeps determinism and the BDD fault-injection seam (tests patch `stream` on the bound brain).
     if (!chatByok && !voyageByok) return this;
@@ -218,12 +225,13 @@ export class SelectingBrain implements AgentBrainPort, UsageReportingBrain, OrgS
   }
 
   /**
-   * S19 per-call resolution (spec 19 AC-VBYOK-05): org `voyage` key → platform Voyage → lexical
-   * stub. Same discipline as {@link resolveOrgBrain}: the row is re-read every call so a
-   * disconnect/rotation bites on the very next embed.
+   * S19 per-call resolution (spec 19 AC-VBYOK-05): org `voyage` key → platform Voyage. Same
+   * discipline as {@link resolveOrgBrain}: the row is re-read every call so a disconnect/rotation
+   * bites on the very next embed.
    */
   private resolveOrgVoyage(orgId: string): Promise<KindAwareEmbeddingBrain> {
-    // Only reachable through the voyageByok gate in forOrg (the factory is present).
+    // Only reachable through the voyageByok COHERENCE GATE in forOrg (factory + platform Voyage
+    // both present) — the `?? stub` fallback is defensive, never the gated path.
     return this.resolveOrgProvider(orgId, {
       integrationKey: VOYAGE_INTEGRATION_KEY,
       platform: this.brains.voyage ?? this.brains.stub,
@@ -274,10 +282,13 @@ export class SelectingBrain implements AgentBrainPort, UsageReportingBrain, OrgS
  * persistence wiring) to enable org-BYOK call-time resolution; per-org instances share the platform
  * model/cap config — only the key differs.
  *
- * S19: org-voyage BYOK is gated ONLY on the explicit offline pin (`BRAIN_MODE=offline`), never on
- * the platform keys — an org's voyage key must work even when the platform has no `VOYAGE_API_KEY`
- * (that key is the per-call fallback, not the prerequisite). Every harness/CI pins
- * `BRAIN_MODE=offline`, so no suite ever builds the factory or touches the network.
+ * S19 + the coherence gate (owner decision, 2026-07-06): org-voyage BYOK is wired ONLY when the
+ * platform embedding space is already Voyage (`voyageFromEnv` built one — `VOYAGE_API_KEY` present
+ * and not `BRAIN_MODE=offline`). The org key then substitutes billing/attribution for that org's
+ * embed calls within the SAME `voyage-4` space. Without a platform key the space is lexical: a
+ * connected org key is verified and vaulted (it sits ready) but is never used to embed — queries
+ * must stay in the space the stored corpus lives in. Every harness/CI pins `BRAIN_MODE=offline`,
+ * so no suite ever builds the factory or touches the network.
  */
 export function brainFromEnv(
   env: NodeJS.ProcessEnv = process.env,
@@ -285,8 +296,9 @@ export function brainFromEnv(
 ): SelectingBrain {
   const stub = new DeterministicBrain();
   const voyage = voyageFromEnv(env);
+  // `voyage` present already implies BRAIN_MODE != offline; gating on it IS the coherence gate.
   const makeVoyage =
-    orgKeys && env.BRAIN_MODE !== 'offline'
+    orgKeys && voyage
       ? (apiKey: string) => new VoyageBrainEmbedder({ apiKey, ...voyageOptionsFromEnv(env) })
       : undefined;
   if (resolveBrainMode(env) === 'offline') {

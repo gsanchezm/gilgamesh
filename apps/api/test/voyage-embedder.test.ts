@@ -394,7 +394,43 @@ describe('SelectingBrain — org voyage BYOK call-time resolution (S19, AC-VBYOK
     expect(a.text).toBe(b.text); // deterministic stub chat, unchanged by voyage BYOK
   });
 
-  it('brainFromEnv wires org voyage resolution: the org key reaches the wire, never the logs', async () => {
+  // ---- The COHERENCE GATE (owner decision S19 coherence gate, 2026-07-06) --------------------
+  // The stored corpus is embedded in the PLATFORM space. An org's voyage key may only substitute
+  // billing/attribution inside an already-voyage platform space; when the platform space is
+  // lexical, using the org key would embed queries into a foreign space (cross-space cosine is
+  // garbage) — connecting a key must never silently degrade that org's search/grounding.
+
+  it('COHERENCE GATE: a connected org key over a lexical platform space is NOT used — embeds stay lexical', async () => {
+    const { brain, findByKey, get, makeVoyage } = makeVoyageByok({
+      rows: { 'org-1': voyageRow('org-1', 'vault://org-1/voyage') },
+      secrets: { 'org-1/voyage': 'pa-org-1' },
+      platformVoyage: false, // the platform embedding space is lexical FNV-1a
+    });
+    const [vec] = await brain.forOrg('org-1').embed(['boundary value analysis']);
+    expect(vec).toEqual(embedText('boundary value analysis')); // identical to the no-key vector
+    expect(findByKey).not.toHaveBeenCalled(); // the org key path is gated off entirely
+    expect(get).not.toHaveBeenCalled();
+    expect(makeVoyage).not.toHaveBeenCalled();
+  });
+
+  it('COHERENCE GATE via brainFromEnv: platform-keyless + connected org key -> lexical, zero network', async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new Error('the coherence gate must not let any embed reach the network');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const findByKey = vi.fn(async () => voyageRow('org-1', 'vault://org-1/voyage'));
+    const brain = brainFromEnv(env(), {
+      integrations: { findByKey } as never,
+      vault: { get: vi.fn(async () => 'pa-org-wire-key') } as never,
+    });
+    expect(brain.embeddings).toBe('lexical'); // no platform VOYAGE_API_KEY -> the space is lexical
+    const [vec] = await brain.forOrg('org-1').embed(['boundary value analysis']);
+    expect(vec).toEqual(embedText('boundary value analysis')); // same space as the stored corpus
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(findByKey).not.toHaveBeenCalled();
+  });
+
+  it('brainFromEnv with the platform voyage space: the ORG key reaches the wire, never the logs', async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -406,11 +442,11 @@ describe('SelectingBrain — org voyage BYOK call-time resolution (S19, AC-VBYOK
       body: null,
     }));
     vi.stubGlobal('fetch', fetchMock);
-    const brain = brainFromEnv(env(), {
+    const brain = brainFromEnv(env({ VOYAGE_API_KEY: KEY }), {
       integrations: { findByKey: async () => voyageRow('org-1', 'vault://org-1/voyage') } as never,
       vault: { get: async () => 'pa-org-wire-key' } as never,
     });
-    expect(brain.embeddings).toBe('lexical'); // no PLATFORM key — but the ORG key still resolves
+    expect(brain.embeddings).toBe('voyage'); // the platform space is voyage -> the gate opens
     await brain.forOrg('org-1').embed(['x']);
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe(VOYAGE_EMBEDDINGS_URL);

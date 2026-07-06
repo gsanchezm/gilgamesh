@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+
+/** Row-scoped queries (the Playwright `githubRow` pattern): each card is a listitem whose
+ *  accessible name is the integration name (aria-label) — no positional button indexing. */
+function card(name: string) {
+  return within(screen.getByRole('listitem', { name }));
+}
 import { describe, expect, it, vi } from 'vitest';
 import type { IntegrationsClient, IntegrationView } from '../lib/integrations-client';
 import { IntegrationsScreen } from './IntegrationsScreen';
@@ -58,14 +64,12 @@ describe('IntegrationsScreen', () => {
     render(<IntegrationsScreen client={client} orgId="o1" />);
     expect(await screen.findByText('Voyage AI')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Token for Voyage AI'), { target: { value: 'pa-voyage-123' } });
-    const connects = screen.getAllByRole('button', { name: 'Connect' });
-    fireEvent.click(connects[connects.length - 1]!); // voyage lists last in the AI Providers group
+    fireEvent.click(card('Voyage AI').getByRole('button', { name: 'Connect' }));
     await waitFor(() => expect(client.connect).toHaveBeenCalledWith('o1', 'voyage', 'pa-voyage-123'));
     // The raw key never renders back into the screen after connecting.
     expect(screen.queryByDisplayValue('pa-voyage-123')).toBeNull();
-    // The now-connected tile disconnects through the same flow.
-    const disconnects = screen.getAllByRole('button', { name: 'Disconnect' });
-    fireEvent.click(disconnects[disconnects.length - 1]!);
+    // The now-connected tile disconnects through the same flow (re-queried after the re-render).
+    fireEvent.click(card('Voyage AI').getByRole('button', { name: 'Disconnect' }));
     await waitFor(() => expect(client.disconnect).toHaveBeenCalledWith('o1', 'voyage'));
   });
 
@@ -85,8 +89,7 @@ describe('IntegrationsScreen', () => {
     fireEvent.change(screen.getByLabelText('Token for Anthropic (Claude)'), {
       target: { value: 'sk-ant-test-123' },
     });
-    const connects = screen.getAllByRole('button', { name: 'Connect' });
-    fireEvent.click(connects[connects.length - 2]!); // github, anthropic, voyage — anthropic is second-to-last
+    fireEvent.click(card('Anthropic (Claude)').getByRole('button', { name: 'Connect' }));
     await waitFor(() => expect(client.connect).toHaveBeenCalledWith('o1', 'anthropic', 'sk-ant-test-123'));
     // The raw key never renders back into the screen after connecting.
     await screen.findAllByText('Connected');
@@ -98,8 +101,7 @@ describe('IntegrationsScreen', () => {
     render(<IntegrationsScreen client={client} orgId="o1" />);
     await screen.findByText('GitHub');
     fireEvent.change(screen.getByLabelText('Token for GitHub'), { target: { value: 'ghp_abc' } });
-    // Two disconnected cards (github + anthropic) render a Connect button each; github lists first.
-    fireEvent.click(screen.getAllByRole('button', { name: 'Connect' })[0]!);
+    fireEvent.click(card('GitHub').getByRole('button', { name: 'Connect' }));
     await waitFor(() => expect(client.connect).toHaveBeenCalledWith('o1', 'github', 'ghp_abc'));
   });
 
@@ -107,7 +109,7 @@ describe('IntegrationsScreen', () => {
     const client = fakeClient();
     render(<IntegrationsScreen client={client} orgId="o1" />);
     await screen.findByText('GitLab');
-    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    fireEvent.click(card('GitLab').getByRole('button', { name: 'Disconnect' }));
     await waitFor(() => expect(client.disconnect).toHaveBeenCalledWith('o1', 'gitlab'));
   });
 });
