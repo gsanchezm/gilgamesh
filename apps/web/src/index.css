@@ -1881,8 +1881,10 @@ body {
   gap: 9px;
 }
 .gx-chat__deity {
+  margin: 0;
   font-family: var(--font-display);
   font-size: 18px;
+  font-weight: 400;
   color: var(--text);
 }
 .gx-chat__rolechip {

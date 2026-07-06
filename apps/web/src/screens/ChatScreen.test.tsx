@@ -123,6 +123,8 @@ async function typeAndSend(text: string) {
 describe('ChatScreen (slice 11 re-skin)', () => {
   it('renders the session rail newest-first with derived titles and a fallback', async () => {
     renderChat(fakeChat());
+    // The routed pantheon header is a real heading (the Playwright chat e2e selects it by role).
+    expect(screen.getByRole('heading', { name: 'Agent chat' })).toBeTruthy();
     expect(await screen.findByText('hello pantheon')).toBeTruthy();
     expect(screen.getByText('New conversation')).toBeTruthy(); // null title fallback
     // Pinned session meta shows its deity once the room view resolves; routed shows Pantheon.
@@ -232,8 +234,8 @@ describe('ChatScreen (slice 11 re-skin)', () => {
     const chat = fakeChat({ listSessions: vi.fn(async () => []) });
     renderChat(chat, { pinnedAgentId: 'ag-perf', onBack });
 
-    // Pinned header: deity name, role chip, status · tool line, back link.
-    expect(await screen.findByText('Thor')).toBeTruthy();
+    // Pinned header: deity name (as the heading), role chip, status · tool line, back link.
+    expect(await screen.findByRole('heading', { name: 'Thor' })).toBeTruthy();
     expect(screen.getByText('Performance')).toBeTruthy();
     expect(screen.getByText('Active · k6')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '← Agents' }));

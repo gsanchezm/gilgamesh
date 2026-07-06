@@ -252,7 +252,7 @@ export function ChatScreen({
               />
               <div className="gx-chat__headmeta">
                 <div className="gx-chat__headrow">
-                  <span className="gx-chat__deity">{headerAgent.deityName}</span>
+                  <h1 className="gx-chat__deity">{headerAgent.deityName}</h1>
                   <span className="gx-chat__rolechip">{headerAgent.role}</span>
                 </div>
                 <span className="gx-chat__statusline">
@@ -263,7 +263,7 @@ export function ChatScreen({
           ) : (
             <div className="gx-chat__headmeta">
               <div className="gx-chat__headrow">
-                <span className="gx-chat__deity">Agent chat</span>
+                <h1 className="gx-chat__deity">Agent chat</h1>
               </div>
               <span className="gx-chat__statusline">Ask a question — Zeus routes it to the right deity.</span>
             </div>

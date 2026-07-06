@@ -6,7 +6,10 @@
 > → **Prototype extract** (`docs/research/gilgamesh-prototype-extract.md`) for screen behavior.
 > All entity/field/enum/port/path names below are used **verbatim** from the keystone (**v0.4** — this slice
 > depends on the v0.4 amendment: `GET /projects/{id}/chat` list + `GET /chat/{sessionId}/messages` history).
-> v0.1 — 2026-07-06. Status: IN PROGRESS on branch `slice-11-chat-reskin`.
+> v0.1 — 2026-07-06. Status: BUILT on branch `slice-11-chat-reskin` — Docker-free gates green
+> (typecheck · lint · domain 101 · application 224 · ui 25 · api 137 · web 119 = 606 unit/e2e ·
+> cucumber dry-run 145 scenarios / 1158 steps, 0 undefined); the real BDD/int/Playwright gates run
+> at merge (shared-DB stack rule).
 > Scope: the Chat view re-skin (capture 07) with **real session history**, **live SSE streaming in the
 > client**, and the **tile-pinned entry** from the Agent room.
 
