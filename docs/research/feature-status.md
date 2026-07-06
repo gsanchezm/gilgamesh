@@ -67,7 +67,7 @@ Real vs. stub-behind-a-port. Swapping a stub for the real adapter is a future sl
 - [ ] **Mobile app (Expo)** — 🔴 not started
 - [ ] **Forgot / reset password + Email** — 🔴 deferred (decision S1-B)
 - [ ] **Google / SSO login** — 🔴 controls disabled (AC-AUTH-15)
-- [ ] **Per-org RAG grounding** — 🟡 per-org chunks are stored; grounding still uses the global corpus only
+- [x] **Per-org RAG grounding** — ✅ on `main`: `GenerateDrafts` grounds on the org's own chunks (scope `shared`/NULL) + the global corpus via slot-optional `retrieveScoped`; agent-scoped chunks stay private to their agent's chat
 - [x] **PDF / .docx ingest** — ✅ on `main` (`parse-document`); Knowledge now ingests `.md`/`.txt`/`.pdf`/`.docx`
 - [x] **Billing → new 4-tier model** — ✅ on `main` (subscription migrated to 4-tier + `/billing` re-skinned to capture 12)
 
