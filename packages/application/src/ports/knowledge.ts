@@ -6,10 +6,15 @@ export interface ScoredChunk {
   score: number;
 }
 
-/** Visibility filter for per-agent chat retrieval (slice 8): the tenant + the answering agent's slot. */
+/**
+ * Visibility filter for tenant-scoped retrieval: the tenant + optionally the answering agent's slot.
+ * With a `slot` (slice-8 chat): chunks whose `scope` is that slot, `shared`, or NULL. Without a `slot`
+ * (agent-agnostic grounding, e.g. `GenerateDrafts`): only `shared`/NULL — agent-scoped chunks stay
+ * private to that agent's chat.
+ */
 export interface ScopedRetrievalFilter {
   orgId: string;
-  slot: AgentSlot;
+  slot?: AgentSlot;
 }
 
 /** Persistence for knowledge chunks (pgvector in prod; in-memory cosine in tests). */
@@ -18,8 +23,8 @@ export interface KnowledgeChunkRepository {
   /** Cosine-similarity top-k over the GLOBAL shared corpus only (orgId IS NULL) — never per-org chunks. */
   search(queryEmbedding: number[], k: number): Promise<ScoredChunk[]>;
   /**
-   * Cosine top-k over the chunks VISIBLE to one agent of one org (slice 8): the org's own chunks plus
-   * the global shared corpus (orgId IS NULL), where `scope` = the agent's slot, `shared`, or NULL.
+   * Cosine top-k over the chunks VISIBLE within one org: the org's own chunks plus the global shared
+   * corpus (orgId IS NULL), where `scope` = the filter's slot (when given), `shared`, or NULL.
    */
   searchScoped(filter: ScopedRetrievalFilter, queryEmbedding: number[], k: number): Promise<ScoredChunk[]>;
   /** Size of the GLOBAL shared corpus (orgId IS NULL). */
@@ -49,6 +54,6 @@ export interface RetrievedChunk {
 /** The RAG grounding seam: `GenerateDrafts` consults this to ground generation in the shared KB (S5-C). */
 export interface KnowledgeRetrievalPort {
   retrieve(query: string, k: number): Promise<RetrievedChunk[]>;
-  /** Slice-8 chat grounding: same pipeline, restricted to the chunks visible to one agent of one org. */
+  /** Tenant-scoped grounding: same pipeline, restricted to the chunks visible per the filter (§ScopedRetrievalFilter). */
   retrieveScoped(query: string, k: number, filter: ScopedRetrievalFilter): Promise<RetrievedChunk[]>;
 }

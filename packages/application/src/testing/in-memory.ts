@@ -359,11 +359,14 @@ export class InMemoryKnowledgeChunkRepository implements KnowledgeChunkRepositor
   }
   async searchScoped(filter: ScopedRetrievalFilter, queryEmbedding: number[], k: number): Promise<ScoredChunk[]> {
     return [...this.byId.values()]
-      // Visible to this agent of this org: own-org or global chunks, scoped to the slot/'shared'/NULL.
+      // Visible within this org: own-org or global chunks, scoped to 'shared'/NULL — plus the agent's
+      // slot when the filter carries one (agent-scoped chunks stay private to that agent's chat).
       .filter(
         (chunk) =>
           (chunk.orgId == null || chunk.orgId === filter.orgId) &&
-          (chunk.scope == null || chunk.scope === 'shared' || chunk.scope === filter.slot),
+          (chunk.scope == null ||
+            chunk.scope === 'shared' ||
+            (filter.slot != null && chunk.scope === filter.slot)),
       )
       .map((chunk) => ({ chunk, score: cosineSimilarity(queryEmbedding, chunk.embedding) }))
       .sort((a, b) => b.score - a.score || (a.chunk.id < b.chunk.id ? -1 : a.chunk.id > b.chunk.id ? 1 : 0))

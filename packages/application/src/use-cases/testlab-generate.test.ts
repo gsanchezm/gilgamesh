@@ -1,4 +1,4 @@
-import { parseFeature } from '@gilgamesh/domain';
+import { parseFeature, type KnowledgeScope } from '@gilgamesh/domain';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createInMemoryContext, type InMemoryContext } from '../testing/in-memory';
 import { CompleteOnboarding } from './complete-onboarding';
@@ -103,6 +103,62 @@ describe('Test Lab — AI generate (stub brain)', () => {
   it('returns empty citations when the knowledge base is empty', async () => {
     const drafts = await new GenerateDrafts(ctx).execute({ userId, projectId, prompt: 'x', count: 1 });
     expect(drafts.citations).toEqual([]);
+  });
+
+  describe('per-org grounding (retrieveScoped without a slot)', () => {
+    async function seedChunk(name: string, opts: { orgId: string | null; scope: KnowledgeScope | null }) {
+      const content = `${name}: BRIEF scenarios use business language and intention-revealing names.`;
+      const [embedding] = await ctx.brain.embed([content]);
+      await ctx.knowledge.upsertMany([
+        {
+          id: `kb-${name.toLowerCase()}`,
+          orgId: opts.orgId,
+          documentId: null,
+          source: name,
+          headingPath: [name],
+          section: name,
+          content,
+          embedding: embedding!,
+          tokenEstimate: 10,
+          scope: opts.scope,
+        },
+      ]);
+    }
+
+    const generate = () =>
+      new GenerateDrafts(ctx).execute({ userId, projectId, prompt: 'BRIEF scenarios business language', count: 1 });
+
+    it("grounds drafts in my org's uploaded chunks (scope NULL or 'shared')", async () => {
+      await seedChunk('ORG-STYLE-GUIDE', { orgId, scope: null });
+      await seedChunk('ORG-HOUSE-RULES', { orgId, scope: 'shared' });
+      const sources = (await generate()).citations.map((c) => c.source);
+      expect(sources).toContain('ORG-STYLE-GUIDE');
+      expect(sources).toContain('ORG-HOUSE-RULES');
+    });
+
+    it('never grounds drafts in an agent-scoped chunk (stays private to that agent chat)', async () => {
+      await seedChunk('SEC-PLAYBOOK', { orgId, scope: 'sec' });
+      const sources = (await generate()).citations.map((c) => c.source);
+      expect(sources).not.toContain('SEC-PLAYBOOK');
+    });
+
+    it("never grounds drafts in another org's chunks (tenant isolation)", async () => {
+      const rivalUser = (
+        await new RegisterUser(ctx).execute({ firstName: 'R', lastName: 'V', email: 'rival@lagash.io', password: 'C0rrect-Horse!' })
+      ).userId;
+      const rival = await new CompleteOnboarding(ctx).execute({ userId: rivalUser, projectName: 'Rival', format: 'BDD' });
+      await seedChunk('RIVAL-SECRETS', { orgId: rival.orgId, scope: null });
+      const sources = (await generate()).citations.map((c) => c.source);
+      expect(sources).not.toContain('RIVAL-SECRETS');
+    });
+
+    it('still grounds in the global shared corpus alongside org chunks', async () => {
+      await seedChunk('GLOBAL-ISTQB', { orgId: null, scope: null });
+      await seedChunk('ORG-STYLE-GUIDE', { orgId, scope: null });
+      const sources = (await generate()).citations.map((c) => c.source);
+      expect(sources).toContain('GLOBAL-ISTQB');
+      expect(sources).toContain('ORG-STYLE-GUIDE');
+    });
   });
 
   it('rejects an empty prompt (VALIDATION)', async () => {

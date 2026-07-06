@@ -105,9 +105,11 @@ export class GenerateDrafts {
     const n = Math.trunc(Number(input.count ?? 3));
     const count = Number.isFinite(n) ? Math.min(Math.max(n, 1), 10) : 3;
 
-    // Slice 5: ground the generation in the shared knowledge base (RAG). The stub brain ignores the
+    // Slice 5 + per-org grounding: ground the generation in the chunks visible to this org — its own
+    // uploads (scope 'shared' or NULL; agent-scoped chunks stay private to that agent's chat) plus the
+    // global shared corpus. No slot: generation is not agent-specific. The stub brain ignores the
     // grounding deterministically; a real brain uses it. Either way the citations flow to the output.
-    const retrieved = await this.deps.retrieval.retrieve(prompt, 4);
+    const retrieved = await this.deps.retrieval.retrieveScoped(prompt, 4, { orgId: project.orgId });
     const grounding = formatGrounding(retrieved);
 
     const res = await this.deps.brain.complete({
