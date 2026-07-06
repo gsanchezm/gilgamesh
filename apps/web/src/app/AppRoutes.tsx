@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AgentRoomScreen } from '../screens/AgentRoomScreen';
 import { BillingScreen } from '../screens/BillingScreen';
@@ -57,17 +57,26 @@ function RegisterRoute() {
   const { auth } = useClients();
   const { signIn, authed, booting } = useSession();
   const navigate = useNavigate();
+  // The company captured by a just-completed register, carried to onboarding as router state
+  // (it becomes the Org name there — spec AC-ONB-14; the tenant is still bootstrapped only at
+  // onboarding, AC-AUTH-01). It rides the authed-guard <Navigate> below rather than a separate
+  // navigate() call: signIn() flushes immediately while navigate() is startTransition-deferred
+  // (React Router 7), so a second navigation would lose the race to the stateless guard redirect
+  // and strip the state.
+  const [pendingCompany, setPendingCompany] = useState<string | null>(null);
   if (booting) return <Booting />;
   // An already-authenticated user shouldn't see the signup form.
-  if (authed) return <Navigate to="/onboarding" replace />;
+  if (authed) {
+    return <Navigate to="/onboarding" replace state={pendingCompany ? { company: pendingCompany } : undefined} />;
+  }
   return (
     <RegisterScreen
       authClient={auth}
       onSuccess={(company) => {
-        // Register auto-signs-in but creates no Org yet; carry the company to onboarding, where it
-        // becomes the Org name (the tenant is bootstrapped there — spec AC-AUTH-01).
+        // Register auto-signs-in but creates no Org yet. Both updates land in one batch, so the
+        // authed guard renders with the company already pending.
+        setPendingCompany(company);
         signIn(null);
-        navigate('/onboarding', { state: { company } });
       }}
       onSignIn={() => navigate('/login')}
       onViewPlans={() => navigate('/pricing')}

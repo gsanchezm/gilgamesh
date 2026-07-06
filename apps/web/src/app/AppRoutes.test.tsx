@@ -155,7 +155,7 @@ describe('AppRoutes', () => {
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
   });
 
-  it('registers then continues into onboarding', async () => {
+  it('registers then continues into onboarding carrying the Company (AC-ONB-14)', async () => {
     const clients = makeClients();
     renderApp(clients, '/register');
 
@@ -171,6 +171,10 @@ describe('AppRoutes', () => {
 
     expect(await screen.findByText('Name your project')).toBeTruthy();
     expect(clients.auth.register).toHaveBeenCalledTimes(1);
+    // The Company survives the register -> onboarding hop (router state) and prefills the wizard.
+    // Regression net for the RR7 startTransition race: the RegisterRoute authed-guard's stateless
+    // <Navigate replace /> must not beat (and strip) the state-carrying navigation.
+    expect((screen.getByLabelText('Company') as HTMLInputElement).value).toBe('Acme Inc.');
   });
 
   it('flows login → onboarding → agent room', async () => {

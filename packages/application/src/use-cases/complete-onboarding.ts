@@ -17,6 +17,7 @@ const TRIAL_DAYS = 14;
 
 export interface CompleteOnboardingInput {
   userId: string;
+  orgName?: string;
   projectName: string;
   format: ProjectFormat;
   repoProvider?: string;
@@ -123,16 +124,18 @@ export class CompleteOnboarding {
   }
 
   /** Creates the Org, OWNER membership, agent catalog and trial subscription. Returns the orgId. */
-  private async bootstrapTenant(
-    repos: Repositories,
-    input: CompleteOnboardingInput,
-    now: Date,
-  ): Promise<string> {
+  private async bootstrapTenant(repos: Repositories, input: CompleteOnboardingInput, now: Date): Promise<string> {
     const orgId = this.deps.ids.next();
-    const orgName = input.projectName.trim();
+    const orgName = input.orgName?.trim() || input.projectName.trim();
     const slug = await this.uniqueOrgSlug(repos, Slug.fromName(orgName).value);
 
-    await repos.orgs.create({ id: orgId, name: orgName, slug, createdAt: now, updatedAt: now });
+    await repos.orgs.create({
+      id: orgId,
+      name: orgName,
+      slug,
+      createdAt: now,
+      updatedAt: now,
+    });
     await repos.memberships.create({
       id: this.deps.ids.next(),
       orgId,
