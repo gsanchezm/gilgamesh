@@ -40,4 +40,8 @@ test('Billing: view plan + usage, change plan, mock checkout to ACTIVE', async (
   // Mock checkout -> confirm activates.
   await page.getByRole('button', { name: 'Checkout' }).click();
   await expect(page.getByText(/Growth · ACTIVE/)).toBeVisible();
+
+  // Slice 13: the confirm records a deterministic PAID invoice, listed in-app with its hosted link.
+  await expect(page.getByText('PAID', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'View invoice' })).toBeVisible();
 });

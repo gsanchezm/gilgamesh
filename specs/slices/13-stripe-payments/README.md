@@ -4,7 +4,8 @@
 > Authority order: **Keystone v0.5** (`specs/_keystone/foundation-vocabulary.md`: §1 `InvoiceStatus`,
 > §2 `Invoice`, §5 `PaymentProvider`, §6 routes) → **Decisions log** → this spec.
 > All entity/field/enum/port/path names below are used **verbatim** from the keystone.
-> v0.1 — 2026-07-06. Status: IN PROGRESS (branch `slice-13-stripe`).
+> v0.1 — 2026-07-06. Status: BUILT on branch `slice-13-stripe` (typecheck · lint · Docker-free
+> suites green; the serialized int/BDD/Playwright gates run before merge).
 
 ---
 
