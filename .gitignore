@@ -24,3 +24,6 @@ design_handoff_gilgamesh/
 
 # Claude Code personal settings (auto-approve rules for external agent CLIs) — never commit
 .claude/settings.local.json
+
+# Owner-local project status page (generated)
+PROJECT_STATUS.html
