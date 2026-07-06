@@ -32,6 +32,9 @@ export const INPUT_LIMITS = {
   generatePromptMax: 2_000,
   generateCountMin: 1,
   generateCountMax: 10,
+
+  /** Agent Chat (slice 8) — must match the application layer's MAX_MESSAGE_CHARS. */
+  chatMessageMax: 4_000,
 } as const;
 
 /**

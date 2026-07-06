@@ -20,6 +20,8 @@ import { PrismaService } from './prisma.service';
 import {
   PrismaAgentRepository,
   PrismaAuditLogRepository,
+  PrismaChatMessageRepository,
+  PrismaChatSessionRepository,
   PrismaFeatureRepository,
   PrismaIntegrationRepository,
   PrismaKnowledgeChunkRepository,
@@ -84,6 +86,16 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
       inject: [TOKENS.Brain, TOKENS.Knowledge],
     },
     {
+      provide: TOKENS.ChatSessions,
+      useFactory: (db: PrismaService) => new PrismaChatSessionRepository(db),
+      inject: [PrismaService],
+    },
+    {
+      provide: TOKENS.ChatMessages,
+      useFactory: (db: PrismaService) => new PrismaChatMessageRepository(db),
+      inject: [PrismaService],
+    },
+    {
       provide: TOKENS.Integrations,
       useFactory: (db: PrismaService) => new PrismaIntegrationRepository(db),
       inject: [PrismaService],
@@ -119,6 +131,8 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     TOKENS.Knowledge,
     TOKENS.KnowledgeDocuments,
     TOKENS.KnowledgeRetrieval,
+    TOKENS.ChatSessions,
+    TOKENS.ChatMessages,
     TOKENS.Integrations,
     TOKENS.RepoProvider,
     TOKENS.SecretVault,

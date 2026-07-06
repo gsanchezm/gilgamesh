@@ -8,13 +8,15 @@ import { RATE_LIMIT_STORE, type RateLimitStore } from './rate-limit-store';
 export const RATE_LIMIT = 'RATE_LIMIT';
 
 // Throttled endpoints: auth (AC-AUTH-13 / §10.2; forgot/reset land with slice #7) and the
-// AI generate endpoint (AC-GEN-04 — a future cost-bearing call, throttled per IP).
+// cost-bearing brain calls — AI generate (AC-GEN-04) and chat send (AC-CHAT-06; the '/messages'
+// suffix only matches POST /chat/:sessionId/messages — no other route ends with it).
 const LIMITED_PATHS = [
   '/auth/login',
   '/auth/register',
   '/auth/forgot-password',
   '/auth/reset-password',
   '/test-cases/generate',
+  '/messages',
 ];
 
 /**

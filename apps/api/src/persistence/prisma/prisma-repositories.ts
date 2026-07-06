@@ -3,6 +3,10 @@ import type {
   AgentRepository,
   AuditLogRecord,
   AuditLogRepository,
+  ChatMessageRecord,
+  ChatMessageRepository,
+  ChatSessionRecord,
+  ChatSessionRepository,
   FeatureRecord,
   FeatureRepository,
   IntegrationGroup,
@@ -14,6 +18,7 @@ import type {
   KnowledgeDocumentRepository,
   MembershipRecord,
   MembershipRepository,
+  ScopedRetrievalFilter,
   ScoredChunk,
   OrgRecord,
   OrgRepository,
@@ -396,10 +401,10 @@ export class PrismaKnowledgeChunkRepository implements KnowledgeChunkRepository 
     for (let i = 0; i < chunks.length; i += BATCH) {
       const rows = chunks.slice(i, i + BATCH).map((c) => {
         const vec = `[${c.embedding.join(',')}]`;
-        return Prisma.sql`(${c.id}, ${c.orgId ?? null}::uuid, ${c.documentId ?? null}::uuid, ${c.source}, ${c.headingPath}, ${c.section}, ${c.content}, ${vec}::vector, ${c.tokenEstimate})`;
+        return Prisma.sql`(${c.id}, ${c.orgId ?? null}::uuid, ${c.documentId ?? null}::uuid, ${c.source}, ${c.headingPath}, ${c.section}, ${c.content}, ${vec}::vector, ${c.tokenEstimate}, ${c.scope ?? null})`;
       });
       await this.db.$executeRaw(Prisma.sql`
-        INSERT INTO knowledge_chunks (id, org_id, document_id, source, heading_path, section, content, embedding, token_estimate)
+        INSERT INTO knowledge_chunks (id, org_id, document_id, source, heading_path, section, content, embedding, token_estimate, scope)
         VALUES ${Prisma.join(rows)}
         ON CONFLICT (id) DO UPDATE SET
           org_id = EXCLUDED.org_id,
@@ -409,7 +414,8 @@ export class PrismaKnowledgeChunkRepository implements KnowledgeChunkRepository 
           section = EXCLUDED.section,
           content = EXCLUDED.content,
           embedding = EXCLUDED.embedding,
-          token_estimate = EXCLUDED.token_estimate`);
+          token_estimate = EXCLUDED.token_estimate,
+          scope = EXCLUDED.scope`);
     }
   }
 
@@ -437,8 +443,66 @@ export class PrismaKnowledgeChunkRepository implements KnowledgeChunkRepository 
     }));
   }
 
+  async searchScoped(filter: ScopedRetrievalFilter, queryEmbedding: number[], k: number): Promise<ScoredChunk[]> {
+    const vec = `[${queryEmbedding.join(',')}]`;
+    // Visible to one agent of one org (slice 8): the org's own chunks plus the global shared corpus,
+    // where scope is the agent's slot, 'shared', or NULL. The scope column is indexed (keystone v0.2).
+    const rows = await this.db.$queryRaw<KnowledgeSearchRow[]>`
+      SELECT id, source, heading_path AS "headingPath", section, content,
+             token_estimate AS "tokenEstimate", 1 - (embedding <=> ${vec}::vector) AS score
+      FROM knowledge_chunks
+      WHERE (org_id IS NULL OR org_id = ${filter.orgId}::uuid)
+        AND (scope IS NULL OR scope = 'shared' OR scope = ${filter.slot})
+      ORDER BY embedding <=> ${vec}::vector, id
+      LIMIT ${k}`;
+    return rows.map((r) => ({
+      chunk: {
+        id: r.id,
+        source: r.source,
+        headingPath: r.headingPath ?? [],
+        section: r.section,
+        content: r.content,
+        embedding: [], // not needed by consumers of search results
+        tokenEstimate: Number(r.tokenEstimate),
+      },
+      score: Number(r.score),
+    }));
+  }
+
   async count(): Promise<number> {
     return this.db.knowledgeChunk.count({ where: { orgId: null } });
+  }
+}
+
+/** Slice 8 — chat sessions/messages are plain typed-client rows (no vector column). */
+export class PrismaChatSessionRepository implements ChatSessionRepository {
+  constructor(private readonly db: Prisma.TransactionClient) {}
+  async create(rec: ChatSessionRecord): Promise<void> {
+    await this.db.chatSession.create({ data: rec });
+  }
+  findById(id: string): Promise<ChatSessionRecord | null> {
+    return this.db.chatSession.findUnique({ where: { id } });
+  }
+  async touch(id: string, at: Date): Promise<void> {
+    // updateMany so a concurrently-deleted session is a no-op instead of P2025.
+    await this.db.chatSession.updateMany({ where: { id }, data: { updatedAt: at } });
+  }
+}
+
+export class PrismaChatMessageRepository implements ChatMessageRepository {
+  constructor(private readonly db: Prisma.TransactionClient) {}
+  async create(rec: ChatMessageRecord): Promise<void> {
+    await this.db.chatMessage.create({ data: rec });
+  }
+  listForSession(sessionId: string): Promise<ChatMessageRecord[]> {
+    // Conversation order; id asc (UUID v7 = time-ordered) breaks same-millisecond createdAt ties.
+    return this.db.chatMessage.findMany({
+      where: { sessionId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+  }
+  async setRunId(id: string, runId: string): Promise<void> {
+    await this.db.chatMessage.updateMany({ where: { id }, data: { runId } });
   }
 }
 

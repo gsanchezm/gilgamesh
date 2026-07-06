@@ -26,6 +26,8 @@ export const TOKENS = {
   Knowledge: 'KnowledgeChunkRepository',
   KnowledgeDocuments: 'KnowledgeDocumentRepository',
   KnowledgeRetrieval: 'KnowledgeRetrievalPort',
+  ChatSessions: 'ChatSessionRepository',
+  ChatMessages: 'ChatMessageRepository',
   Integrations: 'IntegrationRepository',
   RepoProvider: 'RepoProvider',
   SecretVault: 'SecretVault',
