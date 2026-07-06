@@ -5,6 +5,10 @@ packages:
 # GHSA-72gw-mp4g-v24j (DoS via deeply nested field names) + an aborted-upload DoS.
 overrides:
   multer: '>=2.2.0'
+  # Vitest-3 toolchain follow-up: GHSA-g7r4-m6w7-qqqr (low — esbuild dev-server arbitrary
+  # file read on Windows, patched >=0.28.1). tsup 8.5.x still pins esbuild ^0.27.0, so it
+  # can never resolve the fix on its own. Scoped to tsup only — vite keeps its own ^0.25.
+  'tsup>esbuild': '>=0.28.1'
 allowBuilds:
   '@prisma/client': true
   '@prisma/engines': true
