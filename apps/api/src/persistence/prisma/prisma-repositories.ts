@@ -495,6 +495,14 @@ export class PrismaChatSessionRepository implements ChatSessionRepository {
     // updateMany so a concurrently-deleted session is a no-op instead of P2025.
     await this.db.chatSession.updateMany({ where: { id }, data: { updatedAt: at } });
   }
+  listForProject(projectId: string): Promise<ChatSessionRecord[]> {
+    // Newest activity first — rides the (project_id, updated_at desc) index from the S8 migration;
+    // id desc (UUID v7 = time-ordered) breaks same-millisecond updatedAt ties.
+    return this.db.chatSession.findMany({
+      where: { projectId },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+    });
+  }
 }
 
 export class PrismaChatMessageRepository implements ChatMessageRepository {
@@ -511,6 +519,16 @@ export class PrismaChatMessageRepository implements ChatMessageRepository {
   }
   async setRunId(id: string, runId: string): Promise<void> {
     await this.db.chatMessage.updateMany({ where: { id }, data: { runId } });
+  }
+  firstUserMessageBySession(sessionIds: string[]): Promise<ChatMessageRecord[]> {
+    // One batched query for every derived session title (slice 11, spec §10.1 — never N+1).
+    // `distinct` keeps the first row per session under the given order: createdAt asc, id asc
+    // (UUID v7 breaks same-ms ties in creation order — parity with the in-memory adapter).
+    return this.db.chatMessage.findMany({
+      where: { sessionId: { in: sessionIds }, role: 'USER' },
+      orderBy: [{ sessionId: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      distinct: ['sessionId'],
+    });
   }
 }
 

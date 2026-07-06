@@ -212,6 +212,103 @@ describe('Agent Chat API', () => {
     await until(() => (bus.handlers.get(`chat:${sessionId}`)?.size ?? 0) === 0);
   });
 
+  it('lists sessions newest-first with derived titles (slice 11, AC-CRS-01/02/06)', async () => {
+    // A fresh org+project so sessions from the other tests never pollute the list assertions.
+    const proj = await mutate(request(server()).post('/projects')).send({ projectName: 'Reskin', format: 'BDD' });
+    expect(proj.status).toBe(201);
+    const pid = proj.body.projectId as string;
+
+    const empty = await read(request(server()).get(`/projects/${pid}/chat`));
+    expect(empty.status).toBe(200);
+    expect(empty.body).toEqual([]);
+
+    const first = await mutate(request(server()).post(`/projects/${pid}/chat`)).send({});
+    const second = await mutate(request(server()).post(`/projects/${pid}/chat`)).send({});
+    expect([first.status, second.status]).toEqual([201, 201]);
+
+    // Activity in the FIRST session bumps it to the top; its title derives from the USER message.
+    const long = 'a deliberately long first question that keeps going well past the sixty character title budget';
+    const sent = await mutate(request(server()).post(`/chat/${first.body.id}/messages`)).send({ content: long });
+    expect(sent.status).toBe(201);
+
+    const list = await read(request(server()).get(`/projects/${pid}/chat`));
+    expect(list.status).toBe(200);
+    expect(list.body.map((s: { id: string }) => s.id)).toEqual([first.body.id, second.body.id]);
+    expect(list.body[0].title).toBe(long.slice(0, 60));
+    expect(list.body[1].title).toBeNull();
+    expect(list.body[0]).toHaveProperty('updatedAt');
+
+    // A pinned session lists with its agentId (the tile-pinned entry, AC-CRS-06).
+    const perfId = (await (async () => {
+      const agents = app.get<AgentRepository>(TOKENS.Agents);
+      return (await agents.listForOrg(proj.body.orgId as string)).find((a) => a.slot === 'perf')!.id;
+    })());
+    const pinned = await mutate(request(server()).post(`/projects/${pid}/chat`)).send({ agentId: perfId });
+    expect(pinned.status).toBe(201);
+    const relisted = await read(request(server()).get(`/projects/${pid}/chat`));
+    expect(relisted.body[0]).toMatchObject({ id: pinned.body.id, agentId: perfId });
+  });
+
+  it('returns the conversation history as a JSON array in order (slice 11, AC-CRS-03)', async () => {
+    const sessionId = await createSession();
+    await mutate(request(server()).post(`/chat/${sessionId}/messages`)).send({ content: 'hello history' });
+
+    const res = await read(request(server()).get(`/chat/${sessionId}/messages`));
+    expect(res.status).toBe(200);
+    expect(String(res.headers['content-type'])).toContain('application/json');
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBeGreaterThanOrEqual(2);
+    expect(res.body[0]).toMatchObject({ role: 'USER', content: 'hello history', sessionId });
+    expect(res.body[1].role).toBe('AGENT');
+  });
+
+  it('slice-11 reads enforce authn, tenant isolation and viewer RBAC (AC-CRS-04/05)', async () => {
+    const sessionId = await createSession();
+
+    // Unauthenticated → 401 on both.
+    expect((await request(server()).get(`/projects/${projectId}/chat`)).status).toBe(401);
+    expect((await request(server()).get(`/chat/${sessionId}/messages`)).status).toBe(401);
+
+    // Unknown session → 404.
+    expect((await read(request(server()).get(`/chat/${randomUUID()}/messages`))).status).toBe(404);
+
+    // A foreign tenant gets 404 (no existence leak) on both reads.
+    const reg = await request(server())
+      .post('/auth/register')
+      .send({ firstName: 'F', lastName: 'T', email: 'foreign-reskin@nippur.io', password: 'C0rrect-Horse!' });
+    const foreign = authFrom(reg);
+    await request(server())
+      .post('/projects')
+      .set('Cookie', foreign.cookie)
+      .set('X-CSRF-Token', foreign.csrf)
+      .send({ projectName: 'Foreign', format: 'BDD' });
+    expect(
+      (await request(server()).get(`/projects/${projectId}/chat`).set('Cookie', foreign.cookie)).status,
+    ).toBe(404);
+    expect(
+      (await request(server()).get(`/chat/${sessionId}/messages`).set('Cookie', foreign.cookie)).status,
+    ).toBe(404);
+
+    // A VIEWER in the org gets 403 on both (chat is MEMBER+ end to end).
+    const vreg = await request(server())
+      .post('/auth/register')
+      .send({ firstName: 'V', lastName: 'R', email: 'viewer-reskin@uruk.io', password: 'C0rrect-Horse!' });
+    await app.get<MembershipRepository>(TOKENS.Memberships).create({
+      id: randomUUID(),
+      orgId,
+      userId: vreg.body.userId,
+      role: 'VIEWER',
+      createdAt: new Date(),
+    });
+    const viewer = authFrom(vreg);
+    expect(
+      (await request(server()).get(`/projects/${projectId}/chat`).set('Cookie', viewer.cookie)).status,
+    ).toBe(403);
+    expect(
+      (await request(server()).get(`/chat/${sessionId}/messages`).set('Cookie', viewer.cookie)).status,
+    ).toBe(403);
+  });
+
   it('a chat-triggered run rides the standard run path and narrates back (AC-CRUN-01/03)', async () => {
     const feat = await mutate(request(server()).post(`/projects/${projectId}/features`)).send({
       path: 'checkout.feature',

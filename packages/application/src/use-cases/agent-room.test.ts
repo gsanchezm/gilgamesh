@@ -68,4 +68,14 @@ describe('Agent room', () => {
       code: 'NOT_FOUND',
     });
   });
+
+  it('exposes each agent id in the room view (slice 11 — the tile-pinned chat entry)', async () => {
+    const view = await new GetAgentRoom(ctx).execute({ userId, projectId });
+    const orgId = (await ctx.projects.findById(projectId))!.orgId;
+    const idBySlot = new Map((await ctx.agents.listForOrg(orgId)).map((a) => [a.slot, a.id]));
+    expect(view.agents).toHaveLength(11);
+    for (const a of view.agents) {
+      expect(a.id).toBe(idBySlot.get(a.slot));
+    }
+  });
 });

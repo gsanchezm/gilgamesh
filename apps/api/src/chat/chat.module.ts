@@ -14,6 +14,7 @@ import {
   GetChatEvents,
   type IdGenerator,
   type KnowledgeRetrievalPort,
+  ListChatSessions,
   type MembershipRepository,
   type ProjectRepository,
   SendChatMessage,
@@ -114,6 +115,17 @@ import { ChatController, ProjectChatController } from './chat.controller';
         projects: ProjectRepository,
         memberships: MembershipRepository,
       ) => new GetChatEvents({ chatSessions, chatMessages, projects, memberships }),
+      inject: [T.ChatSessions, T.ChatMessages, T.Projects, T.Memberships],
+    },
+    {
+      // Slice 11 — the keystone v0.4 session list read (newest-first + derived titles).
+      provide: ListChatSessions,
+      useFactory: (
+        chatSessions: ChatSessionRepository,
+        chatMessages: ChatMessageRepository,
+        projects: ProjectRepository,
+        memberships: MembershipRepository,
+      ) => new ListChatSessions({ chatSessions, chatMessages, projects, memberships }),
       inject: [T.ChatSessions, T.ChatMessages, T.Projects, T.Memberships],
     },
   ],

@@ -1,9 +1,11 @@
 import {
   type ChatMessageView,
+  type ChatSessionListItemView,
   type ChatSessionView,
   CreateChatSession,
   type EventBus,
   GetChatEvents,
+  ListChatSessions,
   SendChatMessage,
 } from '@gilgamesh/application';
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
@@ -19,7 +21,10 @@ const HEARTBEAT_MS = 15_000;
 @Controller('projects/:projectId/chat')
 @UseGuards(SessionAuthGuard)
 export class ProjectChatController {
-  constructor(private readonly createChatSession: CreateChatSession) {}
+  constructor(
+    private readonly createChatSession: CreateChatSession,
+    private readonly listChatSessions: ListChatSessions,
+  ) {}
 
   @Post()
   @HttpCode(201)
@@ -29,6 +34,15 @@ export class ProjectChatController {
     @Body() dto: CreateChatSessionDto,
   ): Promise<ChatSessionView> {
     return this.createChatSession.execute({ userId, projectId, agentId: dto.agentId ?? null });
+  }
+
+  /** Keystone v0.4 L1 — the project's sessions newest-first with derived titles (slice 11). */
+  @Get()
+  list(
+    @CurrentUser() userId: string,
+    @Param('projectId') projectId: string,
+  ): Promise<ChatSessionListItemView[]> {
+    return this.listChatSessions.execute({ userId, projectId });
   }
 }
 
@@ -50,6 +64,19 @@ export class ChatController {
   ): Promise<ChatMessageView> {
     // 201 returns the persisted USER message (keystone C2); the answer arrives on the events stream.
     return (await this.sendChatMessage.execute({ userId, sessionId, content: dto.content })).message;
+  }
+
+  /**
+   * Keystone v0.4 H1 — the conversation history as a plain JSON array (slice 11). Same authz +
+   * data as the C3 SSE replay (the EXISTING GetChatEvents use case); the web loads history once
+   * here and lets live `?live=1` events append.
+   */
+  @Get(':sessionId/messages')
+  history(
+    @CurrentUser() userId: string,
+    @Param('sessionId') sessionId: string,
+  ): Promise<ChatMessageView[]> {
+    return this.getChatEvents.execute({ userId, sessionId });
   }
 
   /**

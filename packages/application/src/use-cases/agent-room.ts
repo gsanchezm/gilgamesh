@@ -19,6 +19,8 @@ import type {
 import { requireProjectAccess } from './authz';
 
 export interface AgentRoomAgentView {
+  /** Agent.id — the tile-pinned chat entry deep-links `?agent=<id>` (slice 11, spec 11 §13). */
+  id: string;
   slot: AgentSlot;
   deityName: string;
   role: string;
@@ -68,11 +70,12 @@ function kpisFor(agents: AgentRoomAgentView[]): AgentRoomKpis {
 }
 
 function viewOf(
-  agent: { slot: AgentSlot; deityName: string; role: string; family: AgentFamily; glyph: string; culture: string; defaultTool: string },
+  agent: { id: string; slot: AgentSlot; deityName: string; role: string; family: AgentFamily; glyph: string; culture: string; defaultTool: string },
   binding: { tool: string; enabled: boolean } | undefined,
 ): AgentRoomAgentView {
   const enabled = binding?.enabled ?? false;
   return {
+    id: agent.id,
     slot: agent.slot,
     deityName: agent.deityName,
     role: agent.role,

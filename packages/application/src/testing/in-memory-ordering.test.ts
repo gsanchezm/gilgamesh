@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { FeatureRecord, RunRecord, TestCaseRecord } from '../ports/records';
+import type { ChatMessageRecord, ChatSessionRecord, FeatureRecord, RunRecord, TestCaseRecord } from '../ports/records';
 import {
+  InMemoryChatMessageRepository,
+  InMemoryChatSessionRepository,
   InMemoryFeatureRepository,
   InMemoryRunRepository,
   InMemoryTestCaseRepository,
@@ -10,9 +12,11 @@ import {
  * The in-memory adapters must list rows in the *same* deterministic order as their Prisma
  * counterparts (audit #8), otherwise the Docker-free unit/e2e suites would pass on an ordering the
  * real database never produces. These lock the parity:
- *   - features:   createdAt asc, id asc
- *   - test cases: key asc
- *   - runs:       createdAt desc, id desc
+ *   - features:      createdAt asc, id asc
+ *   - test cases:    key asc
+ *   - runs:          createdAt desc, id desc
+ *   - chat sessions: updatedAt desc, id desc (slice 11 — the session rail's newest-first)
+ *   - first USER message per session: createdAt asc, id asc (slice 11 — derived titles, batched)
  */
 
 function feature(id: string, createdAt: Date): FeatureRecord {
@@ -101,4 +105,50 @@ describe('in-memory adapter ordering parity', () => {
     // 'b' newest; 'a' and 'c' share createdAt → id desc → 'c' before 'a'.
     expect((await repo.listForProject('p1')).map((r) => r.id)).toEqual(['b', 'c', 'a']);
   });
+
+  it('lists chat sessions updatedAt desc, id desc — newest activity first', async () => {
+    const repo = new InMemoryChatSessionRepository();
+    await repo.create(session('a', new Date(1000)));
+    await repo.create(session('b', new Date(3000)));
+    await repo.create(session('c', new Date(1000)));
+    // 'b' most recently active; 'a' and 'c' tie on updatedAt → id desc → 'c' before 'a'.
+    expect((await repo.listForProject('p1')).map((s) => s.id)).toEqual(['b', 'c', 'a']);
+
+    // touch (the S8 send bump) reorders: 'a' becomes the newest.
+    await repo.touch('a', new Date(5000));
+    expect((await repo.listForProject('p1')).map((s) => s.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('resolves the FIRST USER message per session in one batched call (createdAt asc, id asc ties)', async () => {
+    const repo = new InMemoryChatMessageRepository();
+    await repo.create(message('m4', 's2', 'USER', new Date(4000)));
+    await repo.create(message('m1', 's1', 'AGENT', new Date(1000))); // not USER — never a title
+    await repo.create(message('m3', 's1', 'USER', new Date(2000))); // same ms as m2 → id asc → m2 wins
+    await repo.create(message('m2', 's1', 'USER', new Date(2000)));
+
+    const firsts = await repo.firstUserMessageBySession(['s1', 's2', 's3']);
+    expect(new Map(firsts.map((m) => [m.sessionId, m.id]))).toEqual(
+      new Map([
+        ['s1', 'm2'],
+        ['s2', 'm4'],
+        // 's3' has no USER message → absent
+      ]),
+    );
+  });
 });
+
+function session(id: string, updatedAt: Date): ChatSessionRecord {
+  return {
+    id,
+    orgId: 'org',
+    projectId: 'p1',
+    agentId: null,
+    createdById: 'u',
+    createdAt: updatedAt,
+    updatedAt,
+  };
+}
+
+function message(id: string, sessionId: string, role: ChatMessageRecord['role'], createdAt: Date): ChatMessageRecord {
+  return { id, orgId: 'org', sessionId, role, agentId: null, content: `${id} content`, runId: null, createdAt };
+}

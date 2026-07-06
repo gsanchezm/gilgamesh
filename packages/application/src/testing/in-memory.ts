@@ -406,6 +406,15 @@ export class InMemoryChatSessionRepository implements ChatSessionRepository {
     const s = this.byId.get(id);
     if (s) s.updatedAt = at;
   }
+  async listForProject(projectId: string): Promise<ChatSessionRecord[]> {
+    // Mirror PrismaChatSessionRepository: updatedAt desc, id desc tiebreak (newest activity first).
+    return [...this.byId.values()]
+      .filter((s) => s.projectId === projectId)
+      .sort(
+        (a, b) =>
+          b.updatedAt.getTime() - a.updatedAt.getTime() || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+      );
+  }
 }
 
 export class InMemoryChatMessageRepository implements ChatMessageRepository {
@@ -423,6 +432,21 @@ export class InMemoryChatMessageRepository implements ChatMessageRepository {
   async setRunId(id: string, runId: string): Promise<void> {
     const m = this.rows.find((x) => x.id === id);
     if (m) m.runId = runId;
+  }
+  async firstUserMessageBySession(sessionIds: string[]): Promise<ChatMessageRecord[]> {
+    // Mirror the Prisma adapter (distinct-on over createdAt asc, id asc): the first USER message
+    // per requested session; sessions without one are absent. Batched — never per-session.
+    const wanted = new Set(sessionIds);
+    const firsts = new Map<string, ChatMessageRecord>();
+    const ordered = [...this.rows].sort(
+      (a, b) =>
+        a.createdAt.getTime() - b.createdAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    );
+    for (const m of ordered) {
+      if (m.role !== 'USER' || !wanted.has(m.sessionId) || firsts.has(m.sessionId)) continue;
+      firsts.set(m.sessionId, m);
+    }
+    return [...firsts.values()];
   }
 }
 

@@ -53,6 +53,22 @@ export interface ChatSessionView {
   createdAt: Date;
 }
 
+/**
+ * One row of the `GET /projects/{id}/chat` list (slice 11). `title` is DERIVED — the session's
+ * first USER message trimmed to {@link SESSION_TITLE_MAX_CHARS}, never stored (spec 11 §13);
+ * null when the session has no USER message yet.
+ */
+export interface ChatSessionListItemView {
+  id: string;
+  agentId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  title: string | null;
+}
+
+/** Derived session-title budget (spec 11 §8 AC-CRS-01): the first USER message, ≤ 60 chars. */
+export const SESSION_TITLE_MAX_CHARS = 60;
+
 export interface ChatMessageView {
   id: string;
   sessionId: string;
@@ -525,6 +541,42 @@ export class SendChatMessage {
       ip: null,
       createdAt: this.deps.clock.now(),
     });
+  }
+}
+
+interface ListSessionsDeps {
+  chatSessions: ChatSessionRepository;
+  chatMessages: ChatMessageRepository;
+  projects: ProjectRepository;
+  memberships: MembershipRepository;
+}
+
+/**
+ * L1 (`GET /projects/{id}/chat`, keystone v0.4 — slice 11): the project's sessions newest-first
+ * (updatedAt desc — the S8 send `touch` is what the ordering rides on) with a derived title from
+ * each session's first USER message. One list query + ONE batched first-message lookup — never
+ * a query per session (spec 11 §10.1). Chat is MEMBER+ end to end (S8 §10.2): VIEWERs may not
+ * browse conversations either.
+ */
+export class ListChatSessions {
+  constructor(private readonly deps: ListSessionsDeps) {}
+
+  async execute(input: { userId: string; projectId: string }): Promise<ChatSessionListItemView[]> {
+    const { project } = await requireProjectAccess(this.deps, input.userId, input.projectId, [...AUTHORS]);
+    const sessions = await this.deps.chatSessions.listForProject(project.id);
+    if (sessions.length === 0) return [];
+
+    const firsts = await this.deps.chatMessages.firstUserMessageBySession(sessions.map((s) => s.id));
+    const titleBySession = new Map(
+      firsts.map((m) => [m.sessionId, m.content.trim().slice(0, SESSION_TITLE_MAX_CHARS)]),
+    );
+    return sessions.map((s) => ({
+      id: s.id,
+      agentId: s.agentId,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+      title: titleBySession.get(s.id) ?? null,
+    }));
   }
 }
 

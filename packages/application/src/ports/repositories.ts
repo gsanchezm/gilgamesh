@@ -155,6 +155,11 @@ export interface ChatSessionRepository {
   findById(id: string): Promise<ChatSessionRecord | null>;
   /** Bumps updatedAt when a message lands; a no-op if the session is gone. */
   touch(id: string, at: Date): Promise<void>;
+  /**
+   * The project's sessions newest-activity-first: updatedAt desc, id desc tiebreak (UUID v7 =
+   * creation order on same-ms ties). Slice 11 — backs `GET /projects/{id}/chat`.
+   */
+  listForProject(projectId: string): Promise<ChatSessionRecord[]>;
 }
 
 export interface ChatMessageRepository {
@@ -163,6 +168,12 @@ export interface ChatMessageRepository {
   listForSession(sessionId: string): Promise<ChatMessageRecord[]>;
   /** Links the triggering message to its Run after the standard run path commits; no-op if gone. */
   setRunId(id: string, runId: string): Promise<void>;
+  /**
+   * The FIRST `USER` message of each given session (createdAt asc, id asc tiebreak); sessions
+   * without one are absent from the result. BATCHED — one call resolves every derived session
+   * title, never one query per session (slice 11, spec §10.1).
+   */
+  firstUserMessageBySession(sessionIds: string[]): Promise<ChatMessageRecord[]>;
 }
 
 export interface BrainUsageRepository {
