@@ -332,3 +332,16 @@ Prisma migration `password_reset`; both wirings bind `PasswordResets`/`Email`; F
 public routes wired from Login. **Verified (post-merge):** typecheck + lint · 623 Docker-free ·
 `test:int` 19 · **BDD 141 scenarios / 1141 steps** · Playwright 17. Deferred: real SMTP/SES adapter ·
 the @wip rate-limit outline (AC-AUTH-13 pattern).
+
+
+## Slice 10 status (Billing 4-tier formalization) — DoD COMPLETE (2026-07-06, on `main`)
+
+`specs/slices/10-billing-4tier/` — formalizes the 4-tier workspace pricing that shipped functionally in
+`7632020`: SDD spec (owner decision S10 field mapping: `seats` = active workspaces, `runMinutes*` =
+executions — NO keystone change) + 7 BDD scenarios (AC-B4T-01..06: catalog remap, FREE workspace cap,
+SCALE $499 + $99/extra ws asserted on the API price, annual = 10 months, quota-blocks-runs regression).
+Domain `planLimits`/`priceCents` now DERIVE from `PLAN_CATALOG` (single source, no duplicated numbers —
+the real TDD red); exact price pins in application/api tests; BillingScreen's SCALE add-on line derives
+from the catalog. **Verified (post-merge):** typecheck + lint · 633 Docker-free · `test:int` 19 ·
+**BDD 148 scenarios / 1223 steps** · Playwright 17. Deferred: Stripe/Invoice/webhooks · storage-column
+rename to execution semantics (future keystone major) · Brain token charging hookup.
