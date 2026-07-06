@@ -35,6 +35,21 @@ Built SDD/TDD (real RED→GREEN at unit + integration), all green:
 | 10 | Batch RAG ingest | `upsertMany` → one multi-row `INSERT … ON CONFLICT` per 500-row batch (`Prisma.join`) instead of a round-trip per chunk. | `3130c12` |
 | R2 | Centralize web fetch helpers | `apps/web/src/lib/http.ts` (`API_BASE`, `ok`, `getJson`, `sendJson`); the 8 clients import instead of redeclaring (−79 net lines, no behavior change). | `e6beb7c` |
 
+## Done — Batch C (2026-07-06) ✅ on `feat-audit-batch-c`
+
+Six audit-hardening quick wins, owner-approved 2026-07-06. Built TDD red-first (one commit per fix),
+all green Docker-free: `typecheck · lint · pnpm -r test` (the orchestrator runs the serialized
+`test:int`/BDD/Playwright gates and deploys the new migration first).
+
+| # | Item | What landed | Files |
+|---|------|-------------|-------|
+| 6 | Atomic reset-token claim | `PasswordResetRepository.markUsed` → **`claimUnused(id, at): Promise<boolean>`** (conditional `usedAt: null` in the adapter's WHERE — Prisma `updateMany` count===1, in-memory synchronous check-and-set); `ResetPassword` runs find→validate→claim→rewrite→revoke-all→audit inside ONE `UnitOfWork` transaction, so a concurrent double-submit lets exactly one caller through (the loser gets the same generic `VALIDATION`) and a mid-flight failure rolls the claim back. `passwordResets` joined the UoW `Repositories` bundle (the slice-13 `invoices` precedent: port bundle · in-memory context · `PrismaUnitOfWork` · in-memory wiring factory). | `packages/application/src/{ports/repositories.ts,ports/unit-of-work.ts,use-cases/password-reset.ts,testing/in-memory.ts}` · `apps/api/src/persistence/{prisma/prisma-repositories.ts,prisma/prisma-unit-of-work.ts,persistence.module.ts}` · `apps/api/src/auth/auth.module.ts` |
+| 5 | Timing-safe forgot-password | The unknown/DISABLED path performs the SAME token generate+hash work (discarded); email dispatch is fire-and-forget (`void send().catch(() => {})` — failures deliberately unlogged: a delivery log line would carry the address, enumeration-safety > delivery observability). `StubEmail` records synchronously on call, so the recovery BDD/e2e mail assertions stay green unchanged. | `packages/application/src/use-cases/password-reset.ts` |
+| 2 | multer override | `overrides: multer: '>=2.2.0'` in `pnpm-workspace.yaml` (pnpm 11 honors workspace-file overrides). `@nestjs/platform-express` pinned 2.1.1 → GHSA-72gw-mp4g-v24j (high) + aborted-upload DoS (moderate). `pnpm why multer` → single `multer@2.2.0`; `pnpm audit` no longer reports multer. | `pnpm-workspace.yaml` · `pnpm-lock.yaml` |
+| 8 | pgvector HNSW index | The old `ORDER BY embedding <=> $q, id` tie-break forced a full sort — an HNSW index would never be used. `search`/`searchScoped` now nest an inner ANN scan (bare-distance ORDER BY, `LIMIT k*4` oversample, filters inside) under an outer deterministic re-sort (`distance, id`) `LIMIT k` — identical result semantics (the int tests' deterministic ties are preserved). Migration `20260706180914_knowledge_hnsw_index` creates `knowledge_chunks_embedding_hnsw_idx` (`hnsw`, `vector_cosine_ops`; 1024 dims < the 2000 cap; `pgvector/pgvector:pg16` ≥ 0.5). | `apps/api/src/persistence/prisma/prisma-repositories.ts` · `apps/api/prisma/migrations/20260706180914_knowledge_hnsw_index/` |
+| 11 | AuthHero rAF pause | The helix loop pauses while `document.hidden` (visibilitychange; resumes on visible) and renders ONE static frame with no loop under `prefers-reduced-motion: reduce`; unmount removes the listener and cancels the pending frame. | `apps/web/src/screens/AuthHero.tsx` |
+| 12 | EventSource credentials | Chat live stream opens with `{ withCredentials: true }` so the httpOnly session cookie rides a cross-origin SPA→API deployment (no-op behind the same-origin vite proxy). | `apps/web/src/screens/ChatScreen.tsx` |
+
 ## Pending owner decision (surfaced, NOT auto-started)
 
 3. **Rate-limit fail-open policy** (`rate-limit.guard.ts:61`). Today: if Redis is unreachable the
