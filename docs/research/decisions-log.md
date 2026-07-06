@@ -429,3 +429,31 @@ divergent `refactor/audit-hardening` branch. Reconciled + executed SDD/TDD, all 
 - **Bloque 3 — PENDING owner decision** (behavior/contract/infra, not auto-started): rate-limit fail-open policy ·
   per-IP backoff (own slice) · pagination (own slice) · RAG final posture · optimize heavy assets (E5) · pin
   GitHub Actions to SHA. Tracking: `audit-followup.md` · board: `feature-status.md`.
+
+## Slice 8 (Agent Chat, text) — owner decisions + review (2026-07-05)
+
+- **Keystone v0.2 approved** and applied **in series on `main` (`933769d`) before the worktree** (plan
+  rule 2): +`ChatSession`/`ChatMessage` (§2) · +`ChatMessageRole`/`KnowledgeScope` (§1) ·
+  `KnowledgeChunk.scope?` indexed (§2) · 3 chat routes (§6) · chat repositories (§5) · new §10 changelog.
+- **Decision S8:** wire `AgentBrainPort` to the extended `DeterministicBrain` (canned per-slot answers +
+  keyword classify — the Billing mock pattern). The slice is NOT blocked on the real Claude adapter or
+  chaos-proxy; real answers + live SSE push = the Brain slice.
+- **Owner: "review + merge direct to main."** The protocol's HUMAN_REQUIRED gate was satisfied by an
+  8-angle adversarial review (line-by-line, removed-behavior, cross-file, reuse, simplification,
+  efficiency, altitude, conventions/keystone) + verification; merged FF `a3b7284`; post-merge re-test
+  green (504 Docker-free).
+- **Review S8 — FIXED (TDD red→green):** stub dispatches on caller intent — RAG grounding containing
+  `(slot: <key>` could silently flip `GenerateDrafts` to zero drafts, and a chat message that is
+  `{"classify"}` JSON was answered with router JSON · C2 201 view carries `runId` in both wirings
+  (in-memory mutation ≠ Prisma `updateMany`) · `GET /chat/:id/events` is MEMBER+ (a VIEWER could read
+  whole conversations) · chat throttle POST-only + suffix-bucketed (fresh sessions minted fresh buckets)
+  · tool args capped at the direct endpoints' DTO limits (title 256 / prompt 2000) · failing authoring
+  tools narrate instead of 4xx-ing after the USER message persisted · every whitelisted tool attempt is
+  audited with outcome · ChatModule injects the canonical `TriggerRun`/`CreateTestCase`/`GenerateDrafts`
+  (now exported by RunsModule/TestLabModule) · shared `formatGrounding` + single retriever pipeline.
+- **Review S8 — DEFERRED (follow-ups):** reusable SSE adapter (runs will need the same transport) ·
+  first-class tool registry (schema-validated; required for real Brain `tool_use`) ·
+  `FeatureRepository.findByName` (avoid the per-tool-call full scan) · web appends the answer instead of
+  re-fetching the whole replay (O(n²) over a session) · `agent_id` FKs on chat tables · dedupe the
+  acceptance `server()` helper (6th copy) · unify the SSE `at` vs `createdAt` wire shape ·
+  `isKnowledgeScope` stays unused until a scope-input surface exists.

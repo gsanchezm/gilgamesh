@@ -32,7 +32,7 @@ Backend = does the data/logic exist · UI = re-skinned to the `capturas/NN` targ
 | 04 | Dashboard (Agent room) | ✅ | ✅ | |
 | 05 | Dashboard — light theme | ✅ | ✅ | |
 | 06 | Orchestration (DAG) | 🔴 | 🔴 | blocked on TOM kernel |
-| 07 | Chat / voice | 🔴 | 🔴 | blocked on Brain/Claude |
+| 07 | Chat / voice | ✅ | 🟡 | **slice 8 (text) on `main`**: sessions + HAIKU-routing + scoped RAG + 3-tool whitelist, all behind the stub brain; functional `ChatScreen` at `/projects/:id/chat` (capture re-skin + voice pending; real answers land with the Brain slice) |
 | 08 | Reports | ✅ | 🟡 | built on `main` (`ReportsScreen` + `summarizeAcrossRuns`); **route not wired**; per-tool "Tools" breakdown deferred |
 | 09 | Knowledge base | ✅ | ✅ | + per-org upload + `.pdf`/`.docx` ingest |
 | 10 | Test Lab | ✅ | ✅ | Integrated TestLabSummaryStats & refactored layout |
@@ -61,7 +61,7 @@ Real vs. stub-behind-a-port. Swapping a stub for the real adapter is a future sl
 ## 3) Missing / deferred (with the blocker)
 
 - [ ] **Orchestration DAG canvas** — 🔴 blocked on the real TOM microkernel (keystone §7)
-- [ ] **Chat + voice** — 🔴 blocked on the real Brain/Claude adapter
+- [x] **Chat (text)** — ✅ slice 8 on `main` behind the stub brain (real answers + live SSE push land with the Brain slice); **voice** 🔴 still blocked on Brain/Claude + STT/TTS
 - [x] **Reports** — ✅ built on `main` (read-only over slice-3 `Run`/`RunResult`); **route not wired** + per-tool "Tools" breakdown deferred (needs a tool/discipline dimension on `RunResult`)
 - [ ] **Session replay (web/android)** — 🔴 needs per-action timeline data slice-3 doesn't persist yet
 - [ ] **Mobile app (Expo)** — 🔴 not started

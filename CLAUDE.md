@@ -261,3 +261,29 @@ typecheck · 440 unit tests · lint) and **pushed to `origin/main`**:
 **Process lesson:** run each parallel stream in its own `pnpm wt` worktree — never share the main working
 dir. Two streams here both appended to `apps/web/src/index.css`, which made scope-committing painful; the
 fix was to extract each stream's work onto its own branch. (See auto-memory `gilgamesh-parallel-worktrees`.)
+
+## Slice 8 status (Agent Chat, text) — DoD COMPLETE (2026-07-05, on `main`)
+
+`specs/slices/08-agent-chat/` — chat with the pantheon behind the **deterministic stub brain** (owner
+decision S8). The keystone was amended to **v0.2 first, in series on `main`** (`933769d`):
+`ChatSession`/`ChatMessage` + `ChatMessageRole`/`KnowledgeScope` + `KnowledgeChunk.scope` (indexed) +
+the 3 chat routes + a new §10 changelog. Built SDD→BDD→TDD (BDD red first: 18 scenarios failing on 404),
+then hardened by an 8-angle adversarial review (7 findings fixed TDD) and merged FF (`a3b7284`):
+- **domain** — `personaPrompt` (prose personas anchored `You are <deity>,` — the stub's dispatch prefix).
+- **application** — `CreateChatSession`/`SendChatMessage`/`GetChatEvents`; router via
+  `AgentBrainPort.complete()` at HAIKU (confidence < 0.6 → lead; `ToolBinding.enabled=false` excluded;
+  pinned sessions skip classify); **scoped retrieval** (`searchScoped`/`retrieveScoped`: org-visible chunks
+  where `scope` = slot | `shared` | NULL); **closed 3-tool whitelist** (`enqueue_run`/`create_test_case`/
+  `generate_feature`) invoking the CANONICAL use cases (quota/RBAC/audit unchanged; args capped at the DTO
+  limits; failures narrated in-chat; every attempt audited with outcome); `DeterministicBrain` chat branches
+  dispatch on **caller intent** (system-prompt prefix), never on message/grounding content.
+- **api** — `ChatModule` (`POST /projects/:id/chat` · `POST /chat/:sessionId/messages` [rate-limited,
+  POST-only, suffix+IP bucket] · `GET /chat/:sessionId/events` = the repo's **first SSE surface**,
+  deterministic replay-then-close); Prisma models + migration `agent_chat`; both persistence wirings.
+- **web** — `ChatClient` + `ChatScreen` at `/projects/:id/chat` (lazy session, SSE-replay resync,
+  run-narration blocks, `?agent=` pin; the tile-pinned entry lands with the Chat re-skin).
+- **Verified (post-merge on `main`):** typecheck + lint · 504 Docker-free unit/e2e · `test:int` 19 ·
+  **BDD 112 scenarios / 896 steps** · **Playwright 15** (incl. the chat e2e).
+- **Deferred (review S8 / spec §13):** real answers + live SSE push (Brain slice) · reusable SSE adapter +
+  first-class tool registry · session list/history routes (keystone amendment) · `FeatureRepository.findByName`
+  · web appends the answer instead of full replay · `agent_id` FKs on chat tables.
