@@ -4,9 +4,11 @@ import { AgentRoomScreen } from '../screens/AgentRoomScreen';
 import { BillingScreen } from '../screens/BillingScreen';
 import { ChatScreen } from '../screens/ChatScreen';
 import { ComingSoonScreen } from '../screens/ComingSoonScreen';
+import { ForgotPasswordScreen } from '../screens/ForgotPasswordScreen';
 import { IntegrationsScreen } from '../screens/IntegrationsScreen';
 import { KnowledgeScreen } from '../screens/KnowledgeScreen';
 import { LoginScreen } from '../screens/LoginScreen';
+import { ResetPasswordScreen } from '../screens/ResetPasswordScreen';
 import { OnboardingWizard } from '../screens/OnboardingWizard';
 import { PricingScreen } from '../screens/PricingScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
@@ -48,7 +50,29 @@ function LoginRoute() {
         navigate('/onboarding');
       }}
       onCreate={() => navigate('/register')}
+      onForgot={() => navigate('/forgot-password')}
       onViewPlans={() => navigate('/pricing')}
+    />
+  );
+}
+
+function ForgotPasswordRoute() {
+  const { auth } = useClients();
+  const navigate = useNavigate();
+  return <ForgotPasswordScreen authClient={auth} onSignIn={() => navigate('/login')} />;
+}
+
+function ResetPasswordRoute() {
+  const { auth } = useClients();
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  // The raw token rides the email link's query string; it is only ever POSTed, never stored.
+  return (
+    <ResetPasswordScreen
+      authClient={auth}
+      token={params.get('token')}
+      onSignIn={() => navigate('/login')}
+      onRequestNew={() => navigate('/forgot-password')}
     />
   );
 }
@@ -173,6 +197,9 @@ export function AppRoutes() {
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<LoginRoute />} />
       <Route path="/register" element={<RegisterRoute />} />
+      {/* Public recovery flow (slice 12): reachable without a session, like login/register. */}
+      <Route path="/forgot-password" element={<ForgotPasswordRoute />} />
+      <Route path="/reset-password" element={<ResetPasswordRoute />} />
       {/* Public marketing pricing page (capture 03). */}
       <Route path="/pricing" element={<PricingRoute />} />
       {/* Onboarding is a standalone stepped flow — outside the app shell. */}

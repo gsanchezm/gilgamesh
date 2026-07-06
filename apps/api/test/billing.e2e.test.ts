@@ -63,6 +63,21 @@ describe('Subscription & Billing API', () => {
     expect((await mutate(request(server()).patch(`/orgs/${orgId}/subscription/seats`)).send({ seats: 0 })).status).toBe(422);
   });
 
+  it('returns the computed 4-tier price: Scale base + $99/extra workspace, annual = 10 months (AC-B4T-03/04)', async () => {
+    const scale = await mutate(request(server()).patch(`/orgs/${orgId}/subscription`)).send({ plan: 'SCALE' });
+    expect(scale.status).toBe(200);
+    expect(scale.body).toMatchObject({ plan: 'SCALE', unlimited: true, priceCents: 49900 });
+
+    const seats = await mutate(request(server()).patch(`/orgs/${orgId}/subscription/seats`)).send({ seats: 12 });
+    expect(seats.body.priceCents).toBe(69700); // 49900 + 2 × 9900 beyond the 10 included
+
+    const annual = await mutate(request(server()).patch(`/orgs/${orgId}/subscription`)).send({
+      plan: 'SCALE',
+      billingCycle: 'ANNUAL',
+    });
+    expect(annual.body.priceCents).toBe(58083); // round(69700 × 10 / 12)
+  });
+
   it('checks out (mock) then confirms to ACTIVE, then cancels', async () => {
     const checkout = await mutate(request(server()).post(`/orgs/${orgId}/subscription/checkout`)).send();
     expect(checkout.status).toBe(200);

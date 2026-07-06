@@ -1,3 +1,4 @@
+import { planTier } from '@gilgamesh/domain';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { BillingClient, BillingCycle, BrainUsageView, Plan, SubscriptionView } from '../lib/billing-client';
 
@@ -18,6 +19,9 @@ const PLAN_COPY: Record<Plan, { name: string; summary: string; accent: string }>
 function money(cents: number): string {
   return cents === 0 ? '$0' : `$${Math.round(cents / 100)}`;
 }
+
+// Single source (slice 10): the Scale add-on copy derives from the canonical PLAN_CATALOG.
+const SCALE_TIER = planTier('scale');
 
 function limit(value: number, unlimitedLabel = 'Unlimited'): string {
   return value >= 1_000_000 ? unlimitedLabel : value.toLocaleString();
@@ -270,7 +274,9 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
 
       <p className="gx-billing__note">
         {selectedCopy.name} includes {selectedCopy.summary.toLowerCase()}.
-        {plan === 'SCALE' ? ' Extra workspaces are $99/month each after the first 10.' : ''}
+        {plan === 'SCALE'
+          ? ` Extra workspaces are ${money(SCALE_TIER.perExtraWorkspaceCents ?? 0)}/month each after the first ${SCALE_TIER.limits.includedWorkspaces}.`
+          : ''}
       </p>
     </main>
   );

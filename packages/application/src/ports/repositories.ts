@@ -8,6 +8,7 @@ import type {
   IntegrationRecord,
   MembershipRecord,
   OrgRecord,
+  PasswordResetRecord,
   ProjectRecord,
   Role,
   RunRecord,
@@ -26,6 +27,8 @@ export interface UserRepository {
   findByEmail(email: string): Promise<UserRecord | null>;
   findById(id: string): Promise<UserRecord | null>;
   create(rec: UserRecord): Promise<void>;
+  /** Targeted update of ONLY passwordHash (+updatedAt) — the linkRepo pattern: never clobbers other columns. */
+  updatePassword(id: string, passwordHash: string, updatedAt: Date): Promise<void>;
 }
 
 export interface OrgRepository {
@@ -45,6 +48,13 @@ export interface SessionRepository {
   findByTokenHash(tokenHash: string): Promise<SessionRecord | null>;
   revoke(id: string): Promise<void>;
   revokeAllForUser(userId: string): Promise<void>;
+}
+
+export interface PasswordResetRepository {
+  create(rec: PasswordResetRecord): Promise<void>;
+  findByTokenHash(tokenHash: string): Promise<PasswordResetRecord | null>;
+  /** Claims the token (sets usedAt — single-use); a no-op if the row is gone. */
+  markUsed(id: string, at: Date): Promise<void>;
 }
 
 export interface ProjectRepository {

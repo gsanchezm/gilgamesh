@@ -20,6 +20,17 @@ When('I change the plan to {string}', async function (this: GilgameshWorld, plan
   this.response = await this.applyAuth(server(this).patch(this.url('/orgs/{orgId}/subscription'))).send({ plan });
 });
 
+// Slice 10 (4-tier migration): plan change with an explicit billing cycle.
+When(
+  'I change the plan to {string} on the {string} cycle',
+  async function (this: GilgameshWorld, plan: string, billingCycle: string) {
+    this.response = await this.applyAuth(server(this).patch(this.url('/orgs/{orgId}/subscription'))).send({
+      plan,
+      billingCycle,
+    });
+  },
+);
+
 When('I update seats to {int}', async function (this: GilgameshWorld, seats: number) {
   this.response = await this.applyAuth(server(this).patch(this.url('/orgs/{orgId}/subscription/seats'))).send({ seats });
 });
@@ -52,4 +63,21 @@ Then('the subscription quota is {int}', function (this: GilgameshWorld, quota: n
 
 Then('a mock checkout url is returned', function (this: GilgameshWorld) {
   assert.match(String(body(this).checkoutUrl ?? ''), /^https:\/\/mock\.pay\/checkout\//);
+});
+
+// Slice 10 (4-tier migration): the SubscriptionView exposes the computed price + catalog limits.
+Then('the subscription price is {int} cents', function (this: GilgameshWorld, cents: number) {
+  assert.equal(body(this).priceCents, cents);
+});
+
+Then('the subscription allows {int} services per workspace', function (this: GilgameshWorld, services: number) {
+  assert.equal(body(this).maxServicesPerWorkspace, services);
+});
+
+Then('the subscription has {int} active workspaces', function (this: GilgameshWorld, seats: number) {
+  assert.equal(body(this).seats, seats);
+});
+
+Then('the subscription executions are unlimited', function (this: GilgameshWorld) {
+  assert.equal(body(this).unlimited, true);
 });

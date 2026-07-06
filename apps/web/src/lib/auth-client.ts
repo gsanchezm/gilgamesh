@@ -26,6 +26,15 @@ export interface MeResult {
   activeOrgId: string | null;
 }
 
+export interface ForgotPasswordInput {
+  email: string;
+}
+
+export interface ResetPasswordInput {
+  token: string;
+  newPassword: string;
+}
+
 /** Port the UI depends on; the HTTP adapter below is swappable (and mockable in tests). */
 export interface AuthClient {
   login(input: LoginInput): Promise<LoginResult>;
@@ -38,6 +47,13 @@ export interface AuthClient {
   me(): Promise<MeResult | null>;
   /** Revokes the current session (server clears the cookie). */
   logout(): Promise<void>;
+  /**
+   * Begins a password reset. Public + enumeration-safe: the server answers the same generic 202
+   * whether or not the email exists, so success here never confirms an account (AC-AUTH-10).
+   */
+  forgotPassword(input: ForgotPasswordInput): Promise<void>;
+  /** Completes a reset. Throws the Problem detail on an invalid/expired/consumed token (422). */
+  resetPassword(input: ResetPasswordInput): Promise<void>;
 }
 
 export const httpAuthClient: AuthClient = {
@@ -87,5 +103,32 @@ export const httpAuthClient: AuthClient = {
       credentials: 'include',
     });
     if (!res.ok) throw new Error('Could not sign out.');
+  },
+
+  // Public pre-session endpoints (like login/register): no CSRF header, no session required.
+  async forgotPassword(input) {
+    const res = await fetch(`${API_BASE}/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      const problem = (await res.json().catch(() => ({}))) as { detail?: string };
+      throw new Error(problem.detail ?? 'Could not request the reset link. Please retry.');
+    }
+  },
+
+  async resetPassword(input) {
+    const res = await fetch(`${API_BASE}/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      const problem = (await res.json().catch(() => ({}))) as { detail?: string };
+      throw new Error(problem.detail ?? 'That reset link is invalid or has expired.');
+    }
   },
 };

@@ -82,6 +82,20 @@ describe('Subscription & Billing', () => {
     expect(a.priceCents).toBeLessThan(m.priceCents);
   });
 
+  it('exposes the workspace-aware computed Scale price on the view (AC-B4T-03)', async () => {
+    const base = await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'SCALE' });
+    expect(base.priceCents).toBe(49900);
+    expect((await new UpdateSeats(ctx).execute({ userId, orgId, seats: 10 })).priceCents).toBe(49900);
+    expect((await new UpdateSeats(ctx).execute({ userId, orgId, seats: 12 })).priceCents).toBe(69700); // + 2 × $99
+  });
+
+  it('computes the annual price as 10 charged months (AC-B4T-04)', async () => {
+    const growth = await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'GROWTH', billingCycle: 'ANNUAL' });
+    expect(growth.priceCents).toBe(8250); // round(9900 × 10 / 12)
+    const starter = await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'STARTER', billingCycle: 'ANNUAL' });
+    expect(starter.priceCents).toBe(2417); // round(2900 × 10 / 12)
+  });
+
   it('enforces RBAC + tenant isolation (AC-SUB-02/09)', async () => {
     const member = (
       await new RegisterUser(ctx).execute({ firstName: 'M', lastName: 'R', email: 'm@uruk.io', password: 'C0rrect-Horse!' })

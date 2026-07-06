@@ -9,6 +9,8 @@ function fakeClient(overrides?: Partial<AuthClient>): AuthClient {
     register: vi.fn(async () => ({ userId: 'u-1' })),
     me: vi.fn(async () => null),
     logout: vi.fn(async () => {}),
+    forgotPassword: vi.fn(async () => {}),
+    resetPassword: vi.fn(async () => {}),
     ...overrides,
   };
 }

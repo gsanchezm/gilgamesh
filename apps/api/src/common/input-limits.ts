@@ -15,6 +15,8 @@ export const INPUT_LIMITS = {
   /** Password: keystone minimum; max caps hashing cost (argon2id has no native input ceiling). */
   passwordMin: 12,
   passwordMax: 200,
+  /** Reset token: base64url of 32 CSPRNG bytes is 43 chars; 256 leaves headroom without inviting abuse. */
+  resetTokenMax: 256,
 
   /** Test Lab — slice. */
   sliceKeyMax: 64,
