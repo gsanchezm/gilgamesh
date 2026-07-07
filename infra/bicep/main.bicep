@@ -1,30 +1,43 @@
 // =============================================================================
-// Gilgamesh — Azure QA environment (DESIGN ONLY — NEVER deployed by the agent)
+// Gilgamesh — Azure environment (v2 — STAGING DEPLOYABLE)
 // -----------------------------------------------------------------------------
-// Single small QA environment for the Gilgamesh multi-tenant QA platform. NO prod.
-// The product owner performs `az login` + subscription auth and decides WHEN to
-// deploy; cloud cost begins only on deploy (decisions-log #11). This template is a
-// declarative CONTRACT — the agent does not run `az`/`bicep` and does not apply it.
+// First deployed environment for the platform, per owner decisions SD-1..4
+// (2026-07-06, specs/infra/staging-deploy.md). SD-4 relaxes the foundation
+// "agent never deploys" contract for this objective: the owner runs `az login`
+// in-session and the agent executes the az commands UNDER OWNER SUPERVISION.
+// The spec §8 runbook stays authoritative for manual re-runs. The original QA
+// design notes (decisions-log #11, specs/infra/azure-environments.md) remain
+// valid for env=qa.
 //
 // What this provisions (each in its own module, see ./modules):
-//   - User-Assigned Managed Identity      (one workload identity for every app)
+//   - User-Assigned Managed Identity      (ACR pull + KV references + KV data plane for
+//                                          the S20 runtime SecretVault)
 //   - Log Analytics workspace             (Container Apps logs)
 //   - Azure Container Registry            (images; AcrPull via identity)
-//   - Container Apps env + apps           (api, workers, chaos-proxy, plugin, SUT)
+//   - Key Vault                           (deploy-seeded secrets + S20 `vault://` secrets)
 //   - Postgres Flexible Server + pgvector (all entities + KnowledgeChunk embeddings)
-//   - Blob Storage                        (Artifacts via signed expiring URLs)
-//   - Service Bus                         (run queue + RunEvent topic; EventBus port)
-//   - Key Vault                           (secrets / integration tokens / LLM key)
+//   - Container Apps env + ONE app        (API + built SPA)      — gated by deployApp
+//   - [gated OFF] Blob Storage            (deployBlob)           — Artifacts; unused yet
+//   - [gated OFF] Service Bus             (deployServiceBus)     — run queue; TOM runners
+//                                          are keystone §7 BLOCKED-UNTIL-DELIVERED
+//
+// TWO-PHASE FIRST DEPLOY (spec §8): the Container App references an image that must
+// already exist in ACR, so the first rollout is:
+//   az group create -n rg-gilgamesh-staging -l eastus2
+//   # Phase 1 — platform resources only (identity, LAW, ACR, KV, Postgres); no app:
+//   az deployment group create -g rg-gilgamesh-staging -f infra/bicep/main.bicep \
+//     -p env=staging -p deployApp=false \
+//     -p postgresAdminPassword=<gen> -p sessionSecret=<gen>
+//   # Phase 2 — build the image in the cloud (no local docker needed):
+//   az acr build -r <acr> -t gilgamesh-app:<gitsha> -f Dockerfile .
+//   # Phase 3 — same template, now with the app on the freshly pushed image:
+//   az deployment group create -g rg-gilgamesh-staging -f infra/bicep/main.bicep \
+//     -p env=staging -p deployApp=true \
+//     -p appImage=<acr>.azurecr.io/gilgamesh-app:<gitsha> \
+//     -p postgresAdminPassword=<gen> -p sessionSecret=<gen> [-p anthropicApiKey=...]
 //
 // Cost: see specs/infra/azure-environments.md. Scale-to-zero Container Apps keep idle
 // compute ~$0; the dominant idle cost is Postgres (stop it when not in use).
-//
-// Deploy (OWNER runs this — NOT the agent):
-//   az group create -n rg-gilgamesh-qa -l eastus2
-//   az deployment group create -g rg-gilgamesh-qa -f infra/bicep/main.bicep \
-//     -p postgresAdminPassword='...' -p sessionSecret='...' [-p llmApiKey='...']
-//   (or wrap those secure params in an owner-authored .bicepparam file). Full runbook:
-//   specs/infra/azure-environments.md §12.
 // =============================================================================
 
 targetScope = 'resourceGroup'
@@ -38,40 +51,47 @@ param location string = resourceGroup().location
 @maxLength(12)
 param namePrefix string = 'gilgamesh'
 
-@description('Environment short code. QA only — there is no prod env in this template.')
-@allowed([ 'qa' ])
-param env string = 'qa'
+@description('Environment short code.')
+@allowed([ 'qa', 'staging' ])
+param env string = 'staging'
+
+@description('Deploy the Container Apps environment + app. false = phase 1 (platform resources only, spec §8); true = phase 3, requires appImage pushed to ACR.')
+param deployApp bool = false
+
+@description('Full image reference for the single app (API+SPA), e.g. <acr>.azurecr.io/gilgamesh-app:<gitsha>. Empty falls back to :latest in this ACR — pass the exact tag on real deploys.')
+param appImage string = ''
+
+@description('Provision Service Bus (run queue + RunEvent topic). OFF until the TOM runners land (keystone §7 BLOCKED-UNTIL-DELIVERED).')
+param deployServiceBus bool = false
+
+@description('Provision Blob Storage (Artifacts + Knowledge docs). OFF until anything consumes it.')
+param deployBlob bool = false
 
 @description('Postgres administrator password. Supplied securely at deploy; copied into Key Vault.')
 @secure()
 param postgresAdminPassword string
 
-@description('Session signing secret (httpOnly session cookie, slice-1 auth). Stored in Key Vault.')
+@description('Session signing secret (slice-1 auth). Stored in Key Vault.')
 @secure()
 param sessionSecret string
 
-@description('LLM provider API key for AgentBrainPort (Claude default). Stored in Key Vault.')
+@description('Anthropic API key for the real ClaudeBrain (S9). Empty = the anthropic-api-key secret is NOT created and the env var is NOT bound, so the deterministic stub answers (spec §5 caveat: a placeholder value would select the REAL brain).')
 @secure()
-param llmApiKey string = ''
+param anthropicApiKey string = ''
 
-@description('Enable private networking (VNet integration + private Postgres). Default false to keep QA idle cost ~0 (no private-endpoint hourly charges).')
+@description('Enable private networking (VNet integration + private Postgres). Default false to keep idle cost ~0 (no private-endpoint hourly charges).')
 param enablePrivateNetworking bool = false
 
-@description('Service Bus SKU. Standard required for the RunEvent topic (EventBus).')
+@description('Service Bus SKU (only used when deployServiceBus=true). Standard required for the RunEvent topic (EventBus).')
 @allowed([ 'Basic', 'Standard' ])
 param serviceBusSku string = 'Standard'
-
-@description('Owner-delivered image references (keystone §7). Default placeholders keep runner apps at zero until images exist.')
-param chaosProxyImage string = ''
-param playwrightPluginImage string = ''
-param omnipizzaImage string = ''
 
 @description('Common tags.')
 param tags object = {
   app: 'gilgamesh'
-  env: 'qa'
+  env: env
   managedBy: 'bicep'
-  costCenter: 'qa-foundation'
+  costCenter: 'gilgamesh-${env}'
 }
 
 // ----------------------------- Naming ----------------------------------------
@@ -94,8 +114,8 @@ var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 var allowPublic = !enablePrivateNetworking
 
 // ----------------------- Workload Managed Identity ---------------------------
-// One user-assigned identity used by every Container App for ACR pull, Key Vault
-// references, Postgres (Entra-capable), Blob (User-Delegation SAS) and Service Bus.
+// One user-assigned identity used by the app for ACR pull, Key Vault references AND
+// the S20 runtime SecretVault (DefaultAzureCredential via AZURE_CLIENT_ID).
 resource workloadIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: identityName
   location: location
@@ -111,7 +131,7 @@ resource law 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
     sku: { name: 'PerGB2018' }
     retentionInDays: 30
     workspaceCapping: {
-      dailyQuotaGb: 1 // cap ingestion to bound QA log cost
+      dailyQuotaGb: 1 // cap ingestion to bound log cost
     }
     features: { enableLogAccessUsingOnlyResourcePermissions: true }
   }
@@ -122,7 +142,7 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' = {
   name: acrName
   location: location
   tags: tags
-  sku: { name: 'Basic' } // QA: Basic is cheapest; no geo-replication.
+  sku: { name: 'Basic' } // Basic is cheapest; no geo-replication.
   properties: {
     adminUserEnabled: false // identity-based pull only (no admin creds).
   }
@@ -141,7 +161,7 @@ resource acrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 
 // =============================== Modules ======================================
 
-// ---- Key Vault (secrets / integration tokens / LLM key) ----
+// ---- Key Vault (deploy-seeded secrets + the S20 runtime SecretVault) ----
 module keyVault './modules/keyVault.bicep' = {
   name: 'keyVault'
   params: {
@@ -169,8 +189,8 @@ module postgres './modules/postgres.bicep' = {
   }
 }
 
-// ---- Blob Storage (Artifacts + Knowledge docs) ----
-module blob './modules/blob.bicep' = {
+// ---- Blob Storage (Artifacts + Knowledge docs) — GATED OFF until consumed ----
+module blob './modules/blob.bicep' = if (deployBlob) {
   name: 'blob'
   params: {
     location: location
@@ -181,8 +201,8 @@ module blob './modules/blob.bicep' = {
   }
 }
 
-// ---- Service Bus (run queue + RunEvent topic) ----
-module serviceBus './modules/serviceBus.bicep' = {
+// ---- Service Bus (run queue + RunEvent topic) — GATED OFF until TOM lands ----
+module serviceBus './modules/serviceBus.bicep' = if (deployServiceBus) {
   name: 'serviceBus'
   params: {
     location: location
@@ -194,13 +214,16 @@ module serviceBus './modules/serviceBus.bicep' = {
   }
 }
 
-// ---- Container Apps (api, workers, chaos-proxy, plugin, omnipizza) ----
-// Explicitly depends on the seeded KV secrets (declared below): the app revisions
-// resolve `db-connection-string` / `session-secret` / `llm-api-key` Key Vault
-// references at provision time, so those secrets MUST exist first (no race).
-module containerApps './modules/containerApps.bicep' = {
+// ---- Container Apps (ONE app: API + built SPA) — gated by deployApp (spec §8) ----
+// Explicitly depends on the seeded KV secrets: the app revision resolves
+// `db-connection-string` / `session-secret` (and, when supplied, `anthropic-api-key`)
+// as Key Vault references at provision time, so those secrets MUST exist first.
+// (A dependsOn entry whose condition is false is dropped by ARM automatically.)
+// NOTE: the TOM runner fleet lives behind `deployRunners` INSIDE the module (default
+// off); re-enabling it later also means passing the SB/Blob wiring params back in.
+module containerApps './modules/containerApps.bicep' = if (deployApp) {
   name: 'containerApps'
-  dependsOn: [ dbConnSecret, sessionSecretKv, llmKeySecret ]
+  dependsOn: [ dbConnSecret, sessionSecretKv, anthropicKeySecret ]
   params: {
     location: location
     tags: tags
@@ -210,27 +233,15 @@ module containerApps './modules/containerApps.bicep' = {
     workloadIdentityId: workloadIdentity.id
     workloadIdentityClientId: workloadIdentity.properties.clientId
     registryServer: acr.properties.loginServer
-    // Owner-delivered images (keystone §7); placeholders keep these apps at zero.
-    chaosProxyImage: empty(chaosProxyImage) ? '${acr.properties.loginServer}/chaos-proxy:latest' : chaosProxyImage
-    playwrightPluginImage: empty(playwrightPluginImage) ? '${acr.properties.loginServer}/plugin-playwright:latest' : playwrightPluginImage
-    omnipizzaImage: empty(omnipizzaImage) ? '${acr.properties.loginServer}/omnipizza:latest' : omnipizzaImage
+    appImage: empty(appImage) ? '${acr.properties.loginServer}/gilgamesh-app:latest' : appImage
     keyVaultUri: keyVault.outputs.keyVaultUri
-    blobEndpoint: blob.outputs.blobEndpoint
-    artifactsContainerName: blob.outputs.artifactsContainerName
-    knowledgeContainerName: blob.outputs.knowledgeContainerName
-    serviceBusNamespaceName: serviceBus.outputs.namespaceName
-    serviceBusNamespaceFqdn: serviceBus.outputs.namespaceFqdn
-    runQueueName: serviceBus.outputs.runQueueName
-    runEventsTopicName: serviceBus.outputs.runEventsTopicName
-    postgresFqdn: postgres.outputs.fqdn
-    postgresDatabaseName: postgres.outputs.databaseName
+    hasAnthropicKey: !empty(anthropicApiKey)
   }
 }
 
-// ---- Seed the DB connection string into Key Vault (Container Apps reference it) ----
-// llm-api-key and session-secret are also stored so the api/workers can read them as
-// Key Vault references. These are control-plane writes at deploy time; the deploying
-// principal needs Key Vault Secrets Officer + network reachability to the vault.
+// ---- Seed deploy-time secrets into Key Vault (the app references them) ----
+// Control-plane writes at deploy time; the deploying principal needs Key Vault
+// Secrets Officer + network reachability to the vault.
 resource kvRef 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: kvName
 }
@@ -253,33 +264,38 @@ resource sessionSecretKv 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   dependsOn: [ keyVault ]
 }
 
-// ALWAYS seed llm-api-key so the unconditional Key Vault reference in containerApps
-// (api + workers bind `secretRef: llm-api-key`) resolves on the very first deploy.
-// When no key is supplied at deploy, a placeholder is written; the owner sets the real
-// value later (`az keyvault secret set`) without redeploying. AgentBrainPort (keystone §5).
-resource llmKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+// Created ONLY when a real key is supplied (spec §5 caveat): the S9 selector treats ANY
+// non-empty ANTHROPIC_API_KEY as "select the real ClaudeBrain", so a placeholder value
+// would silently break the stub-degradation contract. No key ⇒ no secret ⇒ the env var
+// is not bound (hasAnthropicKey=false in the containerApps module) ⇒ the stub answers.
+// Activate later without a redeploy: `az keyvault secret set --name anthropic-api-key`
+// + re-run phase 3 with -p anthropicApiKey=... (binds the env var), per spec §8.
+resource anthropicKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(anthropicApiKey)) {
   parent: kvRef
-  name: 'llm-api-key'
+  name: 'anthropic-api-key'
   properties: {
-    value: empty(llmApiKey) ? 'PLACEHOLDER_SET_BY_OWNER' : llmApiKey
+    value: anthropicApiKey
   }
   dependsOn: [ keyVault ]
 }
 
 // ----------------------------- Outputs ---------------------------------------
-@description('Public api URL (empty if api ingress is internal-only).')
-output apiUrl string = empty(containerApps.outputs.apiFqdn) ? '' : 'https://${containerApps.outputs.apiFqdn}'
-@description('Container Apps environment resource ID.')
-output containerAppsEnvironmentId string = containerApps.outputs.environmentId
-@description('Key Vault URI.')
+// Outputs referencing gated modules use `condition ? … : ''` — ARM's if() only
+// evaluates the taken branch, so phase-1 deploys (deployApp=false) never dereference
+// the absent module.
+@description('Public app URL (empty until deployApp=true).')
+output appUrl string = deployApp ? 'https://${containerApps.outputs.appFqdn}' : ''
+@description('Container Apps environment resource ID (empty until deployApp=true).')
+output containerAppsEnvironmentId string = deployApp ? containerApps.outputs.environmentId : ''
+@description('Key Vault URI (AZURE_KEY_VAULT_URL for the S20 runtime vault).')
 output keyVaultUri string = keyVault.outputs.keyVaultUri
 @description('Postgres FQDN.')
 output postgresFqdn string = postgres.outputs.fqdn
-@description('Blob endpoint.')
-output blobEndpoint string = blob.outputs.blobEndpoint
-@description('Service Bus namespace host.')
-output serviceBusNamespaceFqdn string = serviceBus.outputs.namespaceFqdn
-@description('ACR login server (push images here before scaling runner apps up).')
+@description('Blob endpoint (empty unless deployBlob=true).')
+output blobEndpoint string = deployBlob ? blob.outputs.blobEndpoint : ''
+@description('Service Bus namespace host (empty unless deployServiceBus=true).')
+output serviceBusNamespaceFqdn string = deployServiceBus ? serviceBus.outputs.namespaceFqdn : ''
+@description('ACR login server (phase 2 target: az acr build -r <this> -t gilgamesh-app:<gitsha>).')
 output acrLoginServer string = acr.properties.loginServer
-@description('Workload identity client ID (AZURE_CLIENT_ID for app SDK clients).')
+@description('Workload identity client ID (AZURE_CLIENT_ID for DefaultAzureCredential).')
 output workloadIdentityClientId string = workloadIdentity.properties.clientId
