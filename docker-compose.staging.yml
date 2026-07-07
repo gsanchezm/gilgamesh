@@ -1,0 +1,26 @@
+# Local validation of the STAGING IMAGE (spec staging-deploy §4). Not a dev environment.
+# Delta vs Azure: NODE_ENV/VAULT_MODE — the prod-like vault path needs Managed Identity (S20).
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: gilgamesh
+      POSTGRES_PASSWORD: gilgamesh
+      POSTGRES_DB: gilgamesh
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U gilgamesh -d gilgamesh']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      - '3001:3001'
+    environment:
+      DATABASE_URL: postgresql://gilgamesh:gilgamesh@postgres:5432/gilgamesh?schema=public
+      NODE_ENV: development
+      VAULT_MODE: offline
+    depends_on:
+      postgres:
+        condition: service_healthy

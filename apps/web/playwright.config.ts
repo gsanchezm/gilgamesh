@@ -14,6 +14,9 @@ const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
  */
 export default defineConfig({
   testDir: './e2e',
+  // The container smoke runs only under playwright.staging.config.ts (no webServer here can
+  // stand in for the staging image) — keep it out of the default 18-test suite.
+  testIgnore: '**/staging-smoke.spec.ts',
   fullyParallel: false,
   workers: 1,
   timeout: 30_000,
