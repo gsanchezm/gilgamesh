@@ -27,8 +27,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await app.close();
-  rmSync(dist, { recursive: true, force: true });
+  // Guarded: a beforeAll failure would otherwise mask the root error with a TypeError here.
+  if (app !== undefined) await app.close();
+  if (dist !== undefined) rmSync(dist, { recursive: true, force: true });
 });
 
 describe('WEB_DIST_DIR serving (spec staging-deploy §3)', () => {
@@ -74,5 +75,41 @@ describe('WEB_DIST_DIR serving (spec staging-deploy §3)', () => {
     expect(() =>
       configureWebDist(app as NestExpressApplication, join(tmpdir(), 'gx-empty-nope')),
     ).toThrow(/index\.html/);
+  });
+
+  it('keeps /health excluded from the fallback: JSON, never the SPA shell (a mispointed probe must fail loudly, not fake-green on index.html)', async () => {
+    const res = await request(app.getHttpServer()).get('/health');
+    expect(res.status).toBe(404); // prod serves health only at /api/v1/health (global prefix)
+    expect(res.headers['content-type']).toContain('json');
+    expect(res.text).not.toContain('gx-spa');
+  });
+
+  it('excludes on the path-segment boundary only: /api/v1x is NOT excluded and gets the SPA', async () => {
+    const res = await request(app.getHttpServer()).get('/api/v1x');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('gx-spa');
+  });
+
+  it('serves index.html with no-cache on the direct static path too', async () => {
+    const res = await request(app.getHttpServer()).get('/index.html');
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-cache');
+  });
+});
+
+describe('WEB_DIST_DIR absent (the default): zero behavior change', () => {
+  it('serves no SPA — GET / stays a JSON 404 exactly as today', async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const bare = moduleRef.createNestApplication<NestExpressApplication>();
+    bare.setGlobalPrefix('api/v1');
+    await bare.init();
+    try {
+      const res = await request(bare.getHttpServer()).get('/');
+      expect(res.status).toBe(404);
+      expect(res.headers['content-type']).toContain('json');
+      expect(res.text).not.toContain('gx-spa');
+    } finally {
+      await bare.close();
+    }
   });
 });
