@@ -48,3 +48,13 @@ Feature: Voyage BYOK — per-org Voyage embedding key (voyage integration)
     When I search the knowledge base for "boundary value analysis equivalence partitions"
     Then the search returns at least 1 result
     And embeddings are served by the offline lexical stub
+
+  # Slice 21 (connected-but-gated UI hint). The offline harness has no platform Voyage
+  # space, so a connected key is inactive — the only state reachable here. The active
+  # state (platform Voyage live) is covered by the application + web unit tests.
+  @AC-VUIH-01
+  Scenario: A connected voyage key is flagged inactive over a lexical platform space
+    Given the "voyage" integration is already connected
+    When I GET "/orgs/{orgId}/integrations"
+    Then the response status is 200
+    And the "voyage" integration reports the platform Voyage space as inactive

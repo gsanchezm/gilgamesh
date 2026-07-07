@@ -10,7 +10,7 @@ import {
 import { ApplicationError } from '../errors';
 import type { Clock } from '../ports/clock';
 import type { IdGenerator } from '../ports/id';
-import type { BrainKeyVerifier, RepoProvider, SecretVault } from '../ports/integrations';
+import type { BrainKeyVerifier, PlatformEmbeddingStatus, RepoProvider, SecretVault } from '../ports/integrations';
 import type { FeatureRecord, IntegrationGroup, IntegrationRecord, Role, ScenarioRecord } from '../ports/records';
 import type {
   AuditLogRepository,
@@ -26,6 +26,8 @@ import { requireProjectAccess } from './authz';
 const ADMINS: Role[] = ['OWNER', 'ADMIN'];
 const AUTHORS = ['OWNER', 'ADMIN', 'MEMBER'] as const;
 const SOURCE_REPOS: IntegrationGroup = 'SOURCE_REPOS';
+/** The only integration behind the S19 coherence gate — the one row that carries `platformVoyageActive`. */
+const VOYAGE_KEY = 'voyage';
 
 /** The full connectable catalog: source repos (S6) + AI providers (S9), each with its keystone group. */
 const CATALOG: { key: string; name: string; group: IntegrationGroup }[] = [
@@ -41,6 +43,13 @@ export interface IntegrationView {
   connected: boolean;
   config: Record<string, unknown>;
   connectedAt: Date | null;
+  /**
+   * [S21] Present ONLY on the `voyage` row when the platform embedding-status port is wired: true =
+   * the platform Voyage space is live (a connected org key actually embeds); false = a lexical
+   * platform space (a connected key sits vaulted but UNUSED — the S19 coherence gate). Absent on
+   * every other row and when the status port is not wired. Carries no secret.
+   */
+  platformVoyageActive?: boolean;
 }
 
 interface IntegrationDeps {
@@ -52,6 +61,8 @@ interface IntegrationDeps {
   audit: AuditLogRepository;
   ids: IdGenerator;
   clock: Clock;
+  /** [S21] Optional: platform Voyage-space truth, stamped onto the `voyage` row for the gated UI hint. */
+  embeddingStatus?: PlatformEmbeddingStatus;
 }
 
 async function requireMember(deps: { memberships: MembershipRepository }, userId: string, orgId: string): Promise<Role> {
@@ -81,6 +92,16 @@ function viewOf(
   };
 }
 
+/**
+ * [S21] Stamp the platform Voyage-space truth onto the `voyage` row (only) when the status port is
+ * wired. Every other row and the no-status wiring return the view unchanged (the field stays absent),
+ * so the addition is additive-not-breaking.
+ */
+function withVoyageStatus(view: IntegrationView, status: PlatformEmbeddingStatus | undefined): IntegrationView {
+  if (view.key !== VOYAGE_KEY || !status) return view;
+  return { ...view, platformVoyageActive: status.voyageActive() };
+}
+
 function audit(deps: IntegrationDeps, orgId: string, userId: string, action: string, key: string): Promise<void> {
   return deps.audit.append({
     id: deps.ids.next(),
@@ -103,7 +124,9 @@ export class ListIntegrations {
     await requireMember(this.deps, input.userId, input.orgId);
     const rows = await this.deps.integrations.listForOrg(input.orgId);
     const byKey = new Map(rows.map((r) => [r.key, r]));
-    return CATALOG.map((entry) => viewOf(entry.key, entry.name, entry.group, byKey.get(entry.key)));
+    return CATALOG.map((entry) =>
+      withVoyageStatus(viewOf(entry.key, entry.name, entry.group, byKey.get(entry.key)), this.deps.embeddingStatus),
+    );
   }
 }
 
@@ -142,7 +165,7 @@ export class ConnectIntegration {
     };
     await this.deps.integrations.upsert(rec);
     await audit(this.deps, input.orgId, input.userId, 'integration.connected', input.key);
-    return viewOf(input.key, entry.name, entry.group, rec);
+    return withVoyageStatus(viewOf(input.key, entry.name, entry.group, rec), this.deps.embeddingStatus);
   }
 }
 
@@ -155,7 +178,9 @@ export class DisconnectIntegration {
     const entry = CATALOG.find((e) => e.key === input.key);
     if (!entry) throw new ApplicationError('VALIDATION', `Unknown integration: ${input.key}`);
     const existing = await this.deps.integrations.findByKey(input.orgId, input.key);
-    if (!existing || !existing.connected) return viewOf(input.key, entry.name, entry.group, existing ?? undefined);
+    if (!existing || !existing.connected) {
+      return withVoyageStatus(viewOf(input.key, entry.name, entry.group, existing ?? undefined), this.deps.embeddingStatus);
+    }
 
     const rec: IntegrationRecord = {
       ...existing,
@@ -166,7 +191,7 @@ export class DisconnectIntegration {
     };
     await this.deps.integrations.upsert(rec);
     await audit(this.deps, input.orgId, input.userId, 'integration.disconnected', input.key);
-    return viewOf(input.key, entry.name, entry.group, rec);
+    return withVoyageStatus(viewOf(input.key, entry.name, entry.group, rec), this.deps.embeddingStatus);
   }
 }
 

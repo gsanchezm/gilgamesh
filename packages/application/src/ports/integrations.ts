@@ -31,3 +31,14 @@ export interface SecretVault {
 export interface BrainKeyVerifier {
   verify(input: { key: string; token: string }): Promise<void>;
 }
+
+/**
+ * Platform-only (server env) embedding truth [S21]. `voyageActive()` is true when the PLATFORM has a
+ * live Voyage embedding space (`VOYAGE_API_KEY` set + brain not offline) — exactly the S19 coherence
+ * gate: an org's connected `voyage` key only actually embeds inside an already-Voyage platform space.
+ * The client can't see this env truth, so `ListIntegrations` stamps it onto the `voyage` row for the
+ * connected-but-gated UI hint. The composition root satisfies it from `SelectingBrain.embeddings`.
+ */
+export interface PlatformEmbeddingStatus {
+  voyageActive(): boolean;
+}

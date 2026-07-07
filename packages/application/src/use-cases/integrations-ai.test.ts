@@ -132,3 +132,52 @@ describe('AI provider BYOK — voyage integration (S19, AC-VBYOK-*)', () => {
     ).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 });
+
+describe('Voyage connected-but-gated UI hint — platformVoyageActive (S21, AC-VUIH-*)', () => {
+  let ctx: InMemoryContext;
+  let userId: string;
+  let orgId: string;
+
+  beforeEach(async () => {
+    ctx = createInMemoryContext();
+    userId = (
+      await new RegisterUser(ctx).execute({ firstName: 'I', lastName: 'U', email: 'owner@uruk.io', password: 'C0rrect-Horse!' })
+    ).userId;
+    orgId = (await new CompleteOnboarding(ctx).execute({ userId, projectName: 'OmniPizza', format: 'BDD' })).orgId;
+  });
+
+  const lexical = { voyageActive: () => false };
+  const live = { voyageActive: () => true };
+
+  it('stamps platformVoyageActive=false on the voyage row over a lexical platform space (AC-VUIH-01)', async () => {
+    const list = await new ListIntegrations({ ...ctx, embeddingStatus: lexical }).execute({ userId, orgId });
+    expect(list.find((i) => i.key === 'voyage')?.platformVoyageActive).toBe(false);
+  });
+
+  it('stamps platformVoyageActive=true on the voyage row over a live platform space (AC-VUIH-02)', async () => {
+    const list = await new ListIntegrations({ ...ctx, embeddingStatus: live }).execute({ userId, orgId });
+    expect(list.find((i) => i.key === 'voyage')?.platformVoyageActive).toBe(true);
+  });
+
+  it('never stamps the flag on non-voyage rows (AC-VUIH-04)', async () => {
+    const list = await new ListIntegrations({ ...ctx, embeddingStatus: lexical }).execute({ userId, orgId });
+    for (const i of list.filter((i) => i.key !== 'voyage')) {
+      expect(i.platformVoyageActive).toBeUndefined();
+    }
+  });
+
+  it('omits the flag entirely when no platform status is wired (additive, AC-VUIH-04)', async () => {
+    const list = await new ListIntegrations(ctx).execute({ userId, orgId });
+    expect(list.find((i) => i.key === 'voyage')?.platformVoyageActive).toBeUndefined();
+  });
+
+  it('the connect response carries the flag so the hint shows without a reload (AC-VUIH-01)', async () => {
+    const view = await new ConnectIntegration({ ...ctx, embeddingStatus: lexical }).execute({
+      userId,
+      orgId,
+      key: 'voyage',
+      token: 'pa-voyage-ok',
+    });
+    expect(view).toMatchObject({ key: 'voyage', connected: true, platformVoyageActive: false });
+  });
+});

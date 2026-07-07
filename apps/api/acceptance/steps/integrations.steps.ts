@@ -61,3 +61,14 @@ Then('no integration row or audit event contains the token', async function (thi
 Then('{int} features were imported', function (this: GilgameshWorld, n: number) {
   assert.equal((this.response?.body as { imported: number }).imported, n);
 });
+
+// Slice 21 (AC-VUIH-01): the last integrations-list response flags the connected voyage key as
+// inactive because the offline harness has no platform Voyage space (embeddings stay lexical).
+Then(
+  'the {string} integration reports the platform Voyage space as inactive',
+  function (this: GilgameshWorld, key: string) {
+    const item = (this.response?.body as { key: string; platformVoyageActive?: boolean }[]).find((i) => i.key === key);
+    assert.ok(item, `no ${key} integration in the response`);
+    assert.equal(item?.platformVoyageActive, false);
+  },
+);
