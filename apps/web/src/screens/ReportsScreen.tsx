@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { summarizeAcrossRuns, type RunAggregateInput } from '@gilgamesh/domain';
+import { EmptyState, ErrorState, Spinner } from '@gilgamesh/ui';
 import type { RunSummaryView, RunsClient } from '../lib/runs-client';
 
 export interface ReportsScreenProps {
@@ -32,26 +33,24 @@ export function ReportsScreen({ runsClient, projectId }: ReportsScreenProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // A `useCallback` load (mirroring BillingScreen) so the error state can retry it. Same data path
+  // as before — `runsClient.listRuns` — under the same loading/error gates.
+  const load = useCallback(async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      setRuns(await runsClient.listRuns(projectId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load runs.');
+    } finally {
+      setLoading(false);
+    }
+  }, [runsClient, projectId]);
+
   useEffect(() => {
     if (!projectId) return;
-    let active = true;
-    setLoading(true);
-    runsClient.listRuns(projectId).then(
-      (list) => {
-        if (!active) return;
-        setRuns(list);
-        setLoading(false);
-      },
-      (err: unknown) => {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : 'Could not load runs.');
-        setLoading(false);
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [runsClient, projectId]);
+    void load();
+  }, [projectId, load]);
 
   const summary = useMemo(() => summarizeAcrossRuns(runs.map(toAggregate)), [runs]);
   const barTotal = Math.max(summary.testsExecuted, 1);
@@ -63,14 +62,12 @@ export function ReportsScreen({ runsClient, projectId }: ReportsScreenProps) {
         <p className="gx-room__sub">Test automation report — aggregated across every run in this project.</p>
       </header>
 
-      {error && (
-        <p role="alert" className="gx-login__error">
-          {error}
-        </p>
-      )}
+      {loading && <Spinner label="Loading reports…" />}
+
+      {error && <ErrorState message={error} onRetry={load} />}
 
       {!error && !loading && runs.length === 0 && (
-        <p className="gx-report__empty">No runs yet — trigger a run from the Test Lab to see reports here.</p>
+        <EmptyState title="No runs yet" hint="Trigger a run from the Test Lab to see reports here." />
       )}
 
       {!error && runs.length > 0 && (
