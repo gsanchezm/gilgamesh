@@ -1,0 +1,16 @@
+.git
+.worktrees
+node_modules
+**/node_modules
+**/dist
+**/.turbo
+**/test-results
+**/playwright-report
+design_handoff_gilgamesh
+rag
+PROJECT_STATUS.html
+ORCHESTRATION_PLAN.md
+.env
+**/.env
+Dockerfile
+docker-compose*.yml
