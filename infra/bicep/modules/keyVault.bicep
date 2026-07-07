@@ -39,6 +39,12 @@ param tenantId string = subscription().tenantId
 // Built-in role: "Key Vault Secrets User" — read secret values only (least privilege).
 var keyVaultSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
 
+// Built-in role: "Key Vault Secrets Officer" — get/list/set/delete secrets. Required by
+// the S20 runtime SecretVault (AzureKeyVaultSecretVault behind the frozen S6 SecretVault
+// port): ConnectIntegration WRITES BYOK secrets at runtime (`vault.put` → vault://<scope>),
+// so read-only Secrets User is not enough for the workload identity.
+var keyVaultSecretsOfficerRoleId = 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7'
+
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: keyVaultName
   location: location
@@ -64,12 +70,26 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
 }
 
 // Grant the workload identity read-only access to secrets (scoped to THIS vault).
+// Kept alongside the Officer grant below: reads (Container Apps KV secret references)
+// keep working even if the Officer assignment is ever tightened.
 resource secretsUserAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(keyVault.id, workloadIdentityPrincipalId, keyVaultSecretsUserRoleId)
   scope: keyVault
   properties: {
     principalId: workloadIdentityPrincipalId
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultSecretsUserRoleId)
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Grant the workload identity secret WRITE access (scoped to THIS vault) — the S20
+// runtime SecretVault stores per-org BYOK keys at runtime (the S6 port: put/get).
+resource secretsOfficerAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVault.id, workloadIdentityPrincipalId, keyVaultSecretsOfficerRoleId)
+  scope: keyVault
+  properties: {
+    principalId: workloadIdentityPrincipalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultSecretsOfficerRoleId)
     principalType: 'ServicePrincipal'
   }
 }
