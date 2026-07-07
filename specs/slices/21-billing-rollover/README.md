@@ -32,8 +32,11 @@ rollover job must reset BOTH counters together."* This slice delivers exactly th
   counter would leave the org half-metered against the new period. The single UPDATE guarantees the
   two counters always move to 0 together — a reader can never observe a torn (one-zeroed) state.
 - **S21-C — operator-triggered, no HTTP route (owner scope).** Like `ingest:corpus`, the rollover is
-  run by an operator/cron script (`pnpm --filter @gilgamesh/api rollover:billing`), not exposed as an
-  authenticated API surface. No route, no controller, no keystone change.
+  run by an operator/cron script (`pnpm --filter @gilgamesh/api rollover:billing -- --all`, or
+  `-- --org <id>` for one org), not exposed as an authenticated API surface. No route, no controller,
+  no keystone change. **The all-orgs path requires an EXPLICIT `--all`** (review F2): a bare
+  invocation is refused so a forgotten `--org` on a manual money tool can't silently zero every
+  tenant. An int-test smoke shells the real script to guard the duplicated SQL against drift (F3).
 - **S21-D — counters only.** The rollover zeroes the two period counters ONLY. It does **not** touch
   `plan`/`seats`/`status`/`runMinutesQuota`/`brainTokensQuota`/`billingCycle`/`provider*`/
   `currentPeriodEnd`, and it does **not** delete or mutate the immutable `BrainUsage` / `Invoice`
@@ -58,7 +61,8 @@ together in a single statement; nothing else changes.
 - **api** — `PrismaSubscriptionRepository.resetUsage` (raw-SQL atomic UPDATE, per-org and all-orgs
   branches, byte-identical SQL to the operator script); a `scripts/rollover-billing.mjs` operator
   script modeled on `scripts/ingest-corpus.mjs` (reads `DATABASE_URL`, news up Prisma, resets; an
-  optional `--org <id>` arg, default = all orgs) + a `rollover:billing` package script.
+  `--org <id>` for one org or an EXPLICIT `--all` for every org — a bare call is refused, F2) + a
+  `rollover:billing` package script.
 - **BDD** — `billing-rollover.feature` (AC-ROLL-xx) against API+Postgres, driving the use case over
   the Prisma-backed repository (no HTTP surface exists — the steps invoke the use case directly).
 - **int** — `billing-rollover.int.test.ts` exercising the real atomic reset (per-org, all-orgs,

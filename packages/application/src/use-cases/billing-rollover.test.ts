@@ -40,8 +40,11 @@ describe('ResetBillingUsage (slice 21, closes S14-6)', () => {
   });
 
   it('AC-ROLL-02: leaves every other subscription field untouched', async () => {
-    const before = subscription();
-    await ctx.subscriptions.create(before);
+    await ctx.subscriptions.create(subscription());
+    // Snapshot a CLONE before the reset: the in-memory store returns the very object it mutates in
+    // place, so comparing a post-reset `after` against a live `before` reference would be vacuous —
+    // self-comparison that no extra-column write could ever fail (review F1). The clone pins values.
+    const before = structuredClone((await ctx.subscriptions.findByOrg('org-1'))!);
     await rollover.execute({ orgId: 'org-1' });
 
     const after = (await ctx.subscriptions.findByOrg('org-1'))!;

@@ -1,3 +1,6 @@
+import { execFile } from 'node:child_process';
+import { resolve } from 'node:path';
+import { promisify } from 'node:util';
 import { ResetBillingUsage } from '@gilgamesh/application';
 import { type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -5,6 +8,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PrismaPersistenceModule } from '../../src/persistence/prisma/prisma-persistence.module';
 import { PrismaSubscriptionRepository } from '../../src/persistence/prisma/prisma-repositories';
 import { PrismaService } from '../../src/persistence/prisma/prisma.service';
+
+const execFileAsync = promisify(execFile);
+// test:int runs with cwd = apps/api, so the operator script sits under ./scripts.
+const SCRIPT_PATH = resolve(process.cwd(), 'scripts/rollover-billing.mjs');
+/** Run the REAL operator script in a child node process (inherits DATABASE_URL from the int env). */
+const runScript = (args: string[]) =>
+  execFileAsync(process.execPath, [SCRIPT_PATH, ...args], { env: process.env });
 
 /**
  * Slice 21 (closes S14-6) — the REAL atomic usage rollover against Postgres. `resetUsage` is a
@@ -163,5 +173,45 @@ describe('Billing usage rollover (Prisma · real Postgres)', () => {
     const after = await subFor(orgId);
     expect(after.runMinutesUsed).toBe(0);
     expect(after.brainTokensUsed).toBe(0);
+  });
+});
+
+// Shells the REAL rollover-billing.mjs so its own (duplicated) SQL is exercised end-to-end against
+// Postgres — the drift guard for a money tool whose statement is only otherwise int-tested via the
+// adapter (review F3). Also proves the F2 all-orgs refusal doesn't touch data.
+describe('Billing rollover operator script (real .mjs · drift + refusal guards)', () => {
+  it('--org <id> zeroes BOTH counters for that org via the script’s own SQL', async () => {
+    const orgId = await seedOrgWithSubscription({ runMinutesUsed: 300, brainTokensUsed: 88_000 });
+    const { stdout } = await runScript(['--org', orgId]);
+    expect(stdout).toContain('1 row');
+    const after = await subFor(orgId);
+    expect(after.runMinutesUsed).toBe(0);
+    expect(after.brainTokensUsed).toBe(0);
+  });
+
+  it('--all zeroes every org via the script', async () => {
+    const a = await seedOrgWithSubscription({ runMinutesUsed: 10, brainTokensUsed: 1_000 });
+    const b = await seedOrgWithSubscription({ runMinutesUsed: 20, brainTokensUsed: 2_000 });
+    await runScript(['--all']);
+    for (const orgId of [a, b]) {
+      const after = await subFor(orgId);
+      expect(after.runMinutesUsed).toBe(0);
+      expect(after.brainTokensUsed).toBe(0);
+    }
+  });
+
+  it('refuses a bare invocation (no --org/--all) and leaves every counter intact (F2)', async () => {
+    const orgId = await seedOrgWithSubscription({ runMinutesUsed: 55, brainTokensUsed: 4_321 });
+    const err = await runScript([]).then(
+      () => null,
+      (e: NodeJS.ErrnoException & { stderr?: string }) => e,
+    );
+    expect(err).not.toBeNull();
+    expect(err?.code).toBe(1);
+    expect(String(err?.stderr)).toContain('Refusing');
+    // The guard fired before any UPDATE — nothing was reset.
+    const after = await subFor(orgId);
+    expect(after.runMinutesUsed).toBe(55);
+    expect(after.brainTokensUsed).toBe(4_321);
   });
 });

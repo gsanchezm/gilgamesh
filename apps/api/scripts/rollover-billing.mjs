@@ -6,30 +6,47 @@
 // matches. Operator-/cron-triggered — there is deliberately no HTTP surface (owner decision S21-C).
 //
 //   DATABASE_URL=postgresql://gilgamesh:gilgamesh@localhost:5432/gilgamesh?schema=public \
-//     node apps/api/scripts/rollover-billing.mjs                 # every org
+//     node apps/api/scripts/rollover-billing.mjs --all              # every org (EXPLICIT)
 //   DATABASE_URL=... node apps/api/scripts/rollover-billing.mjs --org <orgId>   # one org
 //
-// Or via the workspace script: `pnpm --filter @gilgamesh/api rollover:billing [-- --org <orgId>]`.
+// Or via the workspace script: `pnpm --filter @gilgamesh/api rollover:billing -- --all` (or `--org <id>`).
+//
+// The all-orgs path requires an EXPLICIT `--all` (review F2): a forgotten `--org` on a manual money
+// tool would otherwise silently zero every tenant's usage for the whole period. A cron caller passes
+// `--all` once; a human can no longer nuke all tenants by omission.
 //
 // The SQL below is the SAME statement as PrismaSubscriptionRepository.resetUsage (identical
 // columns/values/predicate; only template-literal indentation differs) — this operator script can't
 // import the compiled TS adapter (the ingest-corpus.mjs duplication precedent). Any semantic
-// divergence would be a money bug.
+// divergence would be a money bug; the int-test smoke shells THIS script to guard against drift.
 import { PrismaClient } from '@prisma/client';
 
-/** Parse an optional `--org <id>` flag; undefined = reset every subscription. */
-function parseOrgArg(argv) {
+/**
+ * Parse the target: `--org <id>` resets one org; `--all` resets every subscription. Exactly one is
+ * required — a bare invocation is refused so a forgotten `--org` can't zero the whole platform (F2).
+ * Returns the orgId, or `undefined` for the (explicitly-requested) all-orgs reset.
+ */
+function parseTarget(argv) {
+  const all = argv.includes('--all');
   const i = argv.indexOf('--org');
-  if (i === -1) return undefined;
-  const val = argv[i + 1];
-  if (!val || val.startsWith('--')) {
+  const org = i === -1 ? undefined : argv[i + 1];
+  if (i !== -1 && (!org || org.startsWith('--'))) {
     throw new Error('--org requires an organization id, e.g. --org 018f...');
   }
-  return val;
+  if (org && all) {
+    throw new Error('Pass either --org <id> or --all, not both.');
+  }
+  if (!org && !all) {
+    throw new Error(
+      'Refusing to reset billing usage for EVERY tenant by default. ' +
+        'Pass --all to reset all orgs, or --org <id> to reset one.',
+    );
+  }
+  return org;
 }
 
 async function main() {
-  const orgId = parseOrgArg(process.argv.slice(2));
+  const orgId = parseTarget(process.argv.slice(2));
   const prisma = new PrismaClient();
   try {
     // $executeRaw returns the affected-row count. Both counters reset TOGETHER (S14-6) in one
@@ -52,6 +69,8 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err);
+  const msg = err instanceof Error ? err.message : String(err);
+  // Scrub any postgres credentials Prisma may echo into a connection error — no DSN in operator logs (F4).
+  console.error(msg.replace(/(postgres(?:ql)?:\/\/)[^@\s]+@/gi, '$1***@'));
   process.exit(1);
 });
