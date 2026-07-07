@@ -1,23 +1,28 @@
 // =============================================================================
-// Gilgamesh — Container Apps module (DESIGN ONLY — never deployed)
+// Gilgamesh — Container Apps module (v2 — STAGING DEPLOYABLE, spec staging-deploy §2/§5)
 // -----------------------------------------------------------------------------
-// Hosts the keystone §4 runtime as Azure Container Apps on the Consumption plan:
-//   - api          (apps/api, NestJS)        — external HTTPS ingress, HTTP scaler
+// Hosts the platform on the Consumption plan:
+//   - app          (apps/api serving API + built SPA)  — external HTTPS ingress.
+//     ONE container, ONE origin (owner decision SD-3): `__Host-` cookies + the CSRF
+//     double-submit behave exactly as in the Playwright harness. The image sets
+//     WEB_DIST_DIR; probes hit /api/v1/health (prod global prefix, no exclusions).
+//
+// GATED OFF behind `deployRunners` (default false — TOM will return, keystone §7
+// BLOCKED-UNTIL-DELIVERED; the resources are kept, not deleted):
 //   - workers      (apps/workers)            — no ingress, KEDA Service Bus scaler
 //   - chaos-proxy  (kernel runner :50051)    — internal gRPC, owner-delivered image
 //   - playwright   (kernel plugin)           — internal gRPC, owner-delivered image
 //   - omnipizza    (sample SUT)              — internal HTTP, owner-delivered image
+//   The Service Bus KEDA scale rule + the legacy env names (BLOB_*/SERVICE_BUS_*/
+//   POSTGRES_*/LLM_API_KEY/…) live ONLY on this gated path; their wiring params
+//   default to '' so the ungated (app-only) deploy needs none of them. Re-enabling
+//   runners also requires re-seeding the `llm-api-key` KV secret (main.bicep now
+//   seeds `anthropic-api-key` conditionally instead) and passing the SB/Blob params.
 //
-// SCALE-TO-ZERO (decision #11 / cost): every app has minReplicas = 0. Idle cost on
-// the Consumption plan is ~$0 (billed per vCPU-second / GiB-second only while active).
-// Workers + runners are woken by KEDA on the Service Bus 'runs' queue depth; the api
-// is woken by inbound HTTP. chaos-proxy / playwright / omnipizza are owner-delivered
-// (keystone §7 BLOCKED-UNTIL-DELIVERED) — their images default to placeholders and the
-// apps stay at zero replicas until real images + the run queue make them scale up.
-//
-// AUTH: every app runs under one *user-assigned Managed Identity* (passed in) used for
-// ACR pull, Key Vault references, Postgres (Entra), Blob (User-Delegation SAS) and
-// Service Bus. No connection strings or keys live in plaintext env vars.
+// SCALE: the app runs minReplicas 0 / maxReplicas 1 — see the inline invariant note.
+// AUTH: everything runs under one *user-assigned Managed Identity* (passed in) used
+// for ACR pull, Key Vault secret references and the S20 runtime SecretVault
+// (DefaultAzureCredential via AZURE_CLIENT_ID). No plaintext secrets in env vars.
 // =============================================================================
 
 @description('Azure region.')
@@ -42,13 +47,27 @@ param workloadIdentityId string
 @description('Client ID of the workload identity (AZURE_CLIENT_ID for DefaultAzureCredential).')
 param workloadIdentityClientId string
 
-@description('Container registry login server (e.g. gilgameshqa.azurecr.io). ACR pull via identity.')
+@description('Container registry login server (e.g. gilgameshstagingacr.azurecr.io). ACR pull via identity.')
 param registryServer string
 
-// ---- Container images (owner-supplied at deploy; placeholders keep apps at zero) ----
-@description('API image reference.')
-param apiImage string = '${registryServer}/gilgamesh-api:latest'
-@description('Workers image reference.')
+@description('Key Vault URI: builds the Key Vault secret references AND is handed to the app as AZURE_KEY_VAULT_URL (S20 runtime SecretVault).')
+param keyVaultUri string
+
+// ---- The single product app (API + built SPA) ----
+@description('Full image reference for the app (built by `az acr build`, spec §8 phase 2).')
+param appImage string
+
+@description('Port the API listens on (loadConfig API_PORT; ingress targetPort + probes must match).')
+param appPort int = 3001
+
+@description('Bind ANTHROPIC_API_KEY from the anthropic-api-key KV secret. ONLY true when the secret exists (main.bicep passes !empty(anthropicApiKey)) — referencing a missing secret fails the revision, and a placeholder value would select the REAL brain (S9 selector).')
+param hasAnthropicKey bool = false
+
+// ---- Gated runner fleet (TOM — keystone §7 BLOCKED-UNTIL-DELIVERED) ----
+@description('Deploy the workers/chaos-proxy/plugin-playwright/omnipizza fleet. Default OFF until the TOM kernel lands; the ungated path needs none of the params below.')
+param deployRunners bool = false
+
+@description('Workers image reference (runners path only).')
 param workersImage string = '${registryServer}/gilgamesh-workers:latest'
 @description('chaos-proxy (kernel) image — OWNER-DELIVERED (keystone §7). Placeholder until provided.')
 param chaosProxyImage string = '${registryServer}/chaos-proxy:latest'
@@ -57,49 +76,40 @@ param playwrightPluginImage string = '${registryServer}/plugin-playwright:latest
 @description('OmniPizza sample SUT image — OWNER-DELIVERED (keystone §7). Placeholder until provided.')
 param omnipizzaImage string = '${registryServer}/omnipizza:latest'
 
-// ---- Wiring (non-secret config) ----
-@description('Key Vault URI used to build Key Vault references for secrets.')
-param keyVaultUri string
-@description('Primary blob endpoint (ArtifactStorage backend).')
-param blobEndpoint string
-@description('Artifacts container name.')
-param artifactsContainerName string
-@description('Knowledge container name.')
-param knowledgeContainerName string
-@description('Service Bus namespace name (KEDA scaler + SDK).')
-param serviceBusNamespaceName string
-@description('Service Bus fully-qualified namespace host.')
-param serviceBusNamespaceFqdn string
-@description('Run-queue name (worker/runner KEDA trigger).')
-param runQueueName string
-@description('RunEvent topic name.')
-param runEventsTopicName string
-@description('Postgres FQDN.')
-param postgresFqdn string
-@description('Application database name.')
-param postgresDatabaseName string
-
-// ---- Network / ingress ----
-@description('Optional infrastructure subnet resource ID for VNet-integrated environment. Empty = managed network.')
-param infrastructureSubnetId string = ''
-@description('Make the api ingress internal-only (true) or external/public (false). QA default external.')
-param apiInternalOnly bool = false
-@description('HTTP port the api container listens on.')
-param apiPort int = 3000
+// Legacy wiring consumed ONLY by the gated runners path. Defaults keep the app-only
+// deploy parameter-free (main.bicep passes none of these while deployRunners=false).
+@description('Primary blob endpoint (runners path only).')
+param blobEndpoint string = ''
+@description('Artifacts container name (runners path only).')
+param artifactsContainerName string = ''
+@description('Knowledge container name (runners path only).')
+param knowledgeContainerName string = ''
+@description('Service Bus namespace name (KEDA scaler; runners path only).')
+param serviceBusNamespaceName string = ''
+@description('Service Bus fully-qualified namespace host (runners path only).')
+param serviceBusNamespaceFqdn string = ''
+@description('Run-queue name (KEDA trigger; runners path only).')
+param runQueueName string = ''
+@description('RunEvent topic name (runners path only).')
+param runEventsTopicName string = ''
+@description('Postgres FQDN (runners path only).')
+param postgresFqdn string = ''
+@description('Application database name (runners path only).')
+param postgresDatabaseName string = ''
 @description('gRPC port chaos-proxy listens on (keystone §7 :50051).')
 param chaosProxyPort int = 50051
 @description('HTTP port the OmniPizza SUT listens on.')
 param omnipizzaPort int = 8080
-
-// ---- Scale bounds (min always 0 = scale-to-zero) ----
-@description('Max api replicas.')
-param apiMaxReplicas int = 3
-@description('Max worker replicas.')
+@description('Max worker replicas (runners path only).')
 param workersMaxReplicas int = 4
 @description('Max runner replicas (chaos-proxy / plugins).')
 param runnerMaxReplicas int = 2
 @description('Service Bus queue depth that triggers one worker/runner replica.')
 param queueMessagesPerReplica int = 5
+
+// ---- Network ----
+@description('Optional infrastructure subnet resource ID for VNet-integrated environment. Empty = managed network.')
+param infrastructureSubnetId string = ''
 
 var useVnet = !empty(infrastructureSubnetId)
 
@@ -119,11 +129,56 @@ var registries = [
   }
 ]
 
-// Key Vault references (secret name in KV must be seeded by the deploy script).
-//   db-connection-string : Postgres DSN (or omit when using Entra-only DB auth)
-//   llm-api-key          : AgentBrainPort provider key (Claude default — keystone §5)
-//   session-secret       : httpOnly session signing key (keystone §0 slice-1 auth)
-var apiSecrets = [
+// -----------------------------------------------------------------------------
+// app — secrets + env (spec staging-deploy §5 matrix; names are the REAL ones the
+// API reads: apps/api/src/config.ts · infra/azure-key-vault.ts · infra/selecting-brain.ts).
+// Deliberately ABSENT: REDIS_URL (single replica — see the scale invariant), every
+// *_MODE (offline pins are for tests only; staging is real-or-degrade), and the
+// legacy LLM_API_KEY / KEY_VAULT_URI / PORT / BLOB_* / SERVICE_BUS_* names.
+// -----------------------------------------------------------------------------
+var appSecrets = concat(
+  [
+    {
+      name: 'db-connection-string'
+      keyVaultUrl: '${keyVaultUri}secrets/db-connection-string'
+      identity: workloadIdentityId
+    }
+    {
+      name: 'session-secret'
+      keyVaultUrl: '${keyVaultUri}secrets/session-secret'
+      identity: workloadIdentityId
+    }
+  ],
+  hasAnthropicKey ? [
+    {
+      name: 'anthropic-api-key'
+      keyVaultUrl: '${keyVaultUri}secrets/anthropic-api-key'
+      identity: workloadIdentityId
+    }
+  ] : []
+)
+
+var appEnv = concat(
+  [
+    { name: 'NODE_ENV', value: 'production' } // belt+braces with the image ENV
+    { name: 'API_PORT', value: string(appPort) } // '3001' — loadConfig(); matches targetPort
+    { name: 'AZURE_KEY_VAULT_URL', value: keyVaultUri } // S20 vaultFromEnv → AzureKeyVaultSecretVault
+    { name: 'AZURE_CLIENT_ID', value: workloadIdentityClientId } // DefaultAzureCredential → this UAMI
+    { name: 'CORS_ORIGINS', value: '' } // same-origin only (SD-3: the API serves the SPA)
+    { name: 'DATABASE_URL', secretRef: 'db-connection-string' }
+    { name: 'SESSION_SECRET', secretRef: 'session-secret' } // not yet consumed by the app (spec §5 keeps it provisioned)
+  ],
+  hasAnthropicKey ? [
+    { name: 'ANTHROPIC_API_KEY', secretRef: 'anthropic-api-key' } // absent ⇒ deterministic stub (S9)
+  ] : []
+)
+
+// -----------------------------------------------------------------------------
+// Runners path only (deployRunners): legacy secrets/env kept verbatim for TOM's
+// return. NOTE: `llm-api-key` is no longer seeded by main.bicep — re-seed it (or
+// migrate workers to `anthropic-api-key`) before flipping deployRunners on.
+// -----------------------------------------------------------------------------
+var runnerSecrets = [
   {
     name: 'db-connection-string'
     keyVaultUrl: '${keyVaultUri}secrets/db-connection-string'
@@ -134,17 +189,11 @@ var apiSecrets = [
     keyVaultUrl: '${keyVaultUri}secrets/llm-api-key'
     identity: workloadIdentityId
   }
-  {
-    name: 'session-secret'
-    keyVaultUrl: '${keyVaultUri}secrets/session-secret'
-    identity: workloadIdentityId
-  }
 ]
 
-// Non-secret env shared by api + workers (managed-identity clients read these).
-var commonEnv = [
+var runnerCommonEnv = [
   { name: 'NODE_ENV', value: 'production' }
-  { name: 'AZURE_CLIENT_ID', value: workloadIdentityClientId } // DefaultAzureCredential → this UAMI
+  { name: 'AZURE_CLIENT_ID', value: workloadIdentityClientId }
   { name: 'KEY_VAULT_URI', value: keyVaultUri }
   { name: 'BLOB_ENDPOINT', value: blobEndpoint }
   { name: 'ARTIFACTS_CONTAINER', value: artifactsContainerName }
@@ -154,16 +203,16 @@ var commonEnv = [
   { name: 'RUN_EVENTS_TOPIC', value: runEventsTopicName }
   { name: 'POSTGRES_FQDN', value: postgresFqdn }
   { name: 'POSTGRES_DB', value: postgresDatabaseName }
-  { name: 'CHAOS_PROXY_HOST', value: 'chaos-proxy' }       // internal env DNS
+  { name: 'CHAOS_PROXY_HOST', value: 'chaos-proxy' } // internal env DNS
   { name: 'CHAOS_PROXY_PORT', value: string(chaosProxyPort) }
 ]
 
-// KEDA Service Bus queue scaler (managed-identity auth) for workers + runners.
-// ASSUMPTION (validate on first `bicep build` / portal): managed-identity auth for the
-// azure-servicebus scaler is expressed as `rules[].custom.identity` = the UAMI resource
-// ID, with `namespace` + `queueName` in metadata (Entra auth, no connection string). If a
-// build rejects this, move `identity` to the rule level (`rules[].identity`). Tracked as an
-// open question in specs/infra/azure-environments.md §13.
+// KEDA Service Bus queue scaler (managed-identity auth) — GATED runners path only.
+// ASSUMPTION (validate when deployRunners first flips on): managed-identity auth for
+// the azure-servicebus scaler is expressed as `rules[].custom.identity` = the UAMI
+// resource ID, with `namespace` + `queueName` in metadata. If a build rejects this,
+// move `identity` to the rule level (`rules[].identity`). Tracked in
+// specs/infra/azure-environments.md §13.
 var serviceBusScaleRule = {
   name: 'run-queue-depth'
   custom: {
@@ -179,7 +228,7 @@ var serviceBusScaleRule = {
 
 // -----------------------------------------------------------------------------
 // Container Apps managed environment (Consumption). VNet-integrated when a subnet
-// is supplied; otherwise Azure-managed networking (cheapest QA default).
+// is supplied; otherwise Azure-managed networking (cheapest default).
 // -----------------------------------------------------------------------------
 resource managedEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: environmentName
@@ -193,7 +242,7 @@ resource managedEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
         sharedKey: logAnalyticsSharedKey
       }
     }
-    zoneRedundant: false // QA: single zone (cost).
+    zoneRedundant: false // staging: single zone (cost).
     vnetConfiguration: useVnet ? {
       infrastructureSubnetId: infrastructureSubnetId
       internal: true // private environment — no public env endpoint
@@ -202,10 +251,11 @@ resource managedEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
 }
 
 // -----------------------------------------------------------------------------
-// api — external HTTPS ingress (managed cert), HTTP concurrency scaler, scale-to-zero.
+// app — API + built SPA in ONE container (owner decision SD-3). External HTTPS
+// ingress (ACA-managed cert), scale-to-zero, probes on the prod health route.
 // -----------------------------------------------------------------------------
-resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
-  name: 'api'
+resource app 'Microsoft.App/containerApps@2024-03-01' = {
+  name: 'app'
   location: location
   tags: tags
   identity: identityBlock
@@ -214,32 +264,43 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
     configuration: {
       activeRevisionsMode: 'Single'
       ingress: {
-        external: !apiInternalOnly
-        targetPort: apiPort
+        external: true
+        targetPort: appPort
         transport: 'auto'
         allowInsecure: false
         traffic: [ { latestRevision: true, weight: 100 } ]
       }
       registries: registries
-      secrets: apiSecrets
+      secrets: appSecrets
     }
     template: {
       containers: [
         {
-          name: 'api'
-          image: apiImage
+          name: 'app'
+          image: appImage
           resources: { cpu: json('0.5'), memory: '1Gi' }
-          env: concat(commonEnv, [
-            { name: 'PORT', value: string(apiPort) }
-            { name: 'DATABASE_URL', secretRef: 'db-connection-string' }
-            { name: 'LLM_API_KEY', secretRef: 'llm-api-key' }
-            { name: 'SESSION_SECRET', secretRef: 'session-secret' }
-          ])
+          env: appEnv
+          probes: [
+            {
+              // Cold start + `prisma migrate deploy` on boot: 24 × 5s = 120s headroom.
+              type: 'Startup'
+              httpGet: { path: '/api/v1/health', port: appPort }
+              periodSeconds: 5
+              failureThreshold: 24
+            }
+            {
+              type: 'Liveness'
+              httpGet: { path: '/api/v1/health', port: appPort }
+              periodSeconds: 30
+            }
+          ]
         }
       ]
       scale: {
-        minReplicas: 0 // scale-to-zero
-        maxReplicas: apiMaxReplicas
+        // max 1 replica while rate-limit/SSO-state are in-memory; raising it requires REDIS_URL first
+        // (spec staging-deploy §2 invariant: maxReplicas and "no REDIS_URL" must change together).
+        minReplicas: 0 // scale-to-zero (cold start accepted for staging, spec §9)
+        maxReplicas: 1
         rules: [
           {
             name: 'http-concurrency'
@@ -252,10 +313,10 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
 }
 
 // -----------------------------------------------------------------------------
-// workers — no ingress; KEDA scales on the 'runs' Service Bus queue (scale-to-zero).
+// workers — GATED (deployRunners). No ingress; KEDA scales on the 'runs' queue.
 // Invokes @gilgamesh/kernel → chaos-proxy over internal gRPC.
 // -----------------------------------------------------------------------------
-resource workersApp 'Microsoft.App/containerApps@2024-03-01' = {
+resource workersApp 'Microsoft.App/containerApps@2024-03-01' = if (deployRunners) {
   name: 'workers'
   location: location
   tags: tags
@@ -265,7 +326,7 @@ resource workersApp 'Microsoft.App/containerApps@2024-03-01' = {
     configuration: {
       activeRevisionsMode: 'Single'
       registries: registries
-      secrets: apiSecrets
+      secrets: runnerSecrets
     }
     template: {
       containers: [
@@ -273,7 +334,7 @@ resource workersApp 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'workers'
           image: workersImage
           resources: { cpu: json('0.5'), memory: '1Gi' }
-          env: concat(commonEnv, [
+          env: concat(runnerCommonEnv, [
             { name: 'DATABASE_URL', secretRef: 'db-connection-string' }
             { name: 'LLM_API_KEY', secretRef: 'llm-api-key' }
           ])
@@ -289,10 +350,10 @@ resource workersApp 'Microsoft.App/containerApps@2024-03-01' = {
 }
 
 // -----------------------------------------------------------------------------
-// chaos-proxy — internal gRPC ingress on :50051 (keystone §7). OWNER-DELIVERED image.
-// Scales on the run queue so it is present while a Run is active, zero when idle.
+// chaos-proxy — GATED (deployRunners). Internal gRPC ingress on :50051 (keystone §7).
+// OWNER-DELIVERED image. Present while a Run is active, zero when idle.
 // -----------------------------------------------------------------------------
-resource chaosProxyApp 'Microsoft.App/containerApps@2024-03-01' = {
+resource chaosProxyApp 'Microsoft.App/containerApps@2024-03-01' = if (deployRunners) {
   name: 'chaos-proxy'
   location: location
   tags: tags
@@ -332,9 +393,9 @@ resource chaosProxyApp 'Microsoft.App/containerApps@2024-03-01' = {
 }
 
 // -----------------------------------------------------------------------------
-// plugin-playwright — internal gRPC plugin server (keystone §7). OWNER-DELIVERED.
+// plugin-playwright — GATED (deployRunners). Internal gRPC plugin server (keystone §7).
 // -----------------------------------------------------------------------------
-resource playwrightApp 'Microsoft.App/containerApps@2024-03-01' = {
+resource playwrightApp 'Microsoft.App/containerApps@2024-03-01' = if (deployRunners) {
   name: 'plugin-playwright'
   location: location
   tags: tags
@@ -374,9 +435,9 @@ resource playwrightApp 'Microsoft.App/containerApps@2024-03-01' = {
 }
 
 // -----------------------------------------------------------------------------
-// omnipizza — sample System-Under-Test (keystone §7). OWNER-DELIVERED. Internal HTTP.
+// omnipizza — GATED (deployRunners). Sample System-Under-Test (keystone §7). Internal HTTP.
 // -----------------------------------------------------------------------------
-resource omnipizzaApp 'Microsoft.App/containerApps@2024-03-01' = {
+resource omnipizzaApp 'Microsoft.App/containerApps@2024-03-01' = if (deployRunners) {
   name: 'omnipizza'
   location: location
   tags: tags
@@ -415,5 +476,5 @@ resource omnipizzaApp 'Microsoft.App/containerApps@2024-03-01' = {
 output environmentId string = managedEnv.id
 @description('Default domain of the managed environment.')
 output environmentDefaultDomain string = managedEnv.properties.defaultDomain
-@description('Public FQDN of the api app (empty when internal-only).')
-output apiFqdn string = apiInternalOnly ? '' : apiApp.properties.configuration.ingress.fqdn
+@description('Public FQDN of the app (API + SPA).')
+output appFqdn string = app.properties.configuration.ingress.fqdn
