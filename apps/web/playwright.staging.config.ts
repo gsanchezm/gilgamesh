@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /** Smoke against the STAGING IMAGE (docker-compose.staging.yml) or a real staging URL.
- * Run: docker compose -f docker-compose.staging.yml up -d --build
+ * Run: docker compose -f docker-compose.staging.yml up -d --build --wait
  *      pnpm --filter @gilgamesh/web exec playwright test --config playwright.staging.config.ts
  * Override target: STAGING_BASE_URL=https://<app>.azurecontainerapps.io */
 export default defineConfig({

@@ -12,5 +12,10 @@ PROJECT_STATUS.html
 ORCHESTRATION_PLAN.md
 .env
 **/.env
+**/.env*
+.pnpm-store
+.claude
+*.bicepparam
+**/*.bicepparam
 Dockerfile
 docker-compose*.yml
