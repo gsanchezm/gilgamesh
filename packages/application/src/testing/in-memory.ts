@@ -388,6 +388,20 @@ export class InMemorySubscriptionRepository implements SubscriptionRepository {
     const sub = this.byOrg.get(orgId);
     if (sub) sub.brainTokensUsed = Math.min(sub.brainTokensUsed + tokens, BRAIN_TOKENS_USED_CAP);
   }
+  async resetUsage(orgId?: string): Promise<number> {
+    // Period rollover (slice 21, S14-6): BOTH counters to 0 TOGETHER — the synchronous loop makes
+    // that atomic under JS interleaving (no await between the two writes). Counts every MATCHED row
+    // (even one already at zero) so a no-change reset still reports 1, mirroring Postgres' affected
+    // count for a no-op UPDATE. Omitting orgId targets every subscription.
+    let reset = 0;
+    for (const sub of this.byOrg.values()) {
+      if (orgId !== undefined && sub.orgId !== orgId) continue;
+      sub.runMinutesUsed = 0;
+      sub.brainTokensUsed = 0;
+      reset += 1;
+    }
+    return reset;
+  }
   async findByProviderCustomerId(providerCustomerId: string): Promise<SubscriptionRecord | null> {
     for (const s of this.byOrg.values()) if (s.providerCustomerId === providerCustomerId) return s;
     return null;

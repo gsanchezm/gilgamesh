@@ -13,7 +13,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "ingest:corpus": "node scripts/ingest-corpus.mjs"
+    "ingest:corpus": "node scripts/ingest-corpus.mjs",
+    "rollover:billing": "node scripts/rollover-billing.mjs"
   },
   "dependencies": {
     "@azure/identity": "^4.13.1",

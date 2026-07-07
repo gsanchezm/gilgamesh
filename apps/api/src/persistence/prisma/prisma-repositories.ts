@@ -418,6 +418,24 @@ export class PrismaSubscriptionRepository implements SubscriptionRepository {
       SET brain_tokens_used = LEAST(brain_tokens_used::bigint + ${tokens}, ${BRAIN_TOKENS_USED_CAP})::int
       WHERE org_id = ${orgId}::uuid`;
   }
+  async resetUsage(orgId?: string): Promise<number> {
+    // Billing-period rollover (slice 21, closes S14-6): BOTH counters zeroed in ONE atomic statement
+    // so they can never diverge — a reset that cleared only one would leave the org half-metered.
+    // Writes the constant 0 (reads nothing first), so unlike the counter-omitting save() it cannot
+    // clobber a concurrent charge on a stale snapshot: Postgres row-locking serializes charge vs
+    // reset — the charge lands fully before (cleared with the period) or fully after (counts to the
+    // new period). Touches only the two counters; every other column is preserved. Returns the
+    // affected-row count (0 when the org has no subscription). Omitting orgId resets every row.
+    // NOTE: keep this SQL byte-identical to apps/api/scripts/rollover-billing.mjs (that operator
+    // script can't import this compiled adapter — the ingest-corpus duplication precedent).
+    if (orgId === undefined) {
+      return this.db.$executeRaw`
+        UPDATE subscriptions SET run_minutes_used = 0, brain_tokens_used = 0`;
+    }
+    return this.db.$executeRaw`
+      UPDATE subscriptions SET run_minutes_used = 0, brain_tokens_used = 0
+      WHERE org_id = ${orgId}::uuid`;
+  }
 }
 
 export class PrismaInvoiceRepository implements InvoiceRepository {

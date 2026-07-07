@@ -15,6 +15,7 @@ export * from './use-cases/testlab-testcases';
 export * from './use-cases/testlab-generate';
 export * from './use-cases/runs';
 export * from './use-cases/subscription';
+export * from './use-cases/billing-rollover';
 export * from './use-cases/invoices';
 export * from './use-cases/chat';
 export * from './use-cases/chat-tools';

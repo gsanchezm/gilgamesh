@@ -180,6 +180,17 @@ export interface SubscriptionRepository {
    * so the counter clamps instead of overflowing inside the charge transaction.
    */
   chargeBrainTokens(orgId: string, tokens: number): Promise<void>;
+  /**
+   * Billing-period ROLLOVER (slice 21, closes owner note S14-6): atomically zeroes BOTH usage
+   * counters (`runMinutesUsed` AND `brainTokensUsed`) — never one without the other — in a single
+   * statement. Omitting `orgId` resets every subscription; otherwise only that org's. Returns the
+   * number of subscription rows reset (a no-op → 0 when the org has no row). A DEDICATED atomic op,
+   * NOT `save()`: it writes the constant 0 and reads nothing first, so — unlike the counter-omitting
+   * `save()` (review S14 #1) — it structurally cannot clobber a concurrent atomic charge with a
+   * stale snapshot; a charge just serializes fully before (cleared with the period) or after
+   * (counts to the new period). Touches only the two counters — every other column is preserved.
+   */
+  resetUsage(orgId?: string): Promise<number>;
   /** Resolves the tenant behind a provider webhook (slice 13): Stripe `customer` → org. */
   findByProviderCustomerId(providerCustomerId: string): Promise<SubscriptionRecord | null>;
 }
