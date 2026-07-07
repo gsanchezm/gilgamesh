@@ -12,8 +12,10 @@ export interface ApiConfig {
   nodeEnv: string;
   port: number;
   databaseUrl: string;
-  /** Redis connection URL — backs the production rate-limit store (and later queues/streams). */
-  redisUrl: string;
+  /** Redis connection URL — backs the rate-limit and SSO-state stores. Absent = both fall back
+   *  to their in-memory adapters, which is correct ONLY single-replica (spec staging-deploy §2:
+   *  this and the platform's max-replica count must change together). */
+  redisUrl?: string;
   /** Allowlisted browser origins for CORS (empty = same-origin only). */
   corsOrigins: string[];
   /** Express `trust proxy` hop count. The real client IP (used as a rate-limit key) is only
@@ -44,10 +46,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     throw new Error('Config error: DATABASE_URL is required.');
   }
 
-  const redisUrl = env.REDIS_URL?.trim();
-  if (!redisUrl) {
-    throw new Error('Config error: REDIS_URL is required (backs the rate-limit store).');
-  }
+  // Optional since the staging deploy (spec staging-deploy §2): the consuming modules select
+  // their in-memory adapters when absent; main.ts warns loudly in production.
+  const redisUrl = env.REDIS_URL?.trim() || undefined;
 
   const port = Number(env.API_PORT ?? 3001);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {

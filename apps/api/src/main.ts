@@ -40,6 +40,15 @@ async function bootstrap(): Promise<void> {
     configureWebDist(app, config.webDistDir);
   }
 
+  // Redis-less production is a deliberate staging posture (spec staging-deploy §2), valid ONLY
+  // while a single replica runs — surface it on every boot so it can't be forgotten silently.
+  if (config.nodeEnv === 'production' && !config.redisUrl) {
+    Logger.warn(
+      'REDIS_URL is not set — rate-limit and SSO state use in-memory stores (correct only single-replica).',
+      'Bootstrap',
+    );
+  }
+
   app.enableShutdownHooks();
 
   await app.listen(config.port);

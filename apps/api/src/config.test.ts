@@ -20,8 +20,9 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ REDIS_URL: base.REDIS_URL })).toThrow(/DATABASE_URL/);
   });
 
-  it('throws when REDIS_URL is missing', () => {
-    expect(() => loadConfig({ DATABASE_URL: base.DATABASE_URL })).toThrow(/REDIS_URL/);
+  it('leaves redisUrl undefined when REDIS_URL is absent (in-memory stores, single-replica only)', () => {
+    expect(loadConfig({ DATABASE_URL: base.DATABASE_URL }).redisUrl).toBeUndefined();
+    expect(loadConfig({ DATABASE_URL: base.DATABASE_URL, REDIS_URL: '   ' }).redisUrl).toBeUndefined();
   });
 
   it('parses CORS_ORIGINS as a trimmed comma list', () => {
