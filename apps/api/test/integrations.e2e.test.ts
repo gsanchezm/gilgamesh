@@ -94,12 +94,28 @@ describe('Integrations API', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ key: 'voyage', group: 'AI_PROVIDERS', connected: true });
     expect(JSON.stringify(res.body)).not.toContain(key);
+    // S21 (AC-VUIH-01): the offline harness has no platform Voyage space, so a connected key is gated.
+    expect(res.body.platformVoyageActive).toBe(false);
 
     const off = await mutate(request(server()).patch(`/orgs/${orgId}/integrations/voyage`)).send({
       action: 'disconnect',
     });
     expect(off.status).toBe(200);
     expect(off.body.connected).toBe(false);
+  });
+
+  it('flags the voyage row inactive in the list over a lexical platform space (S21, AC-VUIH-01/04)', async () => {
+    await mutate(request(server()).patch(`/orgs/${orgId}/integrations/voyage`)).send({
+      action: 'connect',
+      token: 'pa-voyage-list-key',
+    });
+    const list = await read(request(server()).get(`/orgs/${orgId}/integrations`));
+    const rows = list.body as { key: string; platformVoyageActive?: boolean }[];
+    expect(rows.find((i) => i.key === 'voyage')?.platformVoyageActive).toBe(false);
+    // The flag is scoped to the voyage row — anthropic and source repos never carry it.
+    expect(rows.find((i) => i.key === 'anthropic')?.platformVoyageActive).toBeUndefined();
+    expect(rows.find((i) => i.key === 'github')?.platformVoyageActive).toBeUndefined();
+    await mutate(request(server()).patch(`/orgs/${orgId}/integrations/voyage`)).send({ action: 'disconnect' });
   });
 
   it('rejects a voyage key the verifier refuses (422, AC-VBYOK-02)', async () => {

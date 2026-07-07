@@ -1301,6 +1301,18 @@ body {
 .gx-intg__token:focus {
   border-color: rgba(201, 161, 78, 0.5);
 }
+/* [S21] Connected-but-gated Voyage advisory — amber (an advisory, not an error). */
+.gx-intg__gated {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--amber) 10%, transparent);
+  color: color-mix(in srgb, var(--amber) 40%, var(--text));
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
 @media (max-width: 760px) {
   .gx-intg__grid {
     grid-template-columns: minmax(0, 1fr);

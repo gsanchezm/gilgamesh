@@ -75,6 +75,15 @@ describe('provider selection (AC-BRAIN-01/02)', () => {
     expect(claude.embed).toHaveBeenCalled();
   });
 
+  it('voyageActive() mirrors the platform embedding space (S21 gated-hint truth)', () => {
+    // Offline / no VOYAGE_API_KEY: lexical platform space -> a connected org key is gated.
+    expect(brainFromEnv(env()).voyageActive()).toBe(false);
+    expect(brainFromEnv(env({ BRAIN_MODE: 'offline', VOYAGE_API_KEY: 'pa-voyage-x' })).voyageActive()).toBe(false);
+    // Platform Voyage space live (key present, brain not offline) -> a connected org key embeds.
+    expect(brainFromEnv(env({ VOYAGE_API_KEY: 'pa-voyage-x' })).voyageActive()).toBe(true);
+    expect(new SelectingBrain({ stub: new DeterministicBrain() }).voyageActive()).toBe(false);
+  });
+
   it('offline streamWithUsage rides the instance stream() — the BDD fault-injection seam', async () => {
     const brain = new SelectingBrain({ stub: new DeterministicBrain() });
     // Patch exactly like acceptance/steps/brain.steps.ts patchStreamOnce does.

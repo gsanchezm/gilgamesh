@@ -10,6 +10,7 @@ import {
   type IntegrationRepository,
   ListIntegrations,
   type MembershipRepository,
+  type PlatformEmbeddingStatus,
   type ProjectRepository,
   type RepoProvider,
   type ScenarioRepository,
@@ -22,8 +23,19 @@ import { OrgIntegrationsController, ProjectRepoController } from './integrations
 
 const T = TOKENS;
 
-// Connect/Disconnect/List share the same IntegrationDeps bundle (S9 adds the AI-key verifier).
-const intInject = [T.Integrations, T.Memberships, T.RepoProvider, T.BrainKeys, T.SecretVault, T.Audit, T.Ids, T.Clock];
+// Connect/Disconnect/List share the same IntegrationDeps bundle (S9 adds the AI-key verifier; S21 the
+// platform embedding status — the bound brain (SelectingBrain) satisfies PlatformEmbeddingStatus).
+const intInject = [
+  T.Integrations,
+  T.Memberships,
+  T.RepoProvider,
+  T.BrainKeys,
+  T.SecretVault,
+  T.Audit,
+  T.Ids,
+  T.Clock,
+  T.Brain,
+];
 const intDeps = (
   integrations: IntegrationRepository,
   memberships: MembershipRepository,
@@ -33,7 +45,8 @@ const intDeps = (
   audit: AuditLogRepository,
   ids: IdGenerator,
   clock: Clock,
-) => ({ integrations, memberships, repoProvider, brainKeys, vault, audit, ids, clock });
+  embeddingStatus: PlatformEmbeddingStatus,
+) => ({ integrations, memberships, repoProvider, brainKeys, vault, audit, ids, clock, embeddingStatus });
 
 const providers: Provider[] = [
   { provide: ListIntegrations, useFactory: (...a: Parameters<typeof intDeps>) => new ListIntegrations(intDeps(...a)), inject: intInject },

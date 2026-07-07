@@ -112,4 +112,46 @@ describe('IntegrationsScreen', () => {
     fireEvent.click(card('GitLab').getByRole('button', { name: 'Disconnect' }));
     await waitFor(() => expect(client.disconnect).toHaveBeenCalledWith('o1', 'gitlab'));
   });
+
+  // S21 — connected-but-gated Voyage hint (AC-VUIH-01/02/03).
+  const voyageRow = (over: Partial<IntegrationView>): IntegrationView => ({
+    key: 'voyage',
+    name: 'Voyage AI',
+    group: 'AI_PROVIDERS',
+    connected: false,
+    config: {},
+    connectedAt: null,
+    ...over,
+  });
+  const GATED = /Connected — inactive: no platform Voyage space, embeddings stay lexical/i;
+
+  it('shows the gated notice when voyage is connected over a lexical platform space (AC-VUIH-01)', async () => {
+    const client = fakeClient({ list: vi.fn(async () => [voyageRow({ connected: true, platformVoyageActive: false })]) });
+    render(<IntegrationsScreen client={client} orgId="o1" />);
+    await screen.findByText('Voyage AI');
+    expect(await screen.findByText(GATED)).toBeTruthy();
+    // Scoped to the voyage card.
+    expect(card('Voyage AI').getByText(GATED)).toBeTruthy();
+  });
+
+  it('hides the gated notice when the platform Voyage space is live (AC-VUIH-02)', async () => {
+    const client = fakeClient({ list: vi.fn(async () => [voyageRow({ connected: true, platformVoyageActive: true })]) });
+    render(<IntegrationsScreen client={client} orgId="o1" />);
+    await screen.findByText('Voyage AI');
+    expect(screen.queryByText(GATED)).toBeNull();
+  });
+
+  it('hides the gated notice when voyage is not connected (AC-VUIH-03)', async () => {
+    const client = fakeClient({ list: vi.fn(async () => [voyageRow({ connected: false, platformVoyageActive: false })]) });
+    render(<IntegrationsScreen client={client} orgId="o1" />);
+    await screen.findByText('Voyage AI');
+    expect(screen.queryByText(GATED)).toBeNull();
+  });
+
+  it('shows no gated notice when the flag is absent (additive default, AC-VUIH-04)', async () => {
+    const client = fakeClient({ list: vi.fn(async () => [voyageRow({ connected: true })]) });
+    render(<IntegrationsScreen client={client} orgId="o1" />);
+    await screen.findByText('Voyage AI');
+    expect(screen.queryByText(GATED)).toBeNull();
+  });
 });

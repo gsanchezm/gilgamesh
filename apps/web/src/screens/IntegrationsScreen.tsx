@@ -179,6 +179,10 @@ export function IntegrationsScreen({ client, orgId }: IntegrationsScreenProps) {
           <ul className="gx-intg__grid">
             {entries.map((i) => {
               const connected = i.connected;
+              // [S21] A connected org Voyage key only embeds when the PLATFORM has a live Voyage
+              // space (the coherence gate). Strict `=== false` — an absent flag means "unknown", not
+              // "gated", so old/unwired responses render exactly as before.
+              const voyageGated = i.key === 'voyage' && connected && i.platformVoyageActive === false;
               return (
                 <li key={i.key} className="gx-intg" data-connected={connected} aria-label={i.name}>
                   <div className="gx-intg__head">
@@ -223,6 +227,12 @@ export function IntegrationsScreen({ client, orgId }: IntegrationsScreenProps) {
                         onChange={(e) => setTokens((t) => ({ ...t, [i.key]: e.target.value }))}
                       />
                     </div>
+                  )}
+
+                  {voyageGated && (
+                    <p className="gx-intg__gated" role="status">
+                      Connected — inactive: no platform Voyage space, embeddings stay lexical.
+                    </p>
                   )}
                 </li>
               );

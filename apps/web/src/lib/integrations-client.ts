@@ -7,6 +7,12 @@ export interface IntegrationView {
   connected: boolean;
   config: Record<string, unknown>;
   connectedAt: string | null;
+  /**
+   * [S21] Present ONLY on the `voyage` row: true = the platform Voyage space is live (a connected key
+   * embeds); false = a lexical platform space (a connected key is vaulted but UNUSED — the S19
+   * coherence gate). Absent otherwise. Drives the connected-but-gated hint; carries no secret.
+   */
+  platformVoyageActive?: boolean;
 }
 
 export interface IntegrationsClient {

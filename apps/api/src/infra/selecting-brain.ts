@@ -9,6 +9,7 @@ import {
   type IntegrationRepository,
   type KindAwareEmbeddingBrain,
   type OrgScopedBrain,
+  type PlatformEmbeddingStatus,
   type SecretVault,
   type UsageReportingBrain,
 } from '@gilgamesh/application';
@@ -63,13 +64,21 @@ export function resolveBrainMode(env: NodeJS.ProcessEnv = process.env): BrainMod
   return env.BRAIN_MODE === 'offline' || !env.ANTHROPIC_API_KEY?.trim() ? 'offline' : 'auto';
 }
 
-export class SelectingBrain implements AgentBrainPort, UsageReportingBrain, OrgScopedBrain, KindAwareEmbeddingBrain {
+export class SelectingBrain
+  implements AgentBrainPort, UsageReportingBrain, OrgScopedBrain, KindAwareEmbeddingBrain, PlatformEmbeddingStatus
+{
   /** `offline` = stub only (self-reported so the BDD sweep can assert no network path exists). */
   readonly mode: BrainMode;
 
   /** S16: which embedding path serves `embed`/`embedAs` — `voyage` (real semantic) or `lexical`
    *  (the deterministic domain hash). Self-reported for the same BDD-sweep reason as `mode`. */
   readonly embeddings: 'voyage' | 'lexical';
+
+  /** [S21] Platform Voyage-space truth for the connected-but-gated UI hint: `embeddings === 'voyage'`
+   *  ⇔ the platform space is live ⇔ (the S19 coherence gate) a connected org key actually embeds. */
+  voyageActive(): boolean {
+    return this.embeddings === 'voyage';
+  }
 
   /** Per-org ClaudeBrain cache keyed orgId+secretRef — a rotated/removed ref naturally misses. */
   private readonly orgBrains = new Map<string, AgentBrainPort & UsageReportingBrain>();
