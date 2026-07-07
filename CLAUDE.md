@@ -554,3 +554,39 @@ gates. All chosen keystone-free so they could run in parallel without serializin
 - **Deferred (unchanged):** provenance/re-embed slice (needs keystone+migration) · Stripe
   portal/proration/refunds · billing period scheduler (a cron that calls `rollover:billing --all` at
   each boundary; also period-scope the all-time usage view) · voice STT/TTS · Bloque 3 (owner decision).
+
+## Programa paralelo v5 (hardening) — request-id + web-http-resilience + bundle-size + health-readiness + ui-async-states — DoD COMPLETE (2026-07-07, on `main`)
+
+Five NO-KEYSTONE hardening follow-ups (oriented at the imminent deploy) in parallel `pnpm wt` worktrees
+(announced: `feat-api-request-id`, `feat-web-http-resilience`, `feat-bundle-size-gate`,
+`feat-health-readiness`, `feat-ui-async-states`), each SDD→TDD by a Claude subagent, adversarially
+reviewed with real mutation testing, merged FF sequentially with a final integrated stack gate.
+- **request-id (slice 24)** — X-Request-Id correlation middleware (registered first in main.ts) +
+  additive `requestId` member on the RFC9457 error body + logged with the stack on an unmapped 500;
+  a client id is trusted only when a sane bounded opaque token (≤128, `[A-Za-z0-9._-]`), else a fresh
+  UUID (header/log-injection guard). Review APPROVE; the CRLF-injection crux proven empirically (JS `$`
+  without `m` = `\z`, rejects a trailing `\n`) + a direct `normalizeRequestId` unit test added; 0 survivors.
+- **web-http-resilience (slice 25)** — `http.ts` gains a per-attempt `AbortController` timeout + bounded
+  retry-with-backoff for idempotent GETs on {502,503,504}/network + a typed `HttpError`
+  (`.message === .detail`, back-compat); MUTATIONS ARE NEVER RETRIED (a replayed POST could
+  double-charge — mutation-proven). Review APPROVE; F1 fix routed the raw-fetch agents/knowledge clients
+  through getJson/sendJson so `getAgentRoom` (a primary dashboard GET) no longer hangs forever; F2/F3
+  pinned the {502,503,504}-only classification + the success-path clearTimeout (killed 2 survivors).
+- **bundle-size-gate (slice 26)** — dependency-free (`node:zlib`) gzipped JS+CSS budget checker
+  (`apps/web/bundle-budget.json`, baseline 109 kB / budget 126 kB) + a dedicated `bundle` CI job
+  (single build, SHA-pinned). Closes the slice-1 follow-up gate.
+- **health-readiness (slice 27)** — `/api/v1/health/ready` (Prisma `SELECT 1` with a 2s race timeout →
+  200 ready / 503 not-ready via `@Res` passthrough) DISTINCT from liveness `/api/v1/health` (constant,
+  NO DB dependency — so ACA holds traffic on DB-down instead of crash-looping); `ReadinessProbe` port
+  (AlwaysReady in-memory / Prisma probe) bound per wiring; bicep Readiness probe added. Review APPROVE,
+  both critical invariants (liveness-no-DB, false-ready-impossible) mutation-proven; 0 survivors.
+- **ui-async-states (slice 28)** — reusable `Spinner`/`ErrorState`/`EmptyState` in `@gilgamesh/ui`
+  (accessible: role status/alert, reduced-motion, tokens only; CSS in the ui styles.css, NOT
+  apps/web/index.css) adopted in `ReportsScreen`. Review APPROVE + the effect active-guard restored
+  (review #1); 0 survivors.
+- **Verified (post-merge on `main`):** typecheck · lint · **1027 Docker-free** (domain 106 ·
+  application 357 · ui 39 · web 189 · api 336) · `test:int` **34** · **BDD 203 scenarios / 1734 steps** ·
+  **Playwright 18** (one transient smoke flake, green on isolated + full re-run) · bicep recompiles clean.
+- **Deferred (unchanged):** provenance/re-embed slice (keystone+migration) · Stripe portal/proration ·
+  billing period scheduler · CORS `Access-Control-Expose-Headers: X-Request-Id` (trivial) · voice ·
+  Bloque 3 (owner decision).

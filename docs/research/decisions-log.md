@@ -692,3 +692,27 @@ adversarial + mutación real, merges FF secuenciales con gate:
 - **Post-merge en `main`:** 963 Docker-free (dom 106 · app 357 · ui 25 · web 171 · api 304) · int 32 ·
   BDD 203/1734 · Playwright 18. Slices renumerados (billing 21 · voyage 22 · error-boundary 23; los
   tres habían elegido 21).
+
+### Programa paralelo v5 (2026-07-07) — 5 hardening sin keystone (mientras F4 espera)
+
+5 follow-ups de endurecimiento para el deploy, sin keystone, en paralelo, cada uno review adversarial
+con mutación real, merges FF con gate integrado final:
+- **request-id (slice 24):** X-Request-Id + `requestId` aditivo en el body RFC9457 + log con stack en
+  500; id de cliente saneado (≤128, charset opaco) o UUID. APPROVE; el crux de inyección CRLF probado
+  EMPÍRICAMENTE (JS `$` sin `m` = `\z`, rechaza `\n` final) + test unitario directo de normalizeRequestId.
+- **web-http-resilience (slice 25):** timeout AbortController + retry con backoff SOLO en GET idempotente
+  ({502,503,504}/network) + HttpError tipado; las MUTACIONES NUNCA reintentan (doble-cargo — probado por
+  mutación). APPROVE; fix F1 ruteó los clientes crudos (getAgentRoom ya no cuelga) + F2/F3 pinearon la
+  clasificación y el clearTimeout (2 mutaciones muertas).
+- **bundle-size-gate (slice 26):** checker gzip sin dependencias (baseline 109 kB / budget 126 kB) + job
+  de CI dedicado. Cierra el follow-up de slice 1.
+- **health-readiness (slice 27):** `/api/v1/health/ready` (SELECT 1 con timeout 2s → 200/503 via @Res)
+  DISTINTO de liveness (constante, SIN DB — ACA retiene tráfico en vez de crash-loop); port ReadinessProbe
+  por wiring; probe bicep. APPROVE; ambas invariantes críticas (liveness-sin-DB, false-ready imposible)
+  probadas por mutación.
+- **ui-async-states (slice 28):** Spinner/ErrorState/EmptyState en @gilgamesh/ui (accesibles, tokens,
+  CSS en ui NO en index.css) adoptados en ReportsScreen. APPROVE + guard de efecto restaurado.
+- **Post-merge en `main`:** 1027 Docker-free (dom 106 · app 357 · ui 39 · web 189 · api 336) · int 34 ·
+  BDD 203/1734 · Playwright 18 (un flake transitorio del smoke, verde aislado + re-run completo) ·
+  bicep recompila limpio. Lección: el smoke wake-all flakea bajo carga del run completo pero pasa
+  aislado — no confundir flake con regresión (verificar aislado antes de tocar código).
