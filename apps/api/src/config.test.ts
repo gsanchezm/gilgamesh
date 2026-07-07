@@ -55,6 +55,14 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...base, TRUST_PROXY: '-1' })).toThrow(/TRUST_PROXY/);
     expect(() => loadConfig({ ...base, TRUST_PROXY: 'abc' })).toThrow(/TRUST_PROXY/);
   });
+
+  it('parses WEB_DIST_DIR trimmed, undefined when absent or blank', () => {
+    expect(loadConfig({ ...base, WEB_DIST_DIR: '  /app/apps/web/dist  ' }).webDistDir).toBe(
+      '/app/apps/web/dist',
+    );
+    expect(loadConfig(base).webDistDir).toBeUndefined();
+    expect(loadConfig({ ...base, WEB_DIST_DIR: '   ' }).webDistDir).toBeUndefined();
+  });
 });
 
 describe('rateLimitFromEnv', () => {

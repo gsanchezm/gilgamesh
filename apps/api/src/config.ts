@@ -19,6 +19,8 @@ export interface ApiConfig {
   /** Express `trust proxy` hop count. The real client IP (used as a rate-limit key) is only
    *  correct when this matches the number of appending proxies in front of the API. */
   trustProxy: number;
+  /** Absolute path of the built SPA (vite dist). Absent = the API serves no static web (default). */
+  webDistDir?: string;
   rateLimit: RateLimitConfig;
 }
 
@@ -62,6 +64,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     throw new Error(`Config error: TRUST_PROXY must be a non-negative integer (got "${env.TRUST_PROXY}").`);
   }
 
+  // No existence validation here — that belongs to configureWebDist (fail-fast at wire-up), so
+  // loadConfig stays a pure env parser.
+  const webDistDir = env.WEB_DIST_DIR?.trim() || undefined;
+
   return {
     nodeEnv: env.NODE_ENV ?? 'development',
     port,
@@ -69,6 +75,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     redisUrl,
     corsOrigins,
     trustProxy,
+    webDistDir,
     rateLimit: rateLimitFromEnv(env),
   };
 }
