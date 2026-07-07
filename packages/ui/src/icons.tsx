@@ -123,3 +123,17 @@ export const IconLogout = (p: IconProps) => (
     <path d="M10 17l-5-5 5-5M5 12h12" />
   </Svg>
 );
+
+export const IconAlert = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M10.3 3.9 2.5 17.5A2 2 0 0 0 4.2 20.5h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+    <path d="M12 9v4M12 16.5v.5" />
+  </Svg>
+);
+
+export const IconInbox = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 13h4l1.5 3h5L16 13h4" />
+    <path d="M5.5 5h13l2 8v5a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 18v-5l2-8Z" />
+  </Svg>
+);
