@@ -665,3 +665,30 @@ todas con la recomendación):
   Playwright 18 (default; el smoke staging queda excluido de la suite default).
 - **F4 pendiente del owner:** instalar Azure CLI + `az login` + cuenta Claude Console (workspace
   `gilgamesh-staging` + spend limit). El agente ejecuta el runbook §8 bajo supervisión (SD-4).
+  Azure CLI 2.88.0 YA instalado (winget, con OK del owner); falta solo el `az login`.
+
+### Programa paralelo v4 (2026-07-07) — 5 follow-ups sin keystone, mientras F4 espera al owner
+
+Con F4 (deploy) parado esperando el `az login`, se construyeron 5 follow-ups del backlog SIN cambio de
+keystone (por eso corrieron en paralelo sin serializar), cada uno por subagente Claude con review
+adversarial + mutación real, merges FF secuenciales con gate:
+- **fix-tsup-dts** — el break de DTS pre-existente NO era falta de DOM lib (Buffer es solo-Node): era
+  `@types/node` colándose transitivamente por vitest, invisible al worker `--dts` aislado de tsup. Fix
+  = devDep explícito `@types/node`.
+- **feat-ci-brain-pin** — `env:` a nivel de workflow en ci.yml pinea los 5 `*_MODE=offline`; verificado
+  que ningún job corre NODE_ENV=production (los pines invertidos VAULT/SSO siempre se aceptan).
+- **feat-voyage-ui-hint (slice 22)** — `platformVoyageActive?` aditivo en IntegrationView (solo fila
+  voyage) derivado del gate S19-6 (`embeddings === 'voyage'`); hint ámbar "conectada-inactiva". APPROVE,
+  cero mutaciones sobrevivientes (la inversión de false-reassurance cazada por varios tests).
+- **feat-billing-rollover (slice 21)** — cierra S14-6: reset atómico de AMBOS contadores en un UPDATE
+  (nunca `save()`); script `--all`/`--org`. **REQUEST_CHANGES → fixes:** F1 test de scope era una
+  auto-comparación (in-memory devuelve el objeto que muta; una mutación `seats=999` había SOBREVIVIDO)
+  → clon antes del reset; F2 el script REHÚSA sin `--all`/`--org` (footgun: zeroear todos los tenants);
+  F3 smoke int que ejecuta el .mjs real (guarda de drift del SQL duplicado); F4 scrub del DSN. Re-check
+  verde. Nota: divergencia contador-vs-ledger (la vista de uso all-time no se toca) documentada.
+- **feat-web-error-boundary (slice 23)** — ErrorBoundary React (interno keyed por pathname = auto-
+  recuperación + preserva SSE del chat en cambios de query; top-level alwaysDark). APPROVE + test de
+  wiring `key={pathname}` que mató 2 mutaciones sobrevivientes.
+- **Post-merge en `main`:** 963 Docker-free (dom 106 · app 357 · ui 25 · web 171 · api 304) · int 32 ·
+  BDD 203/1734 · Playwright 18. Slices renumerados (billing 21 · voyage 22 · error-boundary 23; los
+  tres habían elegido 21).

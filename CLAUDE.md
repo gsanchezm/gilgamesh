@@ -515,3 +515,42 @@ merged FF A->B->C with full gates per merge:
 - **F4 (deploy):** blocked on owner — Azure CLI install + `az login` + Claude Console account
   (workspace `gilgamesh-staging` + spend limit; Claude Max does NOT back the product API). Runbook:
   spec §8 (two-phase, multi-tag, stopped-Postgres rules). Cost ~US$20-25/mo, Postgres stoppable.
+
+## Programa paralelo v4 — tsup-dts + ci-pin + voyage-hint + billing-rollover + web-error-boundary — DoD COMPLETE (2026-07-07, on `main`)
+
+Five NO-KEYSTONE follow-ups built in parallel `pnpm wt` worktrees (announced: `fix-tsup-dts`,
+`feat-ci-brain-pin`, `feat-voyage-ui-hint`, `feat-billing-rollover`, `feat-web-error-boundary`), each
+by a Claude subagent, adversarially reviewed with real mutation testing, merged FF sequentially with
+gates. All chosen keystone-free so they could run in parallel without serializing.
+- **fix-tsup-dts** — closes the pre-existing `@gilgamesh/application` DTS build break: root cause was
+  `@types/node` only leaking in transitively via vitest, so tsup's isolated `--dts` worker never saw
+  the Node globals `URL`/`Buffer`. Fix = declare `@types/node` as an explicit devDep (no source/DOM-lib
+  change). `pnpm --filter @gilgamesh/application build` now emits `.d.ts` + `.d.cts`.
+- **feat-ci-brain-pin** — workflow-level `env:` in `ci.yml` pins BRAIN/SSO/EMAIL/PAYMENTS/VAULT_MODE=
+  offline across all jobs (belt+braces vs a leaked provider key). Verified NO CI job runs
+  NODE_ENV=production, so the two inverted pins (VAULT/SSO) are always accepted; the e2e job sets its
+  own explicit NODE_ENV=development + offline via the Playwright webServer.
+- **feat-voyage-ui-hint (slice 22)** — additive optional `platformVoyageActive?: boolean` on the
+  `IntegrationView` (voyage row only), derived from a new `PlatformEmbeddingStatus` port that
+  `SelectingBrain` implements as `embeddings === 'voyage'` — EXACTLY the S19-6 coherence gate.
+  Integrations UI shows an amber "connected — inactive" hint only when a voyage key is connected AND
+  the platform has no Voyage space. No route, no migration, no keystone. Review APPROVE, zero mutation
+  survivors (the false-reassurance inversion is caught by multiple tests).
+- **feat-billing-rollover (slice 21)** — closes S14-6: `ResetBillingUsage` + `SubscriptionRepository.
+  resetUsage(orgId?)` zeroes BOTH `runMinutesUsed` and `brainTokensUsed` TOGETHER in one atomic raw-SQL
+  UPDATE (never `save()` — writes the constant 0, reads nothing, so it can't clobber a concurrent
+  charge); both wirings; operator script `rollover-billing.mjs` (no HTTP route). Review round fixes:
+  F1 de-vacuoused the in-memory scope test (was self-comparison; a seats-mutation had survived), F2 the
+  script now REQUIRES explicit `--all` (a bare call is refused so a forgotten `--org` can't zero every
+  tenant), F3 an int smoke shells the real script (drift guard for the duplicated SQL), F4 DSN scrubbed
+  from error logs. Counter-vs-ledger divergence documented (the all-time BrainUsage view is unaffected).
+- **feat-web-error-boundary (slice 23)** — a React `ErrorBoundary` (inner, keyed by `pathname` around
+  the routed `<Outlet/>` for auto-recovery + SSE-preserving query changes; top-level `alwaysDark`
+  catch-all). Fixed message only — never leaks stack/PII (console.error dev-only). Review APPROVE + a
+  follow-up AppLayout test that pins the `key={pathname}` wiring (killed 2 surviving key mutations).
+- **Verified (post-merge on `main`):** typecheck · lint · **963 Docker-free** (domain 106 ·
+  application 357 · ui 25 · web 171 · api 304) · `test:int` **32** (+9: billing atomic + script smokes) ·
+  **BDD 203 scenarios / 1734 steps** · **Playwright 18**.
+- **Deferred (unchanged):** provenance/re-embed slice (needs keystone+migration) · Stripe
+  portal/proration/refunds · billing period scheduler (a cron that calls `rollover:billing --all` at
+  each boundary; also period-scope the all-time usage view) · voice STT/TTS · Bloque 3 (owner decision).
