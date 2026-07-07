@@ -13,6 +13,28 @@ concurrency:
 permissions:
   contents: read
 
+# Belt+braces: force every external-provider seam to its deterministic stub across ALL jobs, so
+# even a real key leaked into the CI environment (repo/org secret, cached env) can never make a job
+# reach a live provider. The test harnesses already pin these in their own setup (apps/api/test/
+# setup.ts, cucumber.cjs) and the Playwright webServer re-pins them for the booted API; this is the
+# outer, job-independent guard.
+#
+# Two of these five carry a security INVERSION — VAULT_MODE (S20) and SSO_MODE (S15) — where
+# `offline` is REFUSED under NODE_ENV=production (a silent stub there would hold live secrets /
+# bypass auth). The other three (BRAIN/EMAIL/PAYMENTS) are the plain missing-config->stub pattern,
+# so `offline` is safe under any NODE_ENV. Setting all five at the workflow level is therefore safe
+# ONLY because NO CI job runs NODE_ENV=production — the two inverted pins are always accepted.
+# (If a future job is moved to NODE_ENV=production — e.g. wiring the Docker image / staging smoke
+# into CI — it MUST override both VAULT_MODE and SSO_MODE at the job level, not inherit these.)
+# The e2e API is booted by Playwright with an explicit NODE_ENV=development + these same offline
+# values, so it is safe by construction regardless of what this workflow env holds.
+env:
+  BRAIN_MODE: offline
+  SSO_MODE: offline
+  EMAIL_MODE: offline
+  PAYMENTS_MODE: offline
+  VAULT_MODE: offline
+
 jobs:
   quality:
     name: Typecheck + Docker-free tests
