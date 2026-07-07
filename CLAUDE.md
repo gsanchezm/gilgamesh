@@ -250,8 +250,8 @@ Codebase-audit follow-up. Tracking: `docs/research/audit-followup.md` · board: 
   (inner bare-distance `LIMIT k*4` + outer deterministic `(distance, id)` re-sort — a tie-break inside
   the inner ORDER BY would bypass the index) · #11 AuthHero rAF pauses on hidden tab / reduced motion ·
   #12 chat EventSource `withCredentials`. Verified: **815 Docker-free** · int 19 · BDD 182/1517 ·
-  Playwright 18. Remaining from auditoría v2: Vitest 3 toolchain upgrade (own stream) · real secret
-  vault (Key Vault adapter — production-BYOK prerequisite) · Bloque 3 (owner decision).
+  Playwright 18. Remaining from auditoría v2: ~~Vitest 3 toolchain~~ and ~~real secret vault (Key
+  Vault)~~ — both CLOSED by programa v3 (2026-07-06 PM3, see below) · Bloque 3 (owner decision).
 
 ## Post-slice-7 — integrated on `main` (2026-07-01)
 
@@ -423,5 +423,64 @@ routes + SSO routes + **BREAKING owner-approved** `KnowledgeChunk.embedding` vec
   reuse a stale api/vite pair from another worktree (kill 3001/5173 first); apply new Prisma
   migrations to the shared dev DB (`db:deploy`) BEFORE `test:int`/`test:bdd`; one chat SSE Playwright
   flake observed (narration timing) — BDD covers that path deterministically.
-- **Deferred:** token-billing (slice 14, SEQUENTIAL after Stripe) · Stripe portal/proration/refunds ·
-  Voyage BYOK (§8 amendment) · Redis `SsoStateStore` (multi-replica) · voice STT/TTS.
+- **Deferred:** ~~token-billing~~, ~~Voyage BYOK~~, ~~Redis `SsoStateStore`~~ (all CLOSED by programa
+  v3, below) · Stripe portal/proration/refunds · voice STT/TTS.
+
+## Programa paralelo v3 — S14+S19+S20+Redis-SSO+Vitest3 — DoD COMPLETE (2026-07-06 PM3, on `main`)
+
+Five streams in parallel `pnpm wt` worktrees (announced: `slice-14-token-billing`, `feat-voyage-byok`,
+`feat-sso-redis-state`, `feat-secret-vault`, `feat-vitest-3`), all built by Claude subagents — the
+external-CLI experiment is DEAD on this machine: agy requires `--dangerously-skip-permissions`
+(classifier-denied) and codex's `workspace-write` sandbox cannot spawn child processes on Windows
+(0xC0000142; all three codex runs aborted cleanly touching nothing). **Keystone v0.6 first, in series**
+(`25f4149`): +`voyage` (§8) · `Subscription.brainTokensQuota/brainTokensUsed` (§2) · §9 AI-token
+allowances (FREE 100k · STARTER 2M · GROWTH 10M · SCALE unlimited; billable = input+output, cache
+EXCLUDED). Every stream: SDD→BDD→TDD + adversarial cross-review with real mutation testing + serialized
+FF merges **C→D→A→B→E** (order swapped B↔A mid-flight when B needed a fix round), full stack gate re-run
+per merge.
+
+- **S14 token billing** (`specs/slices/14-token-billing/`, 9 BDD AC-TOKB-01..07) — per-plan AI-token
+  quota + blocking: allowances DERIVE from `PLAN_CATALOG.aiTokensPerMonth` (single source, slice-10
+  pattern); `BrainBilling` seam = pre-check BEFORE the brain call + charge of ACTUAL usage in the SAME
+  UoW transaction as the `BrainUsage` row (raw-SQL atomic increment); all org-attributed surfaces
+  (CHAT/ROUTER/GENERATE/EMBED; global corpus ingest stays unmetered); blocked chat sends NARRATE
+  (never 402/500), other surfaces → `QUOTA_EXCEEDED`→402; SCALE never blocks; migration w/ per-plan
+  backfill; Billing AI-usage card gains the quota meter. Review fixes: `save()` no longer persists
+  usage counters (also closes the identical pre-existing slice-4 `runMinutesUsed` lost-charge race) ·
+  charge saturates at 2e9 (bigint-cast intermediate, int4-safe). **S14-6:** no auto-reset exists today
+  (run-minutes never reset either); the future rollover job must reset BOTH counters together.
+- **S19 Voyage BYOK** (`specs/slices/19-voyage-byok/`, 6 BDD) — per-org voyage key via the S6 flow
+  (`VoyageKeyVerifier` 1-embed ping in auto mode; vault; secretRef only; the raw key traced to appear
+  NOWHERE — mutation-verified) + call-time `forOrg` resolution on the shared `resolveOrgProvider`
+  pipeline (anthropic path refactored onto it, zero regressions). **Coherence gate (owner decision
+  S19-6):** the org key embeds ONLY when the platform voyage space exists (`VOYAGE_API_KEY` present —
+  same voyage-4 space, org key = billing/attribution); platform-keyless keeps every embed path lexical
+  (the integration row is not even read) so connecting a key can never degrade retrieval. Per-chunk
+  embedding provenance + re-embed on connect = named future slice (also the prerequisite for any
+  embedding-model upgrade).
+- **S20 secret vault** (`specs/slices/20-secret-vault/`) — `AzureKeyVaultSecretVault`
+  (@azure/keyvault-secrets + DefaultAzureCredential) behind the frozen S6 `SecretVault` port;
+  `vaultFromEnv` with the S15 security INVERSION (stub only under explicit `VAULT_MODE=offline`,
+  refused in prod; missing config = clear boot error — dev `start:dev` shells need the offline pin;
+  all 5 harness pins added beside the other `*_MODE`s); secretRef contract byte-identical to the stub
+  (`vault://<scope>`); scope→name encoding INJECTIVE against KV's case-INSENSITIVE namespace (review
+  fix: passthrough strictly `[0-9a-z]`, uppercase escapes as `-hh`); errors value-scrubbed, no `cause`.
+- **Redis `SsoStateStore`** (S15 addendum §14) — OIDC state single-use via atomic `GETDEL` + native
+  PX TTL, `sso:` prefix, selected by `REDIS_URL` (the RateLimitStore idiom); in-memory default intact;
+  + the review follow-up REDIS_URL pin in `sso.e2e.test.ts`. Both critical behaviors mutation-verified.
+- **Vitest 3 toolchain** — vitest 2.1.8→3.2.7 + vite 6.4.3 workspace-wide; ZERO test/source/config
+  adaptations needed (all 103 new v3-stream tests pass under vitest 3 unmodified); scoped
+  `tsup>esbuild>=0.28.1` override; **`pnpm audit`: 6 vulns (1 critical) → 0**.
+- **Verified (post-merge on `main`):** typecheck + lint · **918 Docker-free** (domain 106 ·
+  application 343 · ui 25 · api 290 · web 154) · `test:int` 23 · **BDD 198 scenarios / 1680 steps** ·
+  **Playwright 18** · audit clean. Harness pins now BRAIN/SSO/EMAIL/PAYMENTS/**VAULT**_MODE=offline.
+- **Process notes (new):** after merging a schema-changing branch, run `prisma generate` in the main
+  checkout BEFORE its gate (`pnpm install` alone does not regenerate; gate A failed typecheck on the
+  stale client) · long background gates were killed twice mid-Playwright by the environment — run
+  stack gates in foreground chunks · worktrees created before a serial docs commit diverge; rebase
+  onto main before the FF merge.
+- **Deferred:** pre-existing tsup DTS break (`TS2552: Cannot find name 'URL'` in S15
+  `stub-identity-provider.ts`; package builds are in no CI gate) · UI hint for a connected-but-gated
+  voyage key · CI-level `BRAIN_MODE=offline` belt+braces pin · provenance/re-embed slice · billing
+  rollover job (resets BOTH counters) · Voyage live smoke (@manual) · Stripe portal/proration/refunds ·
+  voice STT/TTS · Bloque 3 (owner decision).

@@ -12,10 +12,11 @@ authoritative detail rather than repeating it, so it can't drift:
 **Legend:** ✅ done (backend + UI faithful to the capture) · 🟡 functional but UI not re-skinned to the
 capture / partial · 🔵 stub behind a port (runs offline; real engine pending) · 🔴 not built / blocked.
 
-_As of 2026-07-06. Slices 1–12 are ALL merged + pushed on `main` (keystone v0.4): incl. Agent Chat
-(8) + real Claude Brain w/ BYOK + metering (9) + billing 4-tier formalization (10) + chat re-skin w/
-live streaming (11) + auth recovery (12), plus Reports, onboarding wizard, per-org RAG grounding,
-CI hardening (SHA-pinned actions, optimized assets)._
+_As of 2026-07-06 PM3 (keystone v0.6). Everything below is merged on `main`: slices 1–12 + programa
+v2 (Stripe 13 · SSO 15 · Voyage embeddings 16 · SMTP 17 · logout 18) + programa v3 (token billing 14 ·
+Voyage BYOK 19 · Key Vault 20 · Redis SSO state · Vitest 3), plus Reports, onboarding wizard, per-org
+RAG grounding, CI hardening. Gates at v3 close: 918 Docker-free · int 23 · BDD 198/1680 · Playwright
+18 · pnpm audit 0._
 
 ---
 
@@ -55,7 +56,8 @@ Real vs. stub-behind-a-port. Swapping a stub for the real adapter is a future sl
 - [x] Integrations (github/gitlab/bitbucket/ado_repos; token never persisted) — ✅ real
 - [ ] Test execution + results — 🔵 `DeterministicKernel` stub (real TOM/chaos-proxy kernel pending)
 - [x] AI brain (chat · routing · draft generation) — ✅ **real `ClaudeBrain` adapter on `main` (slice 9)** behind `SelectingBrain`: real answers with `ANTHROPIC_API_KEY` (or org BYOK — call-time resolution pending `SecretVault.get()`), deterministic stub offline/CI; per-org `BrainUsage` metering + usage view + tool registry + live C3 SSE (`?live=1`)
-- [x] RAG embeddings — ✅ **real Voyage `voyage-4` semantic embeddings (slice 16)** behind the frozen `AgentBrainPort.embed` + the `embedAs(texts, kind)` extension: 1024-dim `vector(1024)` column (keystone v0.5 BREAKING; destructive migration + re-ingest), real with `VOYAGE_API_KEY`, deterministic lexical FNV-1a 1024-dim offline/CI; EMBED `BrainUsage` metering (Voyage BYOK deferred)
+- [x] RAG embeddings — ✅ **real Voyage `voyage-4` semantic embeddings (slice 16)** behind the frozen `AgentBrainPort.embed` + the `embedAs(texts, kind)` extension: 1024-dim `vector(1024)` column (keystone v0.5 BREAKING; destructive migration + re-ingest), real with `VOYAGE_API_KEY`, deterministic lexical FNV-1a 1024-dim offline/CI; EMBED `BrainUsage` metering. **+ Voyage BYOK (slice 19)**: per-org voyage key via the S6 flow behind the **S19-6 coherence gate** (org key embeds only inside the platform voyage space — platform-keyless stays lexical, retrieval can never silently degrade); per-chunk provenance + re-embed on connect = future slice
+- [x] Brain token billing (slice 14) — ✅ real: per-plan AI-token allowances derived from `PLAN_CATALOG` (FREE 100k · STARTER 2M · GROWTH 10M · SCALE unlimited; billable = input+output, cache excluded), pre-check + atomic UoW charge with each `BrainUsage` row on every org-attributed surface, blocked chat NARRATES (never 402/500) / 402 elsewhere, quota meter on the Billing AI-usage card; rollover job (resets both counters) pending
 - [x] Payments / checkout — ✅ **real Stripe (slice 13)** behind the extended `PaymentProvider` port: Checkout Sessions priced from `PLAN_CATALOG`, signature-verified webhooks over raw bytes → `Invoice` rows + subscription status (`ApplyPaymentEvent`, UoW-atomic), Invoices panel in Billing; `PAYMENTS_MODE=offline`/no `STRIPE_SECRET_KEY` → deterministic mock (CI offline). Portal/proration/refunds deferred
 
 ## 3) Missing / deferred (with the blocker)
@@ -78,6 +80,6 @@ Real vs. stub-behind-a-port. Swapping a stub for the real adapter is a future sl
 - [x] **#6/#7/#10** ListFeatures N+1 · TC-key race · batch RAG ingest — ✅ on `main` (via look&feel merge)
 - [x] **R2** shared `apps/web/src/lib/http.ts` — ✅ on `main` (via look&feel merge)
 - [x] **Batch C (auditoría v2)** — ✅ on `main` (`e82292c`): atomic reset-token claim (UoW) · timing-safe forgot · multer>=2.2.0 override · HNSW index + deterministic ANN query · AuthHero rAF pause · SSE withCredentials
-- [ ] **Vitest 3 toolchain** — 🔴 pnpm audit critical (vitest<3.2.6 + vite/esbuild) — dev/test surface only; breaking upgrade, own stream
-- [ ] **Real secret vault** — 🔴 `StubSecretVault` is in-memory; Key Vault adapter required before production BYOK
+- [x] **Vitest 3 toolchain** — ✅ on `main` (programa v3): vitest 3.2.7 + vite 6.4.3, zero test adaptations, `pnpm audit` 6 vulns (1 critical) → **0**
+- [x] **Real secret vault** — ✅ on `main` (programa v3, `specs/slices/20-secret-vault/`): `AzureKeyVaultSecretVault` behind the frozen port, security inversion (`VAULT_MODE=offline` explicit-only, refused in prod; missing config = boot error), injective case-insensitive-safe name mapping
 - [ ] **Bloque 3 (owner decision):** rate-limit fail-open policy · per-IP backoff (own slice) · pagination (own slice) · RAG final posture · optimize heavy assets (E5) · pin GitHub Actions to SHA

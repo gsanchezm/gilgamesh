@@ -584,3 +584,31 @@ divergent `refactor/audit-hardening` branch. Reconciled + executed SDD/TDD, all 
   `PLAN_CATALOG`/billing (solo A). E se rebasa y mergea AL FINAL.
 - **Stream D — inversión de seguridad (patrón S15):** vault ausente ≠ stub silencioso en prod —
   el stub requiere `VAULT_MODE=offline` explícito y se rehúsa bajo `NODE_ENV=production`.
+
+### Resultado del programa v3 (2026-07-06 PM3) — TODO merged en `main`
+
+- **Integración secuencial** (FF, gates completos por merge, orden final **C→D→A→B→E** — B↔A se
+  invirtió al necesitar B una ronda de fix): C Redis SsoStateStore (`fed65ff`+pin follow-up) →
+  D Key Vault (`36853cb`, incl. fix de inyectividad case-insensitive) → A S14 token billing
+  (`4add23a`, incl. fixes de review: `save()` ya no persiste contadores de uso [cierra también la
+  race de slice 4] + cargo saturado a 2e9) → B Voyage BYOK (`8f4ce01`, incl. **gate de coherencia
+  S19-6, decisión del owner**: la key org solo embebe dentro del espacio voyage de plataforma) →
+  E Vitest 3 (`e6f7615`, rebase con lockfile regenerado; 0 adaptaciones de tests).
+- **Post-merge:** typecheck · lint · **918 Docker-free** (domain 106 · application 343 · ui 25 ·
+  api 290 · web 154) · int 23 · **BDD 198/1680** · Playwright 18 · **pnpm audit 0** (era 1 crítica
+  + 5). Pines offline ahora ×5: BRAIN/SSO/EMAIL/PAYMENTS/**VAULT**_MODE.
+- **Reviews adversariales con mutación real:** C (2 mutaciones cazadas) · D (APPROVE + hallazgo
+  latente real: namespace case-insensitive de KV vs encoding case-preserving → fix pre-merge) ·
+  A (APPROVE + 2 follow-ups de dinero cerrados pre-merge) · B (REQUEST_CHANGES por incoherencia de
+  espacios de embedding → gate de coherencia + re-check ronda 2 APPROVE) · E (APPROVE, claims
+  reproducidas). El protocolo de 2 capas (review → fix → re-check) funcionó tal cual.
+- **Lecciones de proceso (nuevas):** (1) tras mergear una rama con cambio de schema Prisma,
+  `prisma generate` en el checkout principal ANTES del gate (el gate A falló typecheck con el
+  cliente stale; `pnpm install` solo no regenera). (2) El entorno mató 2 veces gates largos en
+  background a mitad de Playwright → correr los gates de stack en tramos foreground. (3) Los
+  worktrees creados antes de un commit serial de docs divergen — rebase sobre main antes del FF.
+- **Follow-ups registrados:** tsup DTS roto pre-existente (`URL` en `stub-identity-provider.ts`
+  S15; ningún gate de CI corre builds de paquetes) · hint UI para key voyage conectada-pero-gated ·
+  pin `BRAIN_MODE=offline` a nivel ci.yml (cinturón+tirantes) · slice de provenance por chunk +
+  re-embed al conectar · job de rollover de periodo (resetea AMBOS contadores) · smoke Voyage
+  @manual · Stripe portal/proration/refunds · voz STT/TTS · Bloque 3 (decisión owner).
