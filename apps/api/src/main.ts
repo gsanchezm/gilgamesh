@@ -5,6 +5,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { ProdAppModule } from './app.module';
 import { configureBodyParser } from './common/body-parser';
+import { configureWebDist } from './common/web-dist';
 import { loadConfig } from './config';
 
 /**
@@ -32,6 +33,13 @@ async function bootstrap(): Promise<void> {
     origin: config.corsOrigins.length > 0 ? config.corsOrigins : false,
     credentials: true,
   });
+
+  // Staging/prod single-container mode (spec staging-deploy SD-3): serve the built SPA from this
+  // process when WEB_DIST_DIR is set. Absent (dev, every test harness) = API-only, unchanged.
+  if (config.webDistDir) {
+    configureWebDist(app, config.webDistDir);
+  }
+
   app.enableShutdownHooks();
 
   await app.listen(config.port);
