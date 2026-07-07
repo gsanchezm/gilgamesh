@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "bundle-size": "vite build && node scripts/check-bundle-size.mjs",
+    "bundle-size:check": "node scripts/check-bundle-size.mjs"
   },
   "dependencies": {
     "@gilgamesh/ui": "workspace:*",

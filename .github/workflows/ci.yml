@@ -98,6 +98,23 @@ jobs:
       - name: BDD acceptance
         run: pnpm --filter @gilgamesh/api test:bdd
 
+  bundle:
+    name: Bundle size (web)
+    runs-on: ubuntu-latest
+    # Dedicated job (isolated signal). CI never otherwise builds the web — the e2e job serves it
+    # via the vite DEV server — so this is a single `vite build`, not a duplicate one. It resolves
+    # only @gilgamesh/domain + @gilgamesh/ui (vite aliases), so no Prisma client / DB is needed.
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build web + enforce gzipped-size budget (apps/web/bundle-budget.json)
+        run: pnpm --filter @gilgamesh/web bundle-size
+
   e2e:
     name: Playwright (browser e2e)
     runs-on: ubuntu-latest

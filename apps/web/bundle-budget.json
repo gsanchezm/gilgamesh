@@ -1,0 +1,17 @@
+{
+  "//": "Gzipped-size budget for the web production bundle — apps/web/dist/assets/*.{js,css} only",
+  "//how": "Enforced by apps/web/scripts/check-bundle-size.mjs after `vite build`. Gzip = node zlib default level (6), matching vite's own reported gzip column.",
+  "//bump": "To raise a limit: build (`pnpm --filter @gilgamesh/web build`), read the printed actual gzip, set the new maxGzipBytes with ~15% headroom, and say why in the commit. Keep this a small, reviewable diff.",
+  "budgets": {
+    "js": { "maxGzipBytes": 114000 },
+    "css": { "maxGzipBytes": 11500 },
+    "total": { "maxGzipBytes": 126000 }
+  },
+  "baseline": {
+    "measuredOn": "2026-07-07",
+    "commit": "56b8d9b",
+    "node": "v24.16.0 local / node 22 in CI (zlib is stable across these; the 15% headroom absorbs any drift)",
+    "gzipBytes": { "js": 99148, "css": 9851, "total": 108999 },
+    "//": "Budgets = baseline gzip x ~1.15, rounded. js +15.0%, css +16.7%, total +15.6%."
+  }
+}
