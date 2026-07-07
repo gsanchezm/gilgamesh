@@ -84,12 +84,15 @@ stable — AC-RID-06). This is the framework-light option the task prefers; the 
 even a body-parser error (413/malformed body, thrown by Express body-parser middleware) is raised
 *after* the id is assigned and thus carries it. Belt-and-suspenders, though correctness does **not**
 depend on this ordering: the `DomainExceptionFilter` fallback independently normalizes the raw request
-header and sets the response header itself, so it can always produce a stable id even if it somehow
-runs before the middleware. (This is proven by the flagship e2e: an oversized body — a
-body-parser-layer error — with a garbage client id still yields a fresh valid `requestId` that equals
-the response header.) The middleware writes the normalized id back onto `req.headers['x-request-id']`
-(single source of truth) and echoes it on the response; the filter reads that same header, so the two
-never diverge.
+header (or none) and sets the response header itself, so it can always produce a stable id even if it
+somehow runs before — or entirely without — the middleware. That fallback branch is directly proven by
+the **filter unit test's empty-headers case** (no middleware ran → the filter generates the id and
+sets the header). The flagship 413 e2e is the end-to-end confirmation at the body-parser layer (an
+oversized body with a garbage client id yields a fresh valid `requestId` equal to the response
+header); because the middleware is wired first there, that test exercises the normal path, not the
+fallback in isolation. In steady state the middleware writes the normalized id back onto
+`req.headers['x-request-id']` (single source of truth) and echoes it on the response; the filter reads
+that same header, so the two never diverge.
 
 ### Files
 

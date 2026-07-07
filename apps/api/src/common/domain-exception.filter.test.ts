@@ -1,5 +1,5 @@
 import { ApplicationError } from '@gilgamesh/application';
-import { NotFoundException } from '@nestjs/common';
+import { Logger, NotFoundException } from '@nestjs/common';
 import type { ArgumentsHost } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
@@ -80,6 +80,22 @@ describe('DomainExceptionFilter (catch-all -> problem+json)', () => {
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({ code: 'INTERNAL', detail: 'An unexpected error occurred.' }),
     );
+  });
+
+  it('logs the requestId with the stack on an unmapped 500 (AC-RID-05, == log stability)', () => {
+    const spy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    try {
+      const { res, host } = capture();
+      new DomainExceptionFilter().catch(new Error('boom'), host);
+      const loggedId = body(res).requestId as string;
+      // The log message carries the SAME id echoed on the header and in the body (header==body==log).
+      expect(spy).toHaveBeenCalledWith(
+        expect.stringContaining(`requestId=${loggedId}`),
+        expect.any(String), // the stack, as the second arg
+      );
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('adds an additive requestId that equals the X-Request-Id response header (slice 24)', () => {
