@@ -5,14 +5,23 @@ import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { DomainExceptionFilter } from './domain-exception.filter';
 
-function capture() {
+function capture(headers: Record<string, unknown> = {}) {
   const res = {
     status: vi.fn().mockReturnThis(),
     type: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
+    setHeader: vi.fn().mockReturnThis(),
   };
-  const host = { switchToHttp: () => ({ getResponse: () => res }) } as unknown as ArgumentsHost;
-  return { res, host };
+  const req = { headers };
+  const host = {
+    switchToHttp: () => ({ getResponse: () => res, getRequest: () => req }),
+  } as unknown as ArgumentsHost;
+  return { res, req, host };
+}
+
+/** The RFC9457 body emitted to `res.json` for the (single) call under test. */
+function body(res: { json: ReturnType<typeof vi.fn> }): Record<string, unknown> {
+  return (res.json.mock.calls[0]?.[0] ?? {}) as Record<string, unknown>;
 }
 
 describe('DomainExceptionFilter (catch-all -> problem+json)', () => {
@@ -71,5 +80,27 @@ describe('DomainExceptionFilter (catch-all -> problem+json)', () => {
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({ code: 'INTERNAL', detail: 'An unexpected error occurred.' }),
     );
+  });
+
+  it('adds an additive requestId that equals the X-Request-Id response header (slice 24)', () => {
+    // No middleware ran (empty headers) → the filter generates a fresh id and echoes it on the header.
+    const { res, host } = capture();
+    new DomainExceptionFilter().catch(new ApplicationError('NOT_FOUND', 'nope'), host);
+    const b = body(res);
+    // The five existing members are unchanged (additive extension, not a shape change).
+    expect(b).toMatchObject({ type: 'about:blank', status: 404, code: 'NOT_FOUND', detail: 'nope' });
+    expect(b.title).toBe('NOT_FOUND');
+    // The additive member is present, non-empty, and equals the echoed response header (stable).
+    expect(typeof b.requestId).toBe('string');
+    expect(b.requestId).not.toBe('');
+    expect(res.setHeader).toHaveBeenCalledWith('X-Request-Id', b.requestId);
+  });
+
+  it('echoes a sane request-scoped X-Request-Id into the error body (slice 24)', () => {
+    // Mirrors the state after the middleware runs: the normalized id sits on the request header.
+    const { res, host } = capture({ 'x-request-id': 'trace-abc_123.9' });
+    new DomainExceptionFilter().catch(new ApplicationError('RATE_LIMITED', 'slow down'), host);
+    expect(body(res).requestId).toBe('trace-abc_123.9');
+    expect(res.setHeader).toHaveBeenCalledWith('X-Request-Id', 'trace-abc_123.9');
   });
 });

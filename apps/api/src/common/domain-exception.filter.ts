@@ -2,7 +2,8 @@ import { ApplicationError, type AppErrorCode } from '@gilgamesh/application';
 import { DomainError } from '@gilgamesh/domain';
 import { type ArgumentsHost, Catch, type ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
+import { resolveRequestId } from './request-id';
 
 // Express body-parser (and other http-errors middleware) throw before Nest's pipeline; their `type`
 // maps to a stable client-error code so an oversized/malformed body is a precise 4xx, not a 500.
@@ -57,7 +58,12 @@ export class DomainExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(DomainExceptionFilter.name);
 
   catch(exception: unknown, host: ArgumentsHost): void {
-    const res = host.switchToHttp().getResponse<Response>();
+    const http = host.switchToHttp();
+    const res = http.getResponse<Response>();
+    // The correlation id for this request (slice 24): the id the middleware assigned (read back off
+    // the normalized request header), or — if the middleware never ran (an error raised before it) —
+    // a fresh id, with the response header set here too. Stable across header · body · log.
+    const requestId = resolveRequestId(http.getRequest<Request>(), res);
     const clientHttpError = asClientHttpError(exception);
     let status: number;
     let code: string;
@@ -101,7 +107,11 @@ export class DomainExceptionFilter implements ExceptionFilter {
       status = 500;
       code = 'INTERNAL';
       detail = 'An unexpected error occurred.';
-      this.logger.error('Unhandled error', exception instanceof Error ? exception.stack : String(exception));
+      // Log the correlation id with the stack so an alert on this 500 joins to the client's requestId.
+      this.logger.error(
+        `Unhandled error [requestId=${requestId}]`,
+        exception instanceof Error ? exception.stack : String(exception),
+      );
     }
 
     res.status(status).type('application/problem+json').json({
@@ -110,6 +120,9 @@ export class DomainExceptionFilter implements ExceptionFilter {
       status,
       code,
       detail,
+      // Additive RFC9457 extension member (slice 24): lets a user quote the id from an error; equals
+      // the X-Request-Id response header. The five members above are unchanged for existing consumers.
+      requestId,
     });
   }
 }

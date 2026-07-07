@@ -5,6 +5,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { ProdAppModule } from './app.module';
 import { configureBodyParser } from './common/body-parser';
+import { configureRequestId } from './common/request-id';
 import { configureWebDist } from './common/web-dist';
 import { loadConfig } from './config';
 
@@ -17,6 +18,11 @@ import { loadConfig } from './config';
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
   const app = await NestFactory.create<NestExpressApplication>(ProdAppModule);
+
+  // Correlation id (slice 24): assign every request an X-Request-Id BEFORE any other middleware so
+  // even a body-parser error carries it. Echoed on the response, quoted in the RFC9457 error body,
+  // and logged with the stack on an unmapped 500 — the join key between a client error and the logs.
+  configureRequestId(app);
 
   // Deterministic body-size limit (large enough for the biggest valid .feature; see input-limits).
   // Must run before any request is handled — main.ts never calls app.init() directly, listen() does.
