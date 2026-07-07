@@ -283,15 +283,21 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
           probes: [
             {
               // Cold start + `prisma migrate deploy` on boot: 24 × 5s = 120s headroom.
+              // timeoutSeconds: the ACA default is 1s — swc-node lazy compilation on 0.5 vCPU can
+              // stall an early response past that and fail a healthy boot (review C D2).
               type: 'Startup'
               httpGet: { path: '/api/v1/health', port: appPort }
               periodSeconds: 5
               failureThreshold: 24
+              timeoutSeconds: 5
             }
             {
+              // timeoutSeconds 5: at the 1s default, 3 CPU-saturated responses (RAG ingest,
+              // first-request compiles) would restart a healthy app (review C D2).
               type: 'Liveness'
               httpGet: { path: '/api/v1/health', port: appPort }
               periodSeconds: 30
+              timeoutSeconds: 5
             }
           ]
         }

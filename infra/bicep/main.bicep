@@ -58,7 +58,7 @@ param env string = 'staging'
 @description('Deploy the Container Apps environment + app. false = phase 1 (platform resources only, spec §8); true = phase 3, requires appImage pushed to ACR.')
 param deployApp bool = false
 
-@description('Full image reference for the single app (API+SPA), e.g. <acr>.azurecr.io/gilgamesh-app:<gitsha>. Empty falls back to :latest in this ACR — pass the exact tag on real deploys.')
+@description('Full image reference for the single app (API+SPA), e.g. <acr>.azurecr.io/gilgamesh-app:<gitsha>. ALWAYS pass it with deployApp=true: the empty-value fallback is :latest, which only exists if the runbook''s az acr build multi-tags (-t :<gitsha> -t :latest) — an absent tag = failed first revision (review C D3).')
 param appImage string = ''
 
 @description('Provision Service Bus (run queue + RunEvent topic). OFF until the TOM runners land (keystone §7 BLOCKED-UNTIL-DELIVERED).')
@@ -79,7 +79,7 @@ param sessionSecret string
 @secure()
 param anthropicApiKey string = ''
 
-@description('Enable private networking (VNet integration + private Postgres). Default false to keep idle cost ~0 (no private-endpoint hourly charges).')
+@description('KEEP false. Setting true locks Key Vault + Postgres behind Deny-default networking, but the Container Apps env is NOT VNet-wired in this template (infrastructureSubnetId is never passed), so the app could reach neither KV references nor the DB, and the ARM secret seeding below would also fail. Full private networking is a documented follow-on (review C D6).')
 param enablePrivateNetworking bool = false
 
 @description('Service Bus SKU (only used when deployServiceBus=true). Standard required for the RunEvent topic (EventBus).')
@@ -223,7 +223,9 @@ module serviceBus './modules/serviceBus.bicep' = if (deployServiceBus) {
 // off); re-enabling it later also means passing the SB/Blob wiring params back in.
 module containerApps './modules/containerApps.bicep' = if (deployApp) {
   name: 'containerApps'
-  dependsOn: [ dbConnSecret, sessionSecretKv, anthropicKeySecret ]
+  // acrPull: a single-shot deployApp=true on a fresh RG could otherwise provision the app before
+  // the AcrPull role assignment is effective -> UNAUTHORIZED image pull (review C D5).
+  dependsOn: [ dbConnSecret, sessionSecretKv, anthropicKeySecret, acrPull ]
   params: {
     location: location
     tags: tags
@@ -250,7 +252,9 @@ resource dbConnSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: kvRef
   name: 'db-connection-string'
   properties: {
-    value: 'postgresql://${postgres.outputs.administratorLogin}:${postgresAdminPassword}@${postgres.outputs.fqdn}:5432/${postgres.outputs.databaseName}?sslmode=require'
+    // uriComponent(): a CSPRNG password with URL-reserved chars (@ / : ? # % &) would otherwise
+    // produce a DSN Prisma can't parse -> migrate deploy fails -> first revision crash-loops (review C D1).
+    value: 'postgresql://${postgres.outputs.administratorLogin}:${uriComponent(postgresAdminPassword)}@${postgres.outputs.fqdn}:5432/${postgres.outputs.databaseName}?sslmode=require'
   }
   dependsOn: [ keyVault ]
 }
