@@ -634,3 +634,34 @@ todas con la recomendación):
   mensual. Escala multi-equipo ya resuelta en producto: metering `BrainUsage` + quotas S14 por
   plan sobre la key de plataforma, y BYOK S9 para tenants grandes (facturan a su propia cuenta).
   Embeddings = cuenta Voyage AI aparte (sin ella, hash léxico — gate de coherencia S19-6).
+
+### Staging deploy — RESULTADOS de ejecución F0–F3 (2026-07-07)
+
+- **3 streams paralelos en worktrees anunciados** (`feat-staging-deploy` A · `feat-staging-image` B ·
+  `feat-staging-bicep` C), subagentes Claude, reviews adversariales CON mutación real por stream y
+  merges FF secuenciales A→B→C con gate completo por merge.
+- **Review A (2 rondas):** F1 resuelto MANTENIENDO el contrato prod (`/api/v1/health` es el health
+  real; `/health` pelón queda excluido del fallback = 404 JSON ruidoso, nunca fake-green HTML);
+  3 mutaciones sobrevivientes muertas con pins nuevos (mutación A2 re-aplicada y verificada cazada);
+  BONUS: `REDIS_URL` opcional en `loadConfig` (boot-blocker hallado independientemente por B y C;
+  stores en memoria + WARN de boot en prod; whitespace-trim en ambos factories = NEW-1). APPROVE r2.
+- **Review B:** F1 ORO — sin `name:` propio el compose staging habría RECREADO/DESTRUIDO el postgres
+  de dev (mismo project por directorio); F3 `pg_isready -h 127.0.0.1` (el initdb temporal es
+  socket-only) + healthcheck del app + `--wait`; F2 `.dockerignore` (+`.pnpm-store`, `.claude`,
+  `*.bicepparam` — gitignore NO protege el build context). El stream ya había cazado él mismo el
+  flavor del engine Prisma (openssl en AMBOS stages). Fixes mecánicos del propio "minimal required
+  fixes" del reviewer, aplicados y validados en el gate M2.
+- **Review C (2 rondas):** D1 bloqueante `uriComponent(pgPassword)` en el DSN (un password CSPRNG con
+  chars URL-reservados brickeaba la fase 3 en crash-loop sin revisión previa a la cual caer); D2
+  `timeoutSeconds: 5` en probes (default ACA = 1s vs boot swc-node); D5 `dependsOn acrPull`; D3/D6
+  guards de params; D4/D7 a runbook/spec (multi-tag, start-Postgres-first, health real
+  `/api/v1/health`). APPROVE r2.
+- **Validación local M2 (gate antes de Azure):** imagen construida DESDE main (1.22 GB), stack
+  `gilgamesh-staging` Healthy con `--wait` (migraciones dentro del contenedor), smoke Playwright
+  staging 1/1 (SPA en `/`, registro→onboarding→agent room, round-trip autenticado same-origin,
+  404 JSON bajo `/api/v1`, deep-link fallback). CSP de helmet NO rompe la SPA. Bicep compila limpio
+  desde main vía contenedor azure-cli (az/bicep no instalados en la máquina).
+- **Post-merge final:** typecheck · lint · **930 Docker-free** (+12) · int 23 · BDD 198/1680 ·
+  Playwright 18 (default; el smoke staging queda excluido de la suite default).
+- **F4 pendiente del owner:** instalar Azure CLI + `az login` + cuenta Claude Console (workspace
+  `gilgamesh-staging` + spend limit). El agente ejecuta el runbook §8 bajo supervisión (SD-4).

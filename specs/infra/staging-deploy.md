@@ -46,7 +46,8 @@ rg-gilgamesh-staging
  ├─ Postgres Flexible B1ms + pgvector (azure.extensions allowlist VECTOR; stoppable)
  └─ Container Apps env (consumption)
      └─ app  ── ONE container: API + built SPA (WEB_DIST_DIR)
-                external HTTPS ingress (managed cert) · probes on /health
+                external HTTPS ingress (managed cert) · probes on /api/v1/health
+                (the global prefix has no exclusions — bare /health does not exist in prod)
                 minReplicas 0 · maxReplicas 1  ← in-memory rate-limit/SSO-state stay correct
 ```
 
@@ -56,7 +57,12 @@ replica the in-memory `RateLimitStore` and `SsoStateStore` are correct; Redis re
 requirement the day staging needs >1 replica (documented invariant: `maxReplicas: 1` and
 "no `REDIS_URL`" must change together).
 
-## 3. Code change (the only app-code delta) — SPA serving + entrypoint
+## 3. Code changes (the only app-code deltas) — SPA serving + entrypoint + optional REDIS_URL
+
+**`REDIS_URL` became optional in `loadConfig`** (review round, streams B+C found the hard
+requirement): absent → the rate-limit and SSO-state stores select their in-memory adapters
+(they always did, by presence) and the production boot logs a WARN. Correct ONLY single-replica —
+the §2 invariant. A whitespace-only value is trimmed to absent in the store factories too.
 
 **`WEB_DIST_DIR` (env, absent = feature off, zero behavior change for dev/tests/harnesses):**
 when set, the API serves the vite build output:
@@ -65,7 +71,9 @@ when set, the API serves the vite build output:
 - `GET /` and any **GET** route that is not `/api/v1/*` and not `/health` → `index.html`
   (`Cache-Control: no-cache`) — the SPA router fallback.
 - `/api/v1/*` and `/health` are **never** intercepted: an unknown API path keeps returning the
-  RFC9457 JSON 404, never HTML. Non-GET methods are never intercepted.
+  RFC9457 JSON 404, never HTML. Non-GET methods are never intercepted. (Prod health lives at
+  `/api/v1/health`; bare `/health` is deliberately excluded so a mispointed probe/monitor fails
+  loudly with a JSON 404 instead of getting a fake-green 200 `index.html` — review A F1.)
 - Missing/unreadable `WEB_DIST_DIR` at boot with the flag set = fail-fast boot error (misconfig
   must not silently ship an API-only staging).
 
@@ -96,10 +104,13 @@ work with the tsconfig-paths workspace layout. The image is fat (~1 GB); an AOT-
 (`@node-rs/argon2`, `@swc/core`) resolve to linux binaries because install happens in the linux
 build stage.
 
-**Local validation before Azure (gate):** a `docker-compose.staging.yml` profile boots
-postgres+redis-less stack — `app` (the image) + `postgres` — and a Playwright smoke
-(register → login → lab → run → chat stub) runs against `http://localhost:3001`. Azure is touched
-only after this is green.
+**Local validation before Azure (gate):** `docker-compose.staging.yml` (own compose project
+`gilgamesh-staging` — review B F1: it must never reconcile the dev project) boots the Redis-less
+stack — `app` (the image, with a node-fetch healthcheck) + `postgres` — via
+`up -d --build --wait`, and the Playwright staging smoke (SPA at `/`, register→onboarding→agent
+room, authed same-origin round-trip, JSON 404 under `/api/v1`, deep-link fallback) runs against
+`http://localhost:3001`. Azure is touched only after this is green. **[VALIDATED 2026-07-07:
+container Healthy, smoke 1/1 passed.]**
 
 ## 5. Bicep v2 + env matrix
 
@@ -151,8 +162,8 @@ degradation contract stays intact.
   post-merge, but the checklist runs anyway (standing rule).
 - F2 image: local compose boot + container smoke green **before** any az command.
 - F4 deploy: owner `az login` → agent executes → post-deploy smoke against the staging URL
-  (register → login → onboarding → lab → run → chat stub → knowledge search) + `/health` 200 +
-  cookie flags (`__Host-`, Secure) verified on the real HTTPS origin.
+  (register → login → onboarding → lab → run → chat stub → knowledge search) + `/api/v1/health`
+  200 + cookie flags (`__Host-`, Secure) verified on the real HTTPS origin.
 
 ## 8. Deploy runbook (F4 — also valid for manual re-runs)
 
@@ -166,8 +177,9 @@ az group create -n rg-gilgamesh-staging -l eastus2
 az deployment group create -g rg-gilgamesh-staging -f infra/bicep/main.bicep \
   -p env=staging -p deployApp=false \
   -p postgresAdminPassword=<gen> -p sessionSecret=<gen> [-p anthropicApiKey=...]
-# Phase 2 — build the image in the cloud (no local docker needed):
-az acr build -r <acr> -t gilgamesh-app:<gitsha> -f Dockerfile .
+# Phase 2 — build the image in the cloud (no local docker needed). Multi-tag so the template's
+# :latest fallback always resolves (review C D3):
+az acr build -r <acr> -t gilgamesh-app:<gitsha> -t gilgamesh-app:latest -f Dockerfile .
 # Phase 3 — same template, now with the app on the freshly pushed image:
 az deployment group create -g rg-gilgamesh-staging -f infra/bicep/main.bicep \
   -p env=staging -p deployApp=true -p appImage=<acr>.azurecr.io/gilgamesh-app:<gitsha> \
@@ -179,6 +191,11 @@ az containerapp revision restart ...
 pnpm --filter @gilgamesh/api ingest:corpus   # full RAG corpus (DATABASE_URL → staging, run locally)
 az postgres flexible-server stop ...         # park the DB when idle (cost)
 ```
+
+**Stopped-Postgres rules (review C D2/D4):** `az postgres flexible-server start` BEFORE (a) any
+full-template `az deployment group create` re-run (ARM PUT on a stopped server fails the whole
+deployment — prefer `az containerapp update` for image/env-only changes) and (b) waking the app
+after an idle stop (otherwise `migrate deploy` crash-loops visibly until the DB is up).
 
 Secrets policy: `postgresAdminPassword`/`sessionSecret` generated at deploy time (CSPRNG), passed
 as secure params, stored only in KV. Nothing secret is committed; `.bicepparam` files with secrets

@@ -484,3 +484,34 @@ per merge.
   voyage key · CI-level `BRAIN_MODE=offline` belt+braces pin · provenance/re-embed slice · billing
   rollover job (resets BOTH counters) · Voyage live smoke (@manual) · Stripe portal/proration/refunds ·
   voice STT/TTS · Bloque 3 (owner decision).
+
+## Staging deploy (F0-F3) — BUILT + VALIDATED LOCALLY, F4 pending owner az login (2026-07-07, on `main`)
+
+`specs/infra/staging-deploy.md` (owner decisions SD-1..4: **Azure Container Apps** · **prod-like Key
+Vault** (`NODE_ENV=production`, never `VAULT_MODE=offline`) · **the API serves the SPA** (one container,
+one origin) · **owner `az login` + supervised agent execution**). Three parallel worktree streams
+(`feat-staging-deploy`/`-image`/`-bicep`), each adversarially reviewed with real mutation testing,
+merged FF A->B->C with full gates per merge:
+- **api (A)** — `WEB_DIST_DIR` serving (`apps/api/src/common/web-dist.ts`: static with immutable
+  caching only for hashed js/css, SPA fallback excluding exactly `/api/v1`+`/health` — bare `/health`
+  stays a loud JSON 404, probes use `/api/v1/health`); **`REDIS_URL` now optional** (absent -> in-memory
+  rate-limit/SSO stores + prod boot WARN; correct ONLY single-replica — must change together with
+  maxReplicas). Flag absent = zero change (all harnesses untouched).
+- **image (B)** — 2-stage `Dockerfile` (pnpm workspace -> vite build -> node:22-slim + swc-node runtime,
+  non-root, openssl in BOTH stages for the Prisma engine flavor), `docker/entrypoint.sh` (`migrate
+  deploy` then boot; failure = visible container exit), `.dockerignore` (secrets + heavyweights out of
+  the build context, incl. `*.bicepparam`), `docker-compose.staging.yml` (own project name
+  `gilgamesh-staging`, TCP `pg_isready`, app healthcheck, `--wait`; local-only delta
+  `NODE_ENV=development`+`VAULT_MODE=offline` because the prod vault path needs Managed Identity),
+  `playwright.staging.config.ts` + `staging-smoke.spec.ts` (excluded from the default suite).
+- **bicep v2 (C)** — two-phase `deployApp` (platform first, app after `az acr build`); single app with
+  the REAL env matrix (`AZURE_KEY_VAULT_URL`, conditional `ANTHROPIC_API_KEY` — no placeholder can ever
+  select the real brain), probes `/api/v1/health` (`timeoutSeconds: 5`), scale 0..1, `uriComponent()`
+  on the DSN password, KV **Secrets Officer** for the S20 runtime vault, SB/Blob/runners param-gated
+  OFF; compiles clean via the `mcr.microsoft.com/azure-cli` container (az/bicep are not installed).
+- **Verified:** typecheck · lint · **930 Docker-free** (+12) · `test:int` 23 · **BDD 198/1680** ·
+  **Playwright 18** (default; staging smoke excluded) · **staging image built from main, compose stack
+  Healthy, staging smoke 1/1 green** · bicep recompiled clean post-merge.
+- **F4 (deploy):** blocked on owner — Azure CLI install + `az login` + Claude Console account
+  (workspace `gilgamesh-staging` + spend limit; Claude Max does NOT back the product API). Runbook:
+  spec §8 (two-phase, multi-tag, stopped-Postgres rules). Cost ~US$20-25/mo, Postgres stoppable.
