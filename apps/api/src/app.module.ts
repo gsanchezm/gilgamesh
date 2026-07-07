@@ -52,10 +52,12 @@ export const APP_PROVIDERS = [
   // in-memory store — which keeps the Docker-free unit/e2e suites and the BDD sweep dependency-free.
   {
     provide: RATE_LIMIT_STORE,
-    useFactory: (clock: Clock) =>
-      process.env.REDIS_URL
-        ? new RedisRateLimitStore(process.env.REDIS_URL, clock)
-        : new InMemoryRateLimitStore(clock),
+    // Trimmed like loadConfig: a whitespace-only REDIS_URL must select in-memory, not construct a
+    // Redis client on a garbage URL while the boot log claims in-memory (review A NEW-1).
+    useFactory: (clock: Clock) => {
+      const redisUrl = process.env.REDIS_URL?.trim();
+      return redisUrl ? new RedisRateLimitStore(redisUrl, clock) : new InMemoryRateLimitStore(clock);
+    },
     inject: [TOKENS.Clock],
   },
   { provide: APP_GUARD, useClass: RateLimitGuard },

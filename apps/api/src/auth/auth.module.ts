@@ -151,10 +151,11 @@ import { SsoController } from './sso.controller';
       // else the single-instance in-memory store, which keeps the Docker-free wirings and dev
       // dependency-free — the exact RATE_LIMIT_STORE selection idiom (app.module.ts).
       provide: TOKENS.SsoStates,
-      useFactory: (clock: Clock) =>
-        process.env.REDIS_URL
-          ? new RedisSsoStateStore(process.env.REDIS_URL)
-          : new InMemorySsoStateStore(clock),
+      // Trimmed like loadConfig (review A NEW-1) — see the RATE_LIMIT_STORE note in app.module.ts.
+      useFactory: (clock: Clock) => {
+        const redisUrl = process.env.REDIS_URL?.trim();
+        return redisUrl ? new RedisSsoStateStore(redisUrl) : new InMemorySsoStateStore(clock);
+      },
       inject: [TOKENS.Clock],
     },
     {
