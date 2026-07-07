@@ -58,7 +58,7 @@ param env string = 'staging'
 @description('Deploy the Container Apps environment + app. false = phase 1 (platform resources only, spec §8); true = phase 3, requires appImage pushed to ACR.')
 param deployApp bool = false
 
-@description('Full image reference for the single app (API+SPA), e.g. <acr>.azurecr.io/gilgamesh-app:<gitsha>. ALWAYS pass it with deployApp=true: the empty-value fallback is :latest, which only exists if the runbook''s az acr build multi-tags (-t :<gitsha> -t :latest) — an absent tag = failed first revision (review C D3).')
+@description('Full image reference for the single app (API+SPA), e.g. <acr>.azurecr.io/gilgamesh-app:<gitsha>. ALWAYS pass it with deployApp=true: the empty-value fallback is :latest, which only exists when the runbook az acr build multi-tags (-t :<gitsha> -t :latest) — an absent tag = failed first revision (review C D3).')
 param appImage string = ''
 
 @description('Provision Service Bus (run queue + RunEvent topic). OFF until the TOM runners land (keystone §7 BLOCKED-UNTIL-DELIVERED).')
