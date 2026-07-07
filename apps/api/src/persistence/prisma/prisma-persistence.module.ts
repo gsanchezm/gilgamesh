@@ -30,6 +30,7 @@ import {
 } from '../../infra';
 import { TOKENS } from '../tokens';
 import { PrismaService } from './prisma.service';
+import { PrismaReadinessProbe } from './prisma-readiness.probe';
 import {
   PrismaAgentRepository,
   PrismaAuditLogRepository,
@@ -171,6 +172,13 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     // anything else REFUSES TO BOOT — a silently selected vault stub would hold live BYOK keys
     // in process memory. Every harness pins VAULT_MODE=offline.
     { provide: TOKENS.SecretVault, useFactory: () => vaultFromEnv() },
+    // Slice 27: readiness — a cheap `SELECT 1` bounded by a timeout. Rejects on DB error/timeout,
+    // which the HealthController maps to 503 so ACA holds traffic off a not-yet-reachable Postgres.
+    {
+      provide: TOKENS.Readiness,
+      useFactory: (db: PrismaService) => new PrismaReadinessProbe(db),
+      inject: [PrismaService],
+    },
   ],
   exports: [
     PrismaService,
@@ -212,6 +220,7 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     TOKENS.Integrations,
     TOKENS.RepoProvider,
     TOKENS.SecretVault,
+    TOKENS.Readiness,
   ],
 })
 export class PrismaPersistenceModule {}

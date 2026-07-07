@@ -43,4 +43,7 @@ export const TOKENS = {
   // plumbing (the RateLimitStore precedent). The Redis SsoStateStore swap happens there later.
   Identity: 'IdentityProvider',
   SsoStates: 'SsoStateStore',
+  // Slice 27: readiness DB probe (SELECT 1). Bound per persistence wiring — AlwaysReadyProbe
+  // (in-memory) / PrismaReadinessProbe (Postgres) — and injected into the HealthController.
+  Readiness: 'ReadinessProbe',
 } as const;

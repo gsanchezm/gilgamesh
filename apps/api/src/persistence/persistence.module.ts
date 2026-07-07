@@ -69,6 +69,7 @@ import {
   Uuid7IdGenerator,
   vaultFromEnv,
 } from '../infra';
+import { AlwaysReadyProbe } from '../health/always-ready.probe';
 import { TOKENS } from './tokens';
 
 /**
@@ -233,6 +234,9 @@ import { TOKENS } from './tokens';
     // anything else REFUSES TO BOOT — a silently selected vault stub would hold live BYOK keys
     // in process memory. Every harness pins VAULT_MODE=offline.
     { provide: TOKENS.SecretVault, useFactory: () => vaultFromEnv() },
+    // Slice 27: readiness — the in-memory store is in-process, so always ready. The HealthController
+    // (declared in the app module that imports this @Global module) injects this token.
+    { provide: TOKENS.Readiness, useValue: new AlwaysReadyProbe() },
   ],
   exports: [
     TOKENS.Users,
@@ -273,6 +277,7 @@ import { TOKENS } from './tokens';
     TOKENS.Integrations,
     TOKENS.RepoProvider,
     TOKENS.SecretVault,
+    TOKENS.Readiness,
   ],
 })
 export class PersistenceModule {}

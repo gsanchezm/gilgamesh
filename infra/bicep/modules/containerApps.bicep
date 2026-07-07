@@ -299,6 +299,20 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
               periodSeconds: 30
               timeoutSeconds: 5
             }
+            {
+              // Readiness (slice 27) — gates TRAFFIC only; a failing readiness probe makes ACA stop
+              // routing to this replica but keeps it ALIVE (unlike Liveness, which restarts). Hits
+              // /api/v1/health/ready → the app runs a cheap `SELECT 1` (bounded ~2s in-app, < the 5s
+              // timeoutSeconds here). So a cold-woken / mid-`migrate deploy` Postgres holds traffic
+              // instead of crash-looping (staging review: stopped-Postgres). 3 consecutive failures
+              // (~30s) mark the replica not-ready; it recovers automatically once the DB answers.
+              // Depends on the DB by design — that dependency is exactly what MUST stay OFF liveness.
+              type: 'Readiness'
+              httpGet: { path: '/api/v1/health/ready', port: appPort }
+              periodSeconds: 10
+              failureThreshold: 3
+              timeoutSeconds: 5
+            }
           ]
         }
       ]
