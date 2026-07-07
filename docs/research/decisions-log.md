@@ -612,3 +612,25 @@ divergent `refactor/audit-hardening` branch. Reconciled + executed SDD/TDD, all 
   pin `BRAIN_MODE=offline` a nivel ci.yml (cinturón+tirantes) · slice de provenance por chunk +
   re-embed al conectar · job de rollover de periodo (resetea AMBOS contadores) · smoke Voyage
   @manual · Stripe portal/proration/refunds · voz STT/TTS · Bloque 3 (decisión owner).
+
+## Staging deploy (2026-07-06 PM4) — DECIDED by owner (spec: `specs/infra/staging-deploy.md`)
+
+El owner pidió desplegar el primer ambiente (staging) y decidió las 4 preguntas (AskUserQuestion,
+todas con la recomendación):
+- **SD-1 Plataforma = Azure Container Apps** (la vía bicep de fundación, decisión #11).
+- **SD-2 Vault = prod-like**: `NODE_ENV=production` + Azure Key Vault real + Managed Identity;
+  `VAULT_MODE=offline` jamás en staging (valida S20 de verdad).
+- **SD-3 Web = el API sirve la SPA** (un contenedor, un origen; `__Host-` + CSRF intactos;
+  flag `WEB_DIST_DIR`, ausente = cero cambio de comportamiento).
+- **SD-4 Ejecución = owner hace `az login` en sesión, el agente ejecuta los comandos az bajo
+  supervisión** — relaja para este objetivo el contrato de fundación "el agente nunca despliega"
+  (azure-environments.md §0); el runbook §8 del spec queda como vía manual.
+- Alcance mínimo: sin Redis (API max 1 réplica, in-memory correcto), Service Bus/Blob/runners
+  apagados por parámetro, keys reales ausentes al inicio (todo degrada a stub; se activan con
+  `az keyvault secret set` + restart). Costo ~US$20–25/mes, Postgres detenible.
+- **Cuenta Anthropic (duda del owner):** su plan Claude Max NO respalda el API del producto
+  (suscripción de consumo, sin créditos de API, ToS). Para `ClaudeBrain` → cuenta **Claude
+  Console** con créditos prepagados; workspace `gilgamesh-staging` + key scoped + spend limit
+  mensual. Escala multi-equipo ya resuelta en producto: metering `BrainUsage` + quotas S14 por
+  plan sobre la key de plataforma, y BYOK S9 para tenants grandes (facturan a su propia cuenta).
+  Embeddings = cuenta Voyage AI aparte (sin ella, hash léxico — gate de coherencia S19-6).
