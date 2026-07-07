@@ -1,4 +1,4 @@
-# Slice 21 — Voyage BYOK "connected-but-gated" UI hint
+# Slice 22 — Voyage BYOK "connected-but-gated" UI hint
 
 Status: in progress (branch `feat-voyage-ui-hint`). Closes the programa-v3 deferred follow-up
 *"UI hint for a connected-but-gated voyage key"*.

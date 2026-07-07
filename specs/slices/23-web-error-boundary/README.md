@@ -1,4 +1,4 @@
-# Slice 21 — Web error boundary (UI resilience)
+# Slice 23 — Web error boundary (UI resilience)
 
 ## Why
 
