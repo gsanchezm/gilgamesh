@@ -1,6 +1,5 @@
 import type { AgentRuntimeStatus, AgentSlot } from '@gilgamesh/domain';
-import { readCsrfToken } from './csrf';
-import { API_BASE, ok } from './http';
+import { getJson, sendJson } from './http';
 
 export interface AgentRoomAgent {
   /** Agent.id — the tile-pinned chat entry deep-links `/chat?agent=<id>` (slice 11). */
@@ -41,26 +40,24 @@ export interface AgentsClient {
   wakeAll(projectId: string): Promise<{ awake: number; total: number }>;
 }
 
+// Routed through the shared getJson/sendJson so getAgentRoom (a primary dashboard load) gains the
+// timeout + transient-retry instead of hanging forever on a stalled API (slice 25, review F1); the
+// mutations gain the timeout + typed error but are never retried (getAgentRoom is the only GET here).
 export const httpAgentsClient: AgentsClient = {
-  async getAgentRoom(projectId) {
-    const res = await fetch(`${API_BASE}/projects/${projectId}/agents`, { credentials: 'include' });
-    return ok<AgentRoomData>(res, 'Could not load the agent room.');
-  },
-  async setAgent(projectId, slot, patch) {
-    const res = await fetch(`${API_BASE}/projects/${projectId}/agents/${slot}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': readCsrfToken() },
-      credentials: 'include',
-      body: JSON.stringify(patch),
-    });
-    return ok<AgentRoomAgent>(res, 'Could not update the agent.');
-  },
-  async wakeAll(projectId) {
-    const res = await fetch(`${API_BASE}/projects/${projectId}/agents/wake-all`, {
-      method: 'POST',
-      headers: { 'X-CSRF-Token': readCsrfToken() },
-      credentials: 'include',
-    });
-    return ok<{ awake: number; total: number }>(res, 'Could not awaken the team.');
-  },
+  getAgentRoom: (projectId) =>
+    getJson<AgentRoomData>(`/projects/${projectId}/agents`, 'Could not load the agent room.'),
+  setAgent: (projectId, slot, patch) =>
+    sendJson<AgentRoomAgent>(
+      'PATCH',
+      `/projects/${projectId}/agents/${slot}`,
+      patch,
+      'Could not update the agent.',
+    ),
+  wakeAll: (projectId) =>
+    sendJson<{ awake: number; total: number }>(
+      'POST',
+      `/projects/${projectId}/agents/wake-all`,
+      undefined,
+      'Could not awaken the team.',
+    ),
 };

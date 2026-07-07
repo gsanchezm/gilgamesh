@@ -132,6 +132,43 @@ describe('getJson — 4xx is terminal (AC-HTTP-04)', () => {
   });
 });
 
+describe('getJson — the transient set is exactly {502,503,504} (review F2)', () => {
+  it.each([502, 504])('retries a %d then succeeds', async (status) => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status, json: async () => ({ detail: 'gw' }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ value: 1 }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const { sleep } = fakeSleep();
+    await expect(getJson('/gw', 'Could not load.', { sleep })).resolves.toEqual({ value: 1 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([500, 429])('does NOT retry a %d (terminal — surfaces the detail)', async (status) => {
+    const fetchMock = vi.fn(async () => ({ ok: false, status, json: async () => ({ detail: 'nope' }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { delays, sleep } = fakeSleep();
+    const err = (await getJson('/x', 'fallback', { sleep }).catch((e) => e)) as HttpError;
+    expect(err.status).toBe(status);
+    expect(err.message).toBe('nope');
+    // 500 (unsafe to replay) and 429 (respect the server's rate-limit) are terminal, not transient.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(delays).toEqual([]);
+  });
+});
+
+describe('getJson — the per-attempt timeout timer is cleared on success (review F3, no leak)', () => {
+  it('clears the AbortController deadline once the response settles', async () => {
+    const clearSpy = vi.spyOn(globalThis, 'clearTimeout');
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ ok: 1 }) })));
+    await getJson('/fast', 'Could not load.');
+    // The timer set for the (now-settled) attempt must be cleared — a dangling 10s timer per
+    // successful request would otherwise keep the event loop alive.
+    expect(clearSpy).toHaveBeenCalled();
+    clearSpy.mockRestore();
+  });
+});
+
 describe('sendJson — mutations are NEVER retried (AC-HTTP-05)', () => {
   it('does not retry a 503 on a POST (non-idempotent) — fetch called exactly once', async () => {
     const fetchMock = vi.fn(async () => ({

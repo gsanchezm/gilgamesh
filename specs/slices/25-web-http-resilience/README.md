@@ -98,9 +98,13 @@ class HttpError extends Error {
   is not consumed; the final `Response` is read once by `ok`.
 - Network vs timeout is disambiguated by `controller.signal.aborted` inside the `catch` (our abort =
   timeout; any other rejection = network).
-- `ok` now throws `HttpError(detail ?? fallback, { status })` instead of a bare `Error`. Agents/
-  Knowledge clients call `ok` directly with their own `fetch` (multipart/query cases) — they inherit
-  the typed error for free (message unchanged) but not the retry wrapper (only `getJson` retries).
+- `ok` now throws `HttpError(detail ?? fallback, { status })` instead of a bare `Error`.
+- The Agents and Knowledge clients (which previously hand-rolled their own `fetch`) are routed through
+  `getJson`/`sendJson` (review F1) so their GET reads — notably `getAgentRoom`, a primary dashboard
+  load — gain the timeout + transient-retry instead of hanging forever on a stalled API. Their
+  mutations go through `sendJson` (timeout + typed error, never retried). Nothing forced the old raw
+  `fetch`: `getAgentRoom` is a plain GET, `knowledge.search` carries its query in the URL string, and
+  `uploadDocument` sends `application/json` (not multipart).
 
 ## Verification
 
