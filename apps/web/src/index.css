@@ -2163,3 +2163,55 @@ body {
   gap: 6px;
   align-items: flex-start;
 }
+
+/* ---- gx-errpanel (slice 21 — React error boundary fallback) ---------------------------------
+   Centres the recovery Card in whatever slot the boundary sits in: the shell content area (inner
+   boundary) OR the full page (top-level, pre-auth). Sized relative to the parent — never 100vh,
+   which would overflow the padded content slot. Uses design tokens; when the top-level boundary
+   sets data-theme="dark" on this root, the imported ui token block re-pins the dark palette. */
+.gx-errpanel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--text);
+}
+.gx-errpanel__card {
+  max-width: 440px;
+  width: 100%;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+.gx-errpanel__title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 1.1;
+  color: var(--text);
+  margin: 0;
+}
+.gx-errpanel__msg {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+}
+.gx-errpanel__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 6px;
+}
+@media (max-width: 480px) {
+  .gx-errpanel__actions {
+    flex-direction: column;
+  }
+  .gx-errpanel__actions .gx-btn {
+    width: 100%;
+  }
+}

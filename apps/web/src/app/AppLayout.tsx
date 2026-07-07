@@ -13,6 +13,7 @@ import {
   type SidebarNavItem,
 } from '@gilgamesh/ui';
 import type { AgentRoomData } from '../lib/agents-client';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { useClients } from './clients';
 import { useSession } from './session';
 
@@ -133,7 +134,11 @@ export function AppLayout() {
       theme={theme}
       onToggleTheme={toggle}
     >
-      <Outlet />
+      {/* Keyed by pathname: a screen crash shows the fallback inside the content slot while the
+          sidebar/topbar stay usable; navigating (key change) remounts the boundary → auto-recovery. */}
+      <ErrorBoundary key={pathname}>
+        <Outlet />
+      </ErrorBoundary>
     </AppShell>
   );
 }
