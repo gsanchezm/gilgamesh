@@ -34,22 +34,33 @@ export function ReportsScreen({ runsClient, projectId }: ReportsScreenProps) {
   const [error, setError] = useState<string | null>(null);
 
   // A `useCallback` load (mirroring BillingScreen) so the error state can retry it. Same data path
-  // as before — `runsClient.listRuns` — under the same loading/error gates.
-  const load = useCallback(async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      setRuns(await runsClient.listRuns(projectId));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load runs.');
-    } finally {
-      setLoading(false);
-    }
-  }, [runsClient, projectId]);
+  // as before — `runsClient.listRuns` — under the same loading/error gates. `isActive` restores the
+  // pre-refactor safety guard: the mount effect passes `() => active` so a response arriving after
+  // unmount / a mid-flight projectId change never sets state on a dead screen (review #1); retry
+  // calls it with no arg (always active).
+  const load = useCallback(
+    async (isActive: () => boolean = () => true) => {
+      setError(null);
+      setLoading(true);
+      try {
+        const data = await runsClient.listRuns(projectId);
+        if (isActive()) setRuns(data);
+      } catch (err) {
+        if (isActive()) setError(err instanceof Error ? err.message : 'Could not load runs.');
+      } finally {
+        if (isActive()) setLoading(false);
+      }
+    },
+    [runsClient, projectId],
+  );
 
   useEffect(() => {
     if (!projectId) return;
-    void load();
+    let active = true;
+    void load(() => active);
+    return () => {
+      active = false;
+    };
   }, [projectId, load]);
 
   const summary = useMemo(() => summarizeAcrossRuns(runs.map(toAggregate)), [runs]);
@@ -64,7 +75,7 @@ export function ReportsScreen({ runsClient, projectId }: ReportsScreenProps) {
 
       {loading && <Spinner label="Loading reports…" />}
 
-      {error && <ErrorState message={error} onRetry={load} />}
+      {error && <ErrorState message={error} onRetry={() => void load()} />}
 
       {!error && !loading && runs.length === 0 && (
         <EmptyState title="No runs yet" hint="Trigger a run from the Test Lab to see reports here." />
