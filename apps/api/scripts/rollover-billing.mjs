@@ -11,8 +11,9 @@
 //
 // Or via the workspace script: `pnpm --filter @gilgamesh/api rollover:billing [-- --org <orgId>]`.
 //
-// The SQL below is kept BYTE-IDENTICAL to PrismaSubscriptionRepository.resetUsage (this operator
-// script can't import the compiled TS adapter — the ingest-corpus.mjs duplication precedent). Any
+// The SQL below is the SAME statement as PrismaSubscriptionRepository.resetUsage (identical
+// columns/values/predicate; only template-literal indentation differs) — this operator script can't
+// import the compiled TS adapter (the ingest-corpus.mjs duplication precedent). Any semantic
 // divergence would be a money bug.
 import { PrismaClient } from '@prisma/client';
 

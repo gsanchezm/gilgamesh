@@ -109,8 +109,18 @@ together in a single statement; nothing else changes.
 - **Both-or-neither** — the single statement is the S14-6 guarantee: the two counters can never
   diverge across a reset.
 - **SQL parity** — `PrismaSubscriptionRepository.resetUsage` and the inlined `rollover-billing.mjs`
-  SQL are byte-identical (the `ingest-corpus.mjs` duplication precedent — the script can't import the
-  compiled TS adapter). Any divergence would be a money bug; kept in lockstep.
+  SQL are the same statement (identical columns/values/predicate, modulo template-literal
+  indentation) — the `ingest-corpus.mjs` duplication precedent (the script can't import the compiled
+  TS adapter). Any semantic divergence would be a money bug; kept in lockstep.
+- **Counter vs. ledger after a rollover (disclosure).** Between charges the invariant
+  `brainTokensUsed == Σ billable BrainUsage rows` holds (charged in one UoW; the token-billing BDD
+  asserts it). A rollover zeroes the counter but leaves the immutable `BrainUsage`/`Invoice` ledgers
+  untouched, so afterwards the quota meter (counter-based, `GET /orgs/{orgId}/subscription`) reads 0
+  while the usage view (`GET /orgs/{orgId}/brain/usage`, an **all-time** sum of `BrainUsage` rows) and
+  any run-history total still show the accumulated history. This is intentional — current-period
+  quota tally vs. lifetime ledger — but the two surfaces mean different things post-rollover. No test
+  breaks: no token-billing reconciliation scenario runs a rollover. Period-scoping the usage view is
+  a §6 follow-up.
 - **Env** — the script reads `DATABASE_URL` (via `PrismaClient`), exactly like `ingest:corpus`.
 
 ## 6. Follow-ups (named)
@@ -119,3 +129,7 @@ together in a single statement; nothing else changes.
   `currentPeriodEnd` advance so the boundary is data-driven rather than operator-timed.
 - If per-org billing periods diverge, a `WHERE current_period_end <= now()` variant so a global run
   only rolls the orgs that are actually due.
+- Period-scope the AI-usage view (`GET /orgs/{orgId}/brain/usage`) and any run-history total — e.g.
+  a `periodStart` filter on `BrainUsage` — so the usage breakdown resets alongside the quota counter
+  at each rollover (or explicitly label it "lifetime" in the UI). Same question for run-minutes if a
+  view ever sums run history against `runMinutesUsed`.

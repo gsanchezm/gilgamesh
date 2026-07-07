@@ -426,8 +426,9 @@ export class PrismaSubscriptionRepository implements SubscriptionRepository {
     // reset — the charge lands fully before (cleared with the period) or fully after (counts to the
     // new period). Touches only the two counters; every other column is preserved. Returns the
     // affected-row count (0 when the org has no subscription). Omitting orgId resets every row.
-    // NOTE: keep this SQL byte-identical to apps/api/scripts/rollover-billing.mjs (that operator
-    // script can't import this compiled adapter — the ingest-corpus duplication precedent).
+    // NOTE: keep this the SAME SQL statement as apps/api/scripts/rollover-billing.mjs (identical
+    // columns/values/predicate; only template-literal indentation differs) — that operator script
+    // can't import this compiled adapter (the ingest-corpus duplication precedent).
     if (orgId === undefined) {
       return this.db.$executeRaw`
         UPDATE subscriptions SET run_minutes_used = 0, brain_tokens_used = 0`;
