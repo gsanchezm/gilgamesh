@@ -716,3 +716,42 @@ con mutación real, merges FF con gate integrado final:
   BDD 203/1734 · Playwright 18 (un flake transitorio del smoke, verde aislado + re-run completo) ·
   bicep recompila limpio. Lección: el smoke wake-all flakea bajo carga del run completo pero pasa
   aislado — no confundir flake con regresión (verificar aislado antes de tocar código).
+
+### Programa paralelo v6 (2026-07-08) — 5 features deploy-ops sin keystone (mientras F4 espera)
+
+5 follow-ups de operabilidad para el deploy en ACA, sin keystone (slices 29–33, sin colisión; sin
+cambio de esquema → sin migración), en paralelo, cada uno review adversarial con mutación real, merges
+FF secuenciales con gate integrado final:
+- **graceful-shutdown (slice 29):** drenaje de readiness en SIGTERM antes de `app.close()` para rollouts
+  ACA sin downtime. `ShutdownState.draining` → `ready()` devuelve 503 ANTES del probe de DB; liveness
+  sigue siendo un 200 constante SIN DB (ACA retiene tráfico, no crash-loop). `main.ts` saca SIGTERM de
+  `enableShutdownHooks` (Nest lo cerraría inmediato y anularía el grace); `app.close()` igual corre los
+  hooks → Prisma `$disconnect`. APPROVE, 5/5 mutaciones (incl. la crítica liveness-nunca-flipea); 0 sobrev.
+- **structured-logging (slice 30):** `LOG_FORMAT=json` cambia el ConsoleLogger de Nest por un logger JSON
+  de una línea (allowlist fija de claves, error→stderr, nunca lanza) para Azure Log Analytics; unset/
+  cualquier otro valor → selector `undefined` → `useLogger` nunca se llama → cero cambio. APPROVE, 5/5
+  mutaciones (incl. no-fuga-de-secretos); 0 sobrev. (Conflicto config/main.ts con slice 29 — resuelto
+  conservando ambos campos/inserciones.)
+- **db-pool-config (slice 31):** postura de pool Prisma acotada para una réplica B1ms chica:
+  `withPoolDefaults` agrega `connection_limit=5`/`pool_timeout=10`/`connect_timeout=10` (segundos) sólo si
+  AUSENTE (nunca pisa params del operador); vía `datasourceUrl` (schema.prisma intacto → migrate no
+  afectado; `DATABASE_URL` ausente → cero cambio); `connectWithRetry` re-lanza el último error sin
+  modificar (no false-healthy). APPROVE, 5/5 mutaciones; 0 sobrev. Password `%40` sobrevive el round-trip
+  WHATWG URL — DSN de staging seguro.
+- **web-connection-banner (slice 32):** banner global de "conexión perdida" tras un seam pub/sub no-op:
+  `http.ts` reporta online antes del único `return res` y offline SÓLO en los dos throws terminales de
+  red/timeout — cualquier respuesta del servidor (incl. 4xx/5xx) reporta online (sin banner falso en
+  errores de API normales); el `continue` de un 502/503/504 reintentado no reporta nada. APPROVE; la
+  invariante crítica falso-offline-en-500 atrapada; **2 sobrevivientes CERRADOS** (el blip que se recupera
+  en retry sigue online + el provider desuscribe el seam en unmount — ambos mutación-verificados).
+- **ui-adopt-async-states (slice 33):** adopta los primitivos slice-28 Spinner/ErrorState/EmptyState en
+  Billing/Integrations/Knowledge por una regla load-lifecycle-vs-acción; `index.css`+`packages/ui`
+  intactos; fix latente (el `load` limpia `error` arriba → retry exitoso no deja banner viejo). APPROVE;
+  **1 sobreviviente CERRADO** (EmptyState ausente cuando la búsqueda tiene resultados). Los títulos de
+  EmptyState no llevan punto final → se actualizó **una** aserción e2e de string exacto de Knowledge (el
+  regex unitario sin punto no lo había cazado).
+- **Post-merge en `main`:** 1095 Docker-free (dom 106 · ui 39 · app 357 · web 214 · api 379) · int 39 ·
+  BDD 203/1734 · Playwright 18/18. **Lección:** el gate Docker-free NO corre e2e — que los tests unitarios
+  de un slice pasen ≠ que su e2e pase; un cambio de copy de EmptyState (sin punto) pasó el regex unitario
+  sin punto pero rompió el e2e de string exacto — correr el gate Playwright antes de declarar hecho un
+  slice de UI. Los 3 sobrevivientes de review se cierran con tests que muerden su mutación (no vacuos).

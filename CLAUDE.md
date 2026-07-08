@@ -590,3 +590,58 @@ reviewed with real mutation testing, merged FF sequentially with a final integra
 - **Deferred (unchanged):** provenance/re-embed slice (keystone+migration) · Stripe portal/proration ·
   billing period scheduler · CORS `Access-Control-Expose-Headers: X-Request-Id` (trivial) · voice ·
   Bloque 3 (owner decision).
+
+## Programa paralelo v6 (deploy-ops hardening) — graceful-shutdown + structured-logging + db-pool + connection-banner + adopt-async-states — DoD COMPLETE (2026-07-08, on `main`)
+
+Five NO-KEYSTONE deploy/operability follow-ups (oriented at the ACA staging deploy) in parallel `pnpm wt`
+worktrees (announced: `feat-graceful-shutdown`, `feat-structured-logging`, `feat-db-pool-config`,
+`feat-web-connection-banner`, `feat-ui-adopt-async-states`), each SDD→TDD by a Claude subagent, adversarially
+reviewed with real mutation testing, merged FF sequentially with a final integrated stack gate. All five
+claimed distinct slice numbers (29–33) — no spec collisions; no schema change → no migration/`prisma generate`.
+- **graceful-shutdown (slice 29)** — zero-downtime ACA rolling deploys: a `ShutdownState` (`@Injectable`,
+  in `APP_PROVIDERS`) whose `draining` flag flips on SIGTERM; `HealthController.ready()` returns 503
+  `not-ready` when draining BEFORE the DB probe, while liveness `check()` stays a constant DB-free 200 (so
+  ACA holds traffic off the replica instead of crash-looping it). `createShutdownHandler()` = beginDraining →
+  wait `SHUTDOWN_GRACE_MS` (default 10s) → `app.close()`, idempotent via a `started` guard. `main.ts` carves
+  SIGTERM OUT of `enableShutdownHooks(...)` (keeping the other signals) so Nest's default immediate-teardown
+  can't defeat the grace; `app.close()` still runs the hooks → Prisma `$disconnect`. Review APPROVE, 5/5
+  mutations caught incl. the critical liveness-never-flips; 0 survivors.
+- **structured-logging (slice 30)** — `LOG_FORMAT=json` swaps Nest's pretty ConsoleLogger for a single-line
+  JSON `LoggerService` (`{level,time,context,message,stack?}`, fixed key allowlist, `error`→stderr,
+  never-throws try/catch) for Azure Log Analytics; unset/`pretty`/any-unrecognised → `undefined` selector →
+  `useLogger` never called → zero change. Review APPROVE, 5/5 mutations caught incl. the no-secret-leak
+  allowlist; 0 survivors. (Config+main.ts overlapped slice 29 — resolved keeping both fields/insertions.)
+- **db-pool-config (slice 31)** — bounded, configurable Prisma connection posture for a single small B1ms
+  replica: `withPoolDefaults` appends `connection_limit=5`/`pool_timeout=10`/`connect_timeout=10` (seconds)
+  only when ABSENT (never overrides operator-set params), env overrides `DB_CONNECTION_LIMIT`/`DB_POOL_TIMEOUT_S`/
+  `DB_CONNECT_TIMEOUT_S`; passed via the Prisma 6 `datasourceUrl` ctor option (schema.prisma untouched → migrate
+  unaffected; `DATABASE_URL` unset → zero change); `connectWithRetry` (2 retries, injectable sleep, rethrows the
+  last error unmodified → no false-healthy). Review APPROVE, 5/5 mutations caught; 0 survivors. Encoded-password
+  (`%40`) DSN round-trips through WHATWG URL — staging DSN safe.
+- **web-connection-banner (slice 32)** — a global offline banner behind a no-op pub/sub seam: `http.ts` emits
+  `reportOnline()` before its single `return res` and `reportOffline()` only at the two terminal
+  network/timeout throws — so ANY reached-server response (incl. 4xx/5xx and an exhausted-503) reports online
+  (no false banner on ordinary API errors), and a retried 502/503/504 `continue` reports NOTHING. Provider
+  subscribes to the seam + `window` online/offline, seeds from `navigator.onLine`, mounts OUTSIDE the
+  ErrorBoundary. Review APPROVE; the critical false-offline-on-500 invariant caught; **2 survivors CLOSED**
+  (retry-blip stays online + provider unsubscribes the seam on unmount — both added mutation-verified).
+  Coverage boundary (raw-fetch auth/onboarding clients + chat SSE) documented.
+- **ui-adopt-async-states (slice 33)** — adopts the slice-28 `Spinner`/`ErrorState`/`EmptyState` primitives in
+  Billing (loading+load-failure w/ retry), Integrations (load-failure w/ retry), Knowledge (empty) per a locked
+  load-lifecycle-vs-action rule; `index.css` + `packages/ui` untouched. Fixed a latent bug: `load` now clears
+  `error` at the top so a successful retry doesn't leave a stale banner. Review APPROVE; **1 survivor CLOSED**
+  (assert EmptyState absent when a search has results). EmptyState titles drop the trailing period → one exact-
+  string Knowledge **e2e** assertion updated to match (the unit regex hadn't caught it).
+- **Verified (post-merge on `main`):** typecheck · lint · **1095 Docker-free** (domain 106 · ui 39 ·
+  application 357 · web 214 · api 379) · `test:int` **39** · **BDD 203 scenarios / 1734 steps** ·
+  **Playwright 18/18** (one real slice-33 e2e copy regression found + fixed, then 18/18 clean).
+- **Process notes:** merging the two config/main.ts-overlapping api streams (29,30) first, in order, isolated
+  the single conflict to one resolve; the 3 isolated streams (31 prisma, 32/33 web) rebased clean · the
+  Docker-free gate does NOT run e2e, so a slice's unit tests passing ≠ its e2e passing — an EmptyState copy
+  change (period-less) slipped past the period-less unit regex but broke the exact-string e2e; run the
+  Playwright gate before declaring a UI slice done.
+- **Deferred:** structured-logging follow-ups — Nest's pre-`useLogger` bootstrap lines still emit pretty/ANSI
+  in json mode (`bufferLogs:true` would route them through the JSON logger too) · `JsonLogger.fatal()`
+  unimplemented (latent — no `.fatal` calls) · db-pool int test doesn't independently prove params reach the
+  engine · everything from v5 unchanged (provenance/re-embed · Stripe portal/proration · billing scheduler ·
+  voice · Bloque 3 owner decision).
