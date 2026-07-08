@@ -78,6 +78,9 @@ describe('KnowledgeScreen', () => {
     await waitFor(() => expect(client.search).toHaveBeenCalledWith('boundary value', 8));
     expect(await screen.findByText(/Boundary value analysis tests the edges/)).toBeTruthy();
     expect(screen.getByText(/ISTQB_CTFL_Syllabus_v4.0.1 · Boundary Value Analysis/)).toBeTruthy();
+    // The EmptyState must NOT render when a search returns matches (guards the `results.length === 0`
+    // condition against an off-by-one that would show "No matches" alongside real results — review S33-F2).
+    expect(screen.queryByText('No matches')).toBeNull();
   });
 
   it('shows an error when the search fails', async () => {
