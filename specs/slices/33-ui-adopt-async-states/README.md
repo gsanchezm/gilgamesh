@@ -57,8 +57,9 @@ This one rule resolves every per-screen decision below.
 ### `KnowledgeScreen` — loaded-empty only (×2)
 
 - **documents empty** — `<p className="gx-kb__empty">No documents uploaded yet.</p>` → `EmptyState` (copy
-  preserved as the title).
-- **search empty** — `<p className="gx-kb__empty">No matches.</p>` → `EmptyState`.
+  preserved as the title; the trailing period is dropped to match the ReportsScreen `No runs yet`
+  convention).
+- **search empty** — `<p className="gx-kb__empty">No matches.</p>` → `EmptyState` (same period drop).
 - **Left inline (action/validation states):** the upload error and the search error. Both are
   action-triggered `role="alert"` messages (upload includes pure validation — "Only .pdf, .docx, .md, and
   .txt files are supported."), and the mount document-load error is deliberately swallowed (leaves the
