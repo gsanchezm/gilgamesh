@@ -43,9 +43,12 @@ describe('DB pool config (real Postgres · augmented DATABASE_URL)', () => {
   it('the helper appends the pool params while preserving the original DSN (schema, host, db)', () => {
     const original = new URL(process.env.DATABASE_URL!);
     const augmented = new URL(withPoolDefaults(process.env.DATABASE_URL)!);
-    expect(augmented.searchParams.get('connection_limit')).toBe('5');
-    expect(augmented.searchParams.get('pool_timeout')).toBe('10');
-    expect(augmented.searchParams.get('connect_timeout')).toBe('10');
+    // Presence, not exact value: an ambient DATABASE_URL may already carry an operator-set param,
+    // which the helper (correctly) preserves — exact-value pins live in pool-config.test.ts against
+    // URLs the unit test fully controls. Here we prove only that the real connection URL is complete.
+    expect(augmented.searchParams.has('connection_limit')).toBe(true);
+    expect(augmented.searchParams.has('pool_timeout')).toBe(true);
+    expect(augmented.searchParams.has('connect_timeout')).toBe(true);
     // Original params/identity untouched (no clobber):
     expect(augmented.searchParams.get('schema')).toBe(original.searchParams.get('schema'));
     expect(augmented.hostname).toBe(original.hostname);
