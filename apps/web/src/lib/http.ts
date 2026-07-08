@@ -1,3 +1,4 @@
+import { reportOffline, reportOnline } from './connection-status';
 import { readCsrfToken } from './csrf';
 import { HttpError } from './http-error';
 
@@ -72,12 +73,17 @@ async function fetchWithResilience(
         await policy.sleep(policy.backoffMs(attempt));
         continue;
       }
+      // Reached the server (any status — a 4xx/5xx still proves connectivity). Slice 32: this is the
+      // single "online" report point; `ok()` may still throw a status-bearing error downstream, but
+      // that is an ordinary API error, never a connection problem.
+      reportOnline();
       return res;
     } catch (err) {
       clearTimeout(timer);
 
       // Our own deadline fired → a timeout. Terminal: never retried (the budget is already spent).
       if (controller.signal.aborted) {
+        reportOffline();
         throw new HttpError('The request timed out. Please try again.', { isTimeout: true });
       }
 
@@ -86,6 +92,7 @@ async function fetchWithResilience(
         await policy.sleep(policy.backoffMs(attempt));
         continue;
       }
+      reportOffline();
       throw new HttpError('Could not reach the server. Check your connection and try again.', {
         isNetwork: true,
       });
