@@ -65,9 +65,26 @@ errors (4xx/5xx) are **not** a connection problem and never trigger it — those
 - **AC-CONN-06** (back-compat) — the reporter seam is a no-op with no subscriber; the slice-25 `http.ts`
   tests (fetch call counts, backoff `delays`, timing) pass **unchanged**.
 
+## Coverage boundary (known gaps — named, not oversights)
+
+The seam only carries traffic routed through `getJson` / `sendJson`. That is every in-app client
+(agents/dashboard, test lab, runs, billing, knowledge, integrations, chat messages). Two paths bypass it:
+
+- **`auth-client.ts` (login/register/me/logout/forgot/reset) and `onboarding-client.ts` (createProject)
+  use raw `fetch`** — they predate the shared primitives and throw plain `Error`. Per the task's rule to
+  keep the 9 clients unchanged, they are NOT rewired here, so a *server-unreachable* failure on those
+  pre-app screens does not emit through the seam. **Mitigation:** the browser `offline` event +
+  `navigator.onLine` seeding (AC-CONN-05) DO raise the banner on those screens for a real
+  interface-level drop (Wi-Fi off). The residual gap is only "interface up, server unreachable" during an
+  auth/onboarding call. Follow-up: route the remaining raw-fetch clients through `getJson`/`sendJson`.
+- **Chat live SSE (`EventSource`, slice 11)** cannot report through a `fetch` seam by construction; an
+  SSE stream disconnect won't raise the banner. A future SSE-aware connectivity signal could close this.
+
 ## Out of scope / deferred
 
 - No dedicated health-ping on manual retry (no new route; the app's slice-25 GET retries + screen
   re-fetches drive auto-recovery, and the banner reflects live connectivity). A "reconnect now" ping could
   be a later follow-up.
 - No per-request queue/replay of failed mutations.
+- A bare `getByRole('status')` in future app-scope tests would match both this always-mounted live region
+  and the slice-28 `Spinner`; assert on the banner text instead.
