@@ -32,7 +32,8 @@ test('Knowledge: upload a document (demo) and search the shared KB', async ({ pa
 
   await page.goto('/knowledge');
   await expect(page.getByRole('heading', { name: 'Knowledge base', exact: true })).toBeVisible();
-  await expect(page.getByText('No documents uploaded yet.')).toBeVisible();
+  // Slice 33 adopted the shared EmptyState primitive here; its titles carry no trailing period.
+  await expect(page.getByText('No documents uploaded yet')).toBeVisible();
 
   // Ingest the bundled sample → it appears under Indexed documents with a chunk count.
   await page.getByRole('button', { name: '+ demo' }).click();
