@@ -167,6 +167,12 @@ var appEnv = concat(
     { name: 'CORS_ORIGINS', value: '' } // same-origin only (SD-3: the API serves the SPA)
     { name: 'DATABASE_URL', secretRef: 'db-connection-string' }
     { name: 'SESSION_SECRET', secretRef: 'session-secret' } // not yet consumed by the app (spec §5 keeps it provisioned)
+    // Graceful-shutdown grace window in ms (slice 29). MUST satisfy the drain contract:
+    //   readiness detect (periodSeconds × failureThreshold = 5×3 = 15s) < this (20s) < ACA SIGKILL
+    //   (terminationGracePeriodSeconds default 30s). 20s = 15s for ACA to observe not-ready + ~5s to
+    //   finish in-flight before app.close(). The app default is 10s — TOO SHORT here (ACA would never
+    //   see not-ready before close → the drain would be a no-op), so it is set explicitly.
+    { name: 'SHUTDOWN_GRACE_MS', value: '20000' }
   ],
   hasAnthropicKey ? [
     { name: 'ANTHROPIC_API_KEY', secretRef: 'anthropic-api-key' } // absent ⇒ deterministic stub (S9)
@@ -305,11 +311,16 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
               // /api/v1/health/ready → the app runs a cheap `SELECT 1` (bounded ~2s in-app, < the 5s
               // timeoutSeconds here). So a cold-woken / mid-`migrate deploy` Postgres holds traffic
               // instead of crash-looping (staging review: stopped-Postgres). 3 consecutive failures
-              // (~30s) mark the replica not-ready; it recovers automatically once the DB answers.
-              // Depends on the DB by design — that dependency is exactly what MUST stay OFF liveness.
+              // mark the replica not-ready; it recovers automatically once the DB answers.
+              //
+              // periodSeconds 5 (not 10): this probe is ALSO the graceful-shutdown drain signal
+              // (slice 29) — on SIGTERM the app flips /health/ready to 503, and ACA must OBSERVE
+              // not-ready (5s × 3 = 15s worst case) BEFORE app.close() fires at SHUTDOWN_GRACE_MS=20s,
+              // else the drain is a no-op. At the old 10×3=30s the app would always close first.
+              // Keeps the 3-failure tolerance for slice 27 (15s of DB-down before pausing traffic).
               type: 'Readiness'
               httpGet: { path: '/api/v1/health/ready', port: appPort }
-              periodSeconds: 10
+              periodSeconds: 5
               failureThreshold: 3
               timeoutSeconds: 5
             }

@@ -605,7 +605,13 @@ claimed distinct slice numbers (29–33) — no spec collisions; no schema chang
   wait `SHUTDOWN_GRACE_MS` (default 10s) → `app.close()`, idempotent via a `started` guard. `main.ts` carves
   SIGTERM OUT of `enableShutdownHooks(...)` (keeping the other signals) so Nest's default immediate-teardown
   can't defeat the grace; `app.close()` still runs the hooks → Prisma `$disconnect`. Review APPROVE, 5/5
-  mutations caught incl. the critical liveness-never-flips; 0 survivors.
+  mutations caught incl. the critical liveness-never-flips; 0 survivors. **Post-review (advisor-caught) ACA
+  drain-contract fix:** the deploy-side half was unverified — the slice-27 bicep readiness probe was
+  `periodSeconds 10 × failureThreshold 3 = 30s` against the app's default 10s grace, so `app.close()` would
+  fire long before ACA observed `not-ready` → the drain a **no-op on ACA** despite green app tests. Fixed in
+  `containerApps.bicep`: readiness `periodSeconds 10→5` (15s detect, keeps the 3-failure tolerance) +
+  `SHUTDOWN_GRACE_MS=20000` env, so `15s < 20s grace < 30s ACA SIGKILL`; contract documented in
+  `staging-deploy.md §5`; bicep recompiles clean.
 - **structured-logging (slice 30)** — `LOG_FORMAT=json` swaps Nest's pretty ConsoleLogger for a single-line
   JSON `LoggerService` (`{level,time,context,message,stack?}`, fixed key allowlist, `error`→stderr,
   never-throws try/catch) for Azure Log Analytics; unset/`pretty`/any-unrecognised → `undefined` selector →

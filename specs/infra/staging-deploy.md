@@ -125,6 +125,7 @@ reduced to the single `app` (probes `/health`, scale 0..1, ingress external, `tr
 | `API_PORT` / `WEB_DIST_DIR` | `3001` / `/app/apps/web/dist` | image |
 | `DATABASE_URL` | secretRef `db-connection-string` (`sslmode=require`) | KV |
 | `SESSION_SECRET` | secretRef `session-secret` (generated at deploy) | KV |
+| `SHUTDOWN_GRACE_MS` | `20000` (20s — see the drain contract below) | literal |
 | `AZURE_KEY_VAULT_URL` | vault URI | bicep output |
 | `AZURE_CLIENT_ID` | UAMI client id (DefaultAzureCredential) | bicep |
 | `CORS_ORIGINS` | *(empty — same origin)* | literal |
@@ -136,6 +137,17 @@ Caveat (S9 selector): `ANTHROPIC_API_KEY` bound to a placeholder value selects t
 with an invalid key. The bicep binds the env var **only when** the owner supplied a real key at
 deploy (`empty(anthropicApiKey)` guard); until then the var is absent and the stub answers — the
 degradation contract stays intact.
+
+**Graceful-shutdown drain contract (slice 29 × slice 27 — F4 invariant).** Zero-downtime rollouts
+depend on three values lining up: `readiness detect (periodSeconds × failureThreshold) < SHUTDOWN_GRACE_MS
+< ACA terminationGracePeriodSeconds`. On SIGTERM the app flips `/api/v1/health/ready` to 503; ACA must
+*observe* not-ready and stop routing **before** `app.close()` fires. The `containerApps.bicep` readiness
+probe is `periodSeconds 5 × failureThreshold 3 = 15s` and `SHUTDOWN_GRACE_MS=20000` (20s), under ACA's
+default `terminationGracePeriodSeconds` of 30s → **15s < 20s < 30s** (~5s of drain margin, ~10s before
+SIGKILL). This was mis-set at first: the readiness probe was `10×3 = 30s` against the app's default 10s
+grace, so `app.close()` would have fired long before ACA saw not-ready and the drain would have been a
+**no-op on ACA** despite green app-level tests. If you retune the readiness probe or the grace, re-check
+the inequality — and never lower ACA's termination grace below `SHUTDOWN_GRACE_MS`.
 
 ## 6. Anthropic / Voyage account posture (owner Q&A 2026-07-06)
 
