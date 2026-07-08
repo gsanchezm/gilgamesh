@@ -81,4 +81,24 @@ describe('http.ts connectivity reports', () => {
     unsubscribe();
     expect(events).toEqual(['offline']);
   });
+
+  it('does NOT report a premature OFFLINE when a network blip on a GET recovers on retry (AC-CONN-03)', async () => {
+    // A retryable network error that self-heals must never flash the banner: the intermediate retry
+    // (`continue`) reports NOTHING; only the recovered 200 reports `online`. Guards the retry path
+    // against a stray reportOffline() on the `continue` branch (review S32-F2).
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        calls += 1;
+        if (calls === 1) return Promise.reject(new TypeError('Failed to fetch'));
+        return { ok: true, status: 200, json: async () => ({ v: 1 }) };
+      }),
+    );
+    const { events, unsubscribe } = record();
+    await getJson('/blip', 'fallback', { retries: 1, sleep: async () => {} });
+    unsubscribe();
+    expect(calls).toBe(2); // proves the retry actually happened
+    expect(events).toEqual(['online']);
+  });
 });
