@@ -1,13 +1,15 @@
 import 'reflect-metadata';
-import { Logger } from '@nestjs/common';
+import { Logger, ShutdownSignal } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { ProdAppModule } from './app.module';
 import { configureBodyParser } from './common/body-parser';
+import { createShutdownHandler } from './common/graceful-shutdown';
 import { configureRequestId } from './common/request-id';
 import { configureWebDist } from './common/web-dist';
 import { loadConfig } from './config';
+import { ShutdownState } from './health/shutdown-state';
 
 /**
  * Production entrypoint: real Prisma/Postgres-backed server. Fails fast on bad config,
@@ -55,7 +57,32 @@ async function bootstrap(): Promise<void> {
     );
   }
 
-  app.enableShutdownHooks();
+  // Graceful shutdown (slice 29). Keep Nest's shutdown hooks for EVERY default signal EXCEPT SIGTERM
+  // — Nest's own SIGTERM handler tears the app down immediately (Prisma `$disconnect` first, then the
+  // HTTP server), which would defeat the drain grace. We own SIGTERM below; SIGINT (dev Ctrl+C) and
+  // the rest keep Nest's existing immediate-close path, and `app.close()` still runs the same hooks.
+  app.enableShutdownHooks(
+    Object.values(ShutdownSignal).filter((signal) => signal !== ShutdownSignal.SIGTERM),
+  );
+
+  // On SIGTERM (ACA scaling/rolling a revision): flip readiness to `not-ready` so ACA stops routing
+  // NEW traffic here, keep serving for the grace period, then `app.close()` (Nest hooks → Prisma
+  // disconnect). Idempotent — a second SIGTERM during the window is ignored.
+  const shutdownState = app.get(ShutdownState);
+  process.on(
+    'SIGTERM',
+    createShutdownHandler({
+      beginDraining: () => shutdownState.beginDraining(),
+      close: () => app.close(),
+      graceMs: config.shutdownGraceMs,
+      onClosed: () => process.exit(0),
+      onError: (error) => {
+        Logger.error('Error during graceful shutdown', error instanceof Error ? error.stack : String(error), 'Bootstrap');
+        process.exit(1);
+      },
+      log: (message) => Logger.log(message, 'Bootstrap'),
+    }),
+  );
 
   await app.listen(config.port);
   Logger.log(`Gilgamesh API listening on :${config.port}/api/v1 (${config.nodeEnv})`, 'Bootstrap');

@@ -64,6 +64,18 @@ describe('loadConfig', () => {
     expect(loadConfig(base).webDistDir).toBeUndefined();
     expect(loadConfig({ ...base, WEB_DIST_DIR: '   ' }).webDistDir).toBeUndefined();
   });
+
+  it('defaults shutdownGraceMs to 10s and reads SHUTDOWN_GRACE_MS (slice 29)', () => {
+    expect(loadConfig(base).shutdownGraceMs).toBe(10_000);
+    expect(loadConfig({ ...base, SHUTDOWN_GRACE_MS: '3000' }).shutdownGraceMs).toBe(3000);
+    expect(loadConfig({ ...base, SHUTDOWN_GRACE_MS: '0' }).shutdownGraceMs).toBe(0);
+  });
+
+  it('rejects a negative or non-integer SHUTDOWN_GRACE_MS', () => {
+    expect(() => loadConfig({ ...base, SHUTDOWN_GRACE_MS: '-1' })).toThrow(/SHUTDOWN_GRACE_MS/);
+    expect(() => loadConfig({ ...base, SHUTDOWN_GRACE_MS: 'abc' })).toThrow(/SHUTDOWN_GRACE_MS/);
+    expect(() => loadConfig({ ...base, SHUTDOWN_GRACE_MS: '1.5' })).toThrow(/SHUTDOWN_GRACE_MS/);
+  });
 });
 
 describe('rateLimitFromEnv', () => {

@@ -1,13 +1,17 @@
 import { Controller, Get, Inject, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import type { ReadinessProbe } from './health/readiness';
+import { ShutdownState } from './health/shutdown-state';
 import { TOKENS } from './persistence/tokens';
 
 @Controller('health')
 export class HealthController {
-  // Constructor-time dependency ONLY: storing the probe reference touches no database. The
-  // liveness handler never calls it — see the invariant note on `check()`.
-  constructor(@Inject(TOKENS.Readiness) private readonly readiness: ReadinessProbe) {}
+  // Constructor-time dependencies ONLY: storing the probe/shutdown references touches no database.
+  // The liveness handler never calls either — see the invariant note on `check()`.
+  constructor(
+    @Inject(TOKENS.Readiness) private readonly readiness: ReadinessProbe,
+    private readonly shutdown: ShutdownState,
+  ) {}
 
   /**
    * LIVENESS — "is this process alive?". MUST NOT depend on the DB: a 200 means the process is
@@ -26,6 +30,10 @@ export class HealthController {
    * ACA holds traffic off a replica whose Postgres isn't reachable yet (cold wake / mid-migration)
    * WITHOUT killing the container.
    *
+   * Graceful shutdown (slice 29): once SIGTERM has begun draining this replica we are NOT ready even
+   * if the DB is perfectly healthy — so we short-circuit to 503 BEFORE touching the probe. ACA's
+   * Readiness probe then stops routing new traffic here while the process finishes in-flight work.
+   *
    * We set the 503 status directly (via `@Res({ passthrough: true })`) rather than throwing a
    * `ServiceUnavailableException`, because the global `DomainExceptionFilter` (`@Catch()`) would
    * rewrite any HttpException into RFC9457 problem+json — not the `{status:'not-ready'}` body this
@@ -34,6 +42,10 @@ export class HealthController {
    */
   @Get('ready')
   async ready(@Res({ passthrough: true }) res: Response): Promise<{ status: string }> {
+    if (this.shutdown.draining) {
+      res.status(503);
+      return { status: 'not-ready' };
+    }
     try {
       await this.readiness.check();
       return { status: 'ready' };

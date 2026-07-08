@@ -13,6 +13,7 @@ import { DomainExceptionFilter } from './common/domain-exception.filter';
 import { buildValidationPipe } from './common/validation.pipe';
 import { rateLimitFromEnv } from './config';
 import { HealthController } from './health.controller';
+import { ShutdownState } from './health/shutdown-state';
 import { OrgsModule } from './orgs/orgs.module';
 import { PersistenceModule } from './persistence/persistence.module';
 import { PrismaPersistenceModule } from './persistence/prisma/prisma-persistence.module';
@@ -46,6 +47,11 @@ const FEATURE_MODULES = [
 /** Shared global providers — reused by the BDD/int harnesses so they enforce the same pipe,
  *  CSRF guard and exception filter as production. */
 export const APP_PROVIDERS = [
+  // Graceful-shutdown seam (slice 29): a single app-level singleton the HealthController reads
+  // (readiness → 503 while draining) and main.ts flips on SIGTERM. App-level, so bound here once
+  // rather than duplicated in both persistence wirings; harmless (unused) in the harnesses that
+  // spread APP_PROVIDERS without a HealthController.
+  ShutdownState,
   { provide: APP_PIPE, useValue: buildValidationPipe() },
   { provide: RATE_LIMIT, useFactory: () => rateLimitFromEnv() },
   // Redis store when REDIS_URL is set (production / multi-replica, native TTL eviction), else the

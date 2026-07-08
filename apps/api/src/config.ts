@@ -23,6 +23,11 @@ export interface ApiConfig {
   trustProxy: number;
   /** Absolute path of the built SPA (vite dist). Absent = the API serves no static web (default). */
   webDistDir?: string;
+  /** Grace period (ms) between SIGTERM (readiness flips to draining/503) and `app.close()`. Gives
+   *  in-flight requests time to finish and ACA's Readiness probe time to observe `not-ready` and stop
+   *  routing new traffic. Must exceed ACA's Readiness `periodSeconds × failureThreshold` yet stay
+   *  under the container termination grace (~30s) so we close before SIGKILL. Default 10s. */
+  shutdownGraceMs: number;
   rateLimit: RateLimitConfig;
 }
 
@@ -69,6 +74,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   // loadConfig stays a pure env parser.
   const webDistDir = env.WEB_DIST_DIR?.trim() || undefined;
 
+  const shutdownGraceMs = Number(env.SHUTDOWN_GRACE_MS ?? 10_000);
+  if (!Number.isInteger(shutdownGraceMs) || shutdownGraceMs < 0) {
+    throw new Error(
+      `Config error: SHUTDOWN_GRACE_MS must be a non-negative integer (got "${env.SHUTDOWN_GRACE_MS}").`,
+    );
+  }
+
   return {
     nodeEnv: env.NODE_ENV ?? 'development',
     port,
@@ -77,6 +89,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     corsOrigins,
     trustProxy,
     webDistDir,
+    shutdownGraceMs,
     rateLimit: rateLimitFromEnv(env),
   };
 }
