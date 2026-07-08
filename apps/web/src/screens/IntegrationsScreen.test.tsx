@@ -28,10 +28,31 @@ function fakeClient(overrides?: Partial<IntegrationsClient>): IntegrationsClient
 
 describe('IntegrationsScreen', () => {
   it('lists the catalog with connected state', async () => {
-    render(<IntegrationsScreen client={fakeClient()} orgId="o1" />);
+    const client = fakeClient();
+    render(<IntegrationsScreen client={client} orgId="o1" />);
     expect(await screen.findByText('GitHub')).toBeTruthy();
     expect(screen.getAllByText('Not connected').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Connected')).toBeTruthy();
+    // Fetch-once-on-mount is unchanged by the async-state adoption.
+    expect(client.list).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows an ErrorState with a working retry when the catalog load fails', async () => {
+    const list = vi
+      .fn<IntegrationsClient['list']>()
+      .mockRejectedValueOnce(new Error('Could not load integrations.'))
+      .mockResolvedValue(catalog);
+    render(<IntegrationsScreen client={fakeClient({ list })} orgId="o1" />);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Could not load integrations.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('GitHub')).toBeTruthy();
+    expect(list).toHaveBeenCalledTimes(2);
+    // A successful retry clears the stale error banner (AC-ADOPT-05).
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('renders the AI Providers group from the catalog (AC-BYOK-01)', async () => {

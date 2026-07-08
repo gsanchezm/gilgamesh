@@ -1,3 +1,4 @@
+import { EmptyState } from '@gilgamesh/ui';
 import { useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import type { KnowledgeClient, KnowledgeDocument, KnowledgeResult } from '../lib/knowledge-client';
 
@@ -186,7 +187,7 @@ export function KnowledgeScreen({ client, orgId }: KnowledgeScreenProps) {
 
       <h2 className="gx-kb__section">Indexed documents</h2>
       {documents.length === 0 ? (
-        <p className="gx-kb__empty">No documents uploaded yet.</p>
+        <EmptyState title="No documents uploaded yet" />
       ) : (
         <ul className="gx-kb__docs">
           {documents.map((d) => (
@@ -235,7 +236,7 @@ export function KnowledgeScreen({ client, orgId }: KnowledgeScreenProps) {
           </li>
         ))}
       </ul>
-      {searched && results.length === 0 && !searchError && <p className="gx-kb__empty">No matches.</p>}
+      {searched && results.length === 0 && !searchError && <EmptyState title="No matches" />}
     </section>
   );
 }

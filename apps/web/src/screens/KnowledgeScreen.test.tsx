@@ -38,11 +38,22 @@ describe('KnowledgeScreen', () => {
 
     await waitFor(() => expect(client.listDocuments).toHaveBeenCalledWith('org-1'));
     expect(await screen.findByText('design.md')).toBeTruthy();
+    // Fetch-once-on-mount is unchanged by the async-state adoption.
+    expect(client.listDocuments).toHaveBeenCalledTimes(1);
   });
 
-  it('shows an empty state when there are no documents', async () => {
+  it('shows the EmptyState when there are no documents', async () => {
     renderScreen(fakeClient());
     expect(await screen.findByText(/No documents uploaded yet/i)).toBeTruthy();
+  });
+
+  it('shows the EmptyState when a search returns no matches', async () => {
+    const client = fakeClient({ search: vi.fn(async () => ({ total: 0, results: [] })) });
+    renderScreen(client);
+    fireEvent.change(screen.getByLabelText('Search query'), { target: { value: 'no-such-term' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    await waitFor(() => expect(client.search).toHaveBeenCalledWith('no-such-term', 8));
+    expect(await screen.findByText('No matches')).toBeTruthy();
   });
 
   it('ingests a sample via the demo button and shows the new document', async () => {

@@ -1,4 +1,4 @@
-import { Button } from '@gilgamesh/ui';
+import { Button, ErrorState } from '@gilgamesh/ui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { IntegrationsClient, IntegrationView } from '../lib/integrations-client';
 
@@ -93,6 +93,8 @@ export function IntegrationsScreen({ client, orgId }: IntegrationsScreenProps) {
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    // Clear a prior error so a successful retry never leaves a stale banner (AC-ADOPT-05).
+    setError(null);
     try {
       setItems(await client.list(orgId));
     } catch (err) {
@@ -167,11 +169,7 @@ export function IntegrationsScreen({ client, orgId }: IntegrationsScreenProps) {
         </span>
       )}
 
-      {error && (
-        <p role="alert" className="gx-login__error">
-          {error}
-        </p>
-      )}
+      {error && <ErrorState message={error} onRetry={() => void load()} />}
 
       {groups.map(({ group, entries }) => (
         <section className="gx-intg__group" key={group}>

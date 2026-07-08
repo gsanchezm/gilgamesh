@@ -1,4 +1,5 @@
 import { planTier } from '@gilgamesh/domain';
+import { ErrorState, Spinner } from '@gilgamesh/ui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   BillingClient,
@@ -77,6 +78,8 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
   }, [client, orgId]);
 
   const load = useCallback(async () => {
+    // Clear a prior load error so a successful retry never leaves a stale banner (AC-ADOPT-05).
+    setError(null);
     try {
       const s = await client.getSubscription(orgId);
       setSub(s);
@@ -142,9 +145,7 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
   if (error && sub === null) {
     return (
       <main className="gx-billing">
-        <p role="alert" className="gx-login__error">
-          {error}
-        </p>
+        <ErrorState message={error} onRetry={() => void load()} />
       </main>
     );
   }
@@ -152,7 +153,7 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
   if (sub === null) {
     return (
       <main className="gx-billing">
-        <p className="gx-billing__loading">Loading...</p>
+        <Spinner label="Loading billing…" />
       </main>
     );
   }

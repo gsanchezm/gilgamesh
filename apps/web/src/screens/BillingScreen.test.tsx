@@ -89,9 +89,40 @@ function fakeClient(overrides?: Partial<BillingClient>): BillingClient {
 
 describe('BillingScreen', () => {
   it('loads and shows the plan, status and usage meter', async () => {
-    render(<BillingScreen client={fakeClient()} orgId="o1" />);
+    const client = fakeClient();
+    render(<BillingScreen client={client} orgId="o1" />);
     expect(await screen.findByText(/Free · TRIALING/)).toBeTruthy();
     expect(screen.getByText('120 / 500 used')).toBeTruthy();
+    // Fetch-once-on-mount is unchanged by the async-state adoption.
+    expect(client.getSubscription).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a Spinner while the subscription is loading', async () => {
+    let resolve!: (v: SubscriptionView) => void;
+    const getSubscription = vi.fn(() => new Promise<SubscriptionView>((r) => (resolve = r)));
+    render(<BillingScreen client={fakeClient({ getSubscription })} orgId="o1" />);
+    // Before the subscription resolves the screen shows the accessible Spinner (role="status").
+    expect(screen.getByRole('status')).toBeTruthy();
+    resolve(sub);
+    await screen.findByText(/Free · TRIALING/);
+  });
+
+  it('shows an ErrorState with a working retry when the subscription load fails', async () => {
+    const getSubscription = vi
+      .fn<BillingClient['getSubscription']>()
+      .mockRejectedValueOnce(new Error('Could not load billing.'))
+      .mockResolvedValue(sub);
+    render(<BillingScreen client={fakeClient({ getSubscription })} orgId="o1" />);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Could not load billing.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText(/Free · TRIALING/)).toBeTruthy();
+    expect(getSubscription).toHaveBeenCalledTimes(2);
+    // A successful retry clears the stale error banner (AC-ADOPT-05).
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('changes the plan', async () => {
