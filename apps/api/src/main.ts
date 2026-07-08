@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import { ProdAppModule } from './app.module';
 import { configureBodyParser } from './common/body-parser';
 import { createShutdownHandler } from './common/graceful-shutdown';
+import { selectLogger } from './common/json-logger';
 import { configureRequestId } from './common/request-id';
 import { configureWebDist } from './common/web-dist';
 import { loadConfig } from './config';
@@ -20,6 +21,14 @@ import { ShutdownState } from './health/shutdown-state';
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
   const app = await NestFactory.create<NestExpressApplication>(ProdAppModule);
+
+  // Structured logging (slice 30): swap Nest's pretty ConsoleLogger for the single-line JSON logger
+  // only when LOG_FORMAT=json (deploy → Azure Log Analytics). Unset/`pretty` returns undefined here,
+  // so useLogger is never called and the default pretty logger is untouched — zero change for dev.
+  const logger = selectLogger(config.logFormat);
+  if (logger) {
+    app.useLogger(logger);
+  }
 
   // Correlation id (slice 24): assign every request an X-Request-Id BEFORE any other middleware so
   // even a body-parser error carries it. Echoed on the response, quoted in the RFC9457 error body,

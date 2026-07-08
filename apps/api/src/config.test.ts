@@ -76,6 +76,19 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...base, SHUTDOWN_GRACE_MS: 'abc' })).toThrow(/SHUTDOWN_GRACE_MS/);
     expect(() => loadConfig({ ...base, SHUTDOWN_GRACE_MS: '1.5' })).toThrow(/SHUTDOWN_GRACE_MS/);
   });
+
+  it('defaults logFormat to "pretty" and selects "json" only for LOG_FORMAT=json (slice 30)', () => {
+    expect(loadConfig(base).logFormat).toBe('pretty');
+    expect(loadConfig({ ...base, LOG_FORMAT: 'json' }).logFormat).toBe('json');
+    expect(loadConfig({ ...base, LOG_FORMAT: '  JSON  ' }).logFormat).toBe('json'); // trimmed + case-insensitive
+    expect(loadConfig({ ...base, LOG_FORMAT: 'pretty' }).logFormat).toBe('pretty');
+  });
+
+  it('falls back to "pretty" for an unrecognised LOG_FORMAT (fail-safe, never silently unknown)', () => {
+    expect(loadConfig({ ...base, LOG_FORMAT: 'xml' }).logFormat).toBe('pretty');
+    expect(loadConfig({ ...base, LOG_FORMAT: '' }).logFormat).toBe('pretty');
+    expect(loadConfig({ ...base, LOG_FORMAT: '   ' }).logFormat).toBe('pretty');
+  });
 });
 
 describe('rateLimitFromEnv', () => {

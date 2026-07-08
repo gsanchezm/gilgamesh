@@ -8,6 +8,10 @@ export interface RateLimitConfig {
   windowMs: number;
 }
 
+/** Log output format. `pretty` = Nest's default human ConsoleLogger (dev/tests); `json` = one
+ *  single-line JSON object per log call for Azure Log Analytics ingestion (deploy). Slice 30. */
+export type LogFormat = 'pretty' | 'json';
+
 export interface ApiConfig {
   nodeEnv: string;
   port: number;
@@ -28,6 +32,9 @@ export interface ApiConfig {
    *  routing new traffic. Must exceed ACA's Readiness `periodSeconds × failureThreshold` yet stay
    *  under the container termination grace (~30s) so we close before SIGKILL. Default 10s. */
   shutdownGraceMs: number;
+  /** Log output format (slice 30). Default `pretty` = zero change; `json` opts into the structured
+   *  single-line logger selected in main.ts. Any unrecognised LOG_FORMAT is fail-safed to `pretty`. */
+  logFormat: LogFormat;
   rateLimit: RateLimitConfig;
 }
 
@@ -81,6 +88,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     );
   }
 
+  // Only the exact token `json` (trimmed, case-insensitive) opts into structured logging; every other
+  // value — including a typo or blank — fail-safes to `pretty` so the dev logger is never lost silently.
+  const logFormat: LogFormat = env.LOG_FORMAT?.trim().toLowerCase() === 'json' ? 'json' : 'pretty';
+
   return {
     nodeEnv: env.NODE_ENV ?? 'development',
     port,
@@ -90,6 +101,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     trustProxy,
     webDistDir,
     shutdownGraceMs,
+    logFormat,
     rateLimit: rateLimitFromEnv(env),
   };
 }
