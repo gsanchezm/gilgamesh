@@ -725,3 +725,36 @@ sequential FF merges (34-38 = slices 34-38). No schema change → no migration. 
   Actions to SHA~~ (was already done; comments now concrete, slice 38) · Stripe portal→programmatic
   proration/refunds · billing period scheduler · provenance/re-embed slice · voice STT/TTS · Bloque 3 (owner
   decision — now minus the closed SHA-pin).
+
+## Responsive design pass — DoD COMPLETE (2026-07-09, on `main`)
+
+`docs/superpowers/specs/2026-07-09-responsive-design.md` — a stakeholder video showed the app looking broken
+on a real iPhone against staging. Root cause: the authenticated shell had **zero mobile adaptation** —
+`.gx-shell { grid-template-columns: auto 1fr }` + `.gx-sidebar { width: 236px }` with no `@media`, so the
+sidebar stayed a fixed 236px column stealing ~60% of a 390px viewport and forcing horizontal overflow (the
+viewport meta was already correct). Owner-approved decisions: mobile nav = **off-canvas drawer** (hamburger
+in the Topbar); scope = shell + all 7 authenticated screens; Chat rail = drawer/toggle; breakpoints
+mobile ≤767 / tablet 768–1023 / desktop ≥1024 with **desktop byte-for-byte unchanged**. Built as ONE
+cohesive stream (responsive lives in shared `packages/ui/styles.css` + `apps/web/index.css` → NOT a
+worktree fanout), verified with Playwright mobile screenshots.
+- **Phase 1 — shell drawer** (`packages/ui`, `555e9cf`): additive mobile-nav channel on `AppShell`/`Sidebar`/
+  `Topbar` (`mobileNavOpen`/`onToggleMobileNav`/`onCloseMobileNav`, all optional, distinct from desktop
+  `collapsed`); `IconMenu` hamburger in the Topbar (`display:none` on desktop → out of the a11y tree);
+  backdrop (click-to-close) + Esc-close + focus-return; one `@media (max-width:767px)` block in `styles.css`
+  (`.gx-shell` → single column; `.gx-sidebar` → `position:fixed` off-canvas `translateX(-100%)`
+  `width:min(84vw,300px)`, slides in on `[data-mobileopen='true']`; `.gx-backdrop`; hides the desktop
+  collapse control; `prefers-reduced-motion` respected); `AppLayout` owns the state, closes on route change +
+  same-route nav taps, locks body scroll while open. +4 `AppShell` unit tests.
+- **Phase 2 — per-screen reflow + chat drawer** (`apps/web`, `e5516f1`): `@media (max-width:767px)` blocks
+  collapse multi-column grids to one column, full-width cards, `overflow-x:auto` on wide content. **Chat**:
+  two-pane → single pane; the sessions rail becomes a `railOpen` **drawer/toggle** ("Conversations" button +
+  backdrop) — the SSE/streaming path (`openLive`/DELTA/MESSAGE/DONE/send/resync) is UNTOUCHED (close-on-tap
+  only wraps the existing handlers; `chat.spec.ts` run-narration stays green). New committed
+  `apps/web/e2e/responsive.spec.ts` (mobile no-overflow + drawer smoke).
+- **Verified (on `main`):** typecheck · lint · **1126 Docker-free** (ui 39→43) · **Playwright 18→19/19**
+  (desktop unchanged + mobile smoke). `test:int` 40 / BDD 209/1779 unaffected (no api/domain/application
+  change). **No horizontal scroll at 390px on any of the 7 authenticated screens** (was 618–784px overflow);
+  the shell drawer + chat rail verified by screenshot. Desktop (≥1024px) byte-for-byte unchanged.
+- **Deferred:** pre-auth Login/Register helix-hero responsiveness (separate phase) · a pre-existing 16px
+  document overflow at the 768px tablet band on tall/scrollbarred project screens (vertical-scrollbar
+  interaction, outside the 390px hard invariant — left to protect the desktop invariant) · native Expo app.

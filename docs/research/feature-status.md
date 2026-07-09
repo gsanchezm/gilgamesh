@@ -18,8 +18,9 @@ Voyage BYOK 19 · Key Vault 20 · Redis SSO state · Vitest 3) + programa v4 (bi
 hint 22 · error boundary 23) + v5 (request-id 24 · http resilience 25 · bundle gate 26 · readiness 27 ·
 async-states 28) + v6 (graceful shutdown 29 · structured logging 30 · db pool 31 · connection banner 32 ·
 adopt async-states 33) + v7 (stripe portal 34 · logging+CORS 35 · db-pool proof 36 · web async-states 37 ·
-CI sha-comments 38), plus Reports, onboarding wizard, per-org RAG grounding, CI hardening. Gates:
-1122 Docker-free · int 40 · BDD 209/1779 · Playwright 18 · pnpm audit 0._
+CI sha-comments 38) + **responsive pass** (mobile drawer shell + per-screen reflow, all 7 authed screens,
+desktop unchanged), plus Reports, onboarding wizard, per-org RAG grounding, CI hardening. Gates:
+1126 Docker-free · int 40 · BDD 209/1779 · Playwright 19 · pnpm audit 0._
 
 > **🚀 STAGING DEPLOYED (F4, 2026-07-09):** the whole app runs LIVE on **Azure Container Apps** —
 > `https://app.ashygrass-47d0b048.eastus2.azurecontainerapps.io` (app+ACR+KV in eastus2, Postgres in
