@@ -12,11 +12,19 @@ authoritative detail rather than repeating it, so it can't drift:
 **Legend:** ✅ done (backend + UI faithful to the capture) · 🟡 functional but UI not re-skinned to the
 capture / partial · 🔵 stub behind a port (runs offline; real engine pending) · 🔴 not built / blocked.
 
-_As of 2026-07-06 PM3 (keystone v0.6). Everything below is merged on `main`: slices 1–12 + programa
+_As of 2026-07-09 (keystone v0.6). Everything below is merged on `main`: slices 1–33 + programa
 v2 (Stripe 13 · SSO 15 · Voyage embeddings 16 · SMTP 17 · logout 18) + programa v3 (token billing 14 ·
-Voyage BYOK 19 · Key Vault 20 · Redis SSO state · Vitest 3), plus Reports, onboarding wizard, per-org
-RAG grounding, CI hardening. Gates at v3 close: 918 Docker-free · int 23 · BDD 198/1680 · Playwright
-18 · pnpm audit 0._
+Voyage BYOK 19 · Key Vault 20 · Redis SSO state · Vitest 3) + programa v4 (billing rollover 21 · voyage
+hint 22 · error boundary 23) + v5 (request-id 24 · http resilience 25 · bundle gate 26 · readiness 27 ·
+async-states 28) + v6 (graceful shutdown 29 · structured logging 30 · db pool 31 · connection banner 32 ·
+adopt async-states 33), plus Reports, onboarding wizard, per-org RAG grounding, CI hardening. Gates:
+1095 Docker-free · int 39 · BDD 203/1734 · Playwright 18 · pnpm audit 0._
+
+> **🚀 STAGING DEPLOYED (F4, 2026-07-09):** the whole app runs LIVE on **Azure Container Apps** —
+> `https://app.ashygrass-47d0b048.eastus2.azurecontainerapps.io` (app+ACR+KV in eastus2, Postgres in
+> centralus due to an offer restriction, full RAG corpus = 2655 chunks, §7 smoke green 2/2 on the real
+> HTTPS origin). Brain runs the deterministic stub until `ANTHROPIC_API_KEY` is set. Runbook +
+> subscription-restriction workarounds: [`../../specs/infra/staging-deploy.md`](../../specs/infra/staging-deploy.md) §8. Commit `8a5082e`.
 
 ---
 
