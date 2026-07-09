@@ -92,7 +92,10 @@ serial checks for the reviewer:
 - `LOG_FORMAT=json` boot → the first stdout lines (incl. `Starting Nest application…` / route maps) are
   single-line JSON objects.
 - `LOG_FORMAT` unset boot → those same lines print pretty, none lost.
-- A cross-origin response carries `Access-Control-Expose-Headers: X-Request-Id`.
+- A cross-origin response carries `Access-Control-Expose-Headers: X-Request-Id`. **Precondition:** boot
+  with a non-empty `CORS_ORIGINS` and send an allowed `Origin` — with an empty allowlist `enableCors` uses
+  `origin: false` (cross-origin disabled), so no `Access-Control-*` header appears (correct: nothing to
+  expose when nothing is allowed), which is not a regression.
 
 ## Out of scope
 
