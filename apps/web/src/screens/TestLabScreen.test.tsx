@@ -79,6 +79,50 @@ function fakeClient(overrides?: Partial<TestLabClient>): TestLabClient {
 }
 
 describe('TestLabScreen', () => {
+  it('shows a spinner while the Test Lab loads (slice 37)', async () => {
+    const client = fakeClient({ listSlices: vi.fn(() => new Promise<never>(() => {})) });
+    render(<TestLabScreen client={client} runsClient={fakeRuns()} integrationsClient={fakeIntegrations()} projectId="p1" />);
+    expect(await screen.findByRole('status')).toBeTruthy();
+    expect(screen.queryByText('Checkout')).toBeNull();
+  });
+
+  it('shows an error state with retry on load failure; retry re-invokes the load (slice 37)', async () => {
+    const listSlices = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Lab boom'))
+      .mockResolvedValueOnce([{ id: 's1', key: 'checkout', name: 'Checkout', order: 1 }]);
+    render(
+      <TestLabScreen client={fakeClient({ listSlices })} runsClient={fakeRuns()} integrationsClient={fakeIntegrations()} projectId="p1" />,
+    );
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Lab boom');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('Checkout')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull(); // stale error cleared on the successful retry
+    expect(listSlices).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows an empty-state banner when the lab is empty, keeping the authoring forms reachable (slice 37)', async () => {
+    // Empty lab: no slices, no features, no test cases.
+    const client = fakeClient({ listSlices: vi.fn(async () => []) });
+    render(<TestLabScreen client={client} runsClient={fakeRuns()} integrationsClient={fakeIntegrations()} projectId="p1" />);
+
+    expect(await screen.findByText('No tests authored yet')).toBeTruthy();
+    // The empty state COEXISTS with the authoring forms — you must be able to add the first slice.
+    expect(screen.getByRole('button', { name: 'Add slice' })).toBeTruthy();
+    expect(screen.getByLabelText('Slice key')).toBeTruthy();
+  });
+
+  it('hides the empty-state banner when the lab has results (slice 37)', async () => {
+    // Default fake client returns a Checkout slice — the banner must NOT appear.
+    render(<TestLabScreen client={fakeClient()} runsClient={fakeRuns()} integrationsClient={fakeIntegrations()} projectId="p1" />);
+    await screen.findByText('Checkout');
+    expect(screen.queryByText('No tests authored yet')).toBeNull();
+  });
+
   it('loads and renders slices, features and test cases', async () => {
     render(<TestLabScreen client={fakeClient()} runsClient={fakeRuns()} integrationsClient={fakeIntegrations()} projectId="p1" />);
     expect(await screen.findByText('Checkout')).toBeTruthy();

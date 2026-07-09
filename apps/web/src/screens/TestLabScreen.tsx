@@ -1,4 +1,4 @@
-import { Button } from '@gilgamesh/ui';
+import { Button, EmptyState, ErrorState, Spinner } from '@gilgamesh/ui';
 import { useCallback, useEffect, useState } from 'react';
 import { TestLabSummaryStats } from '../components/TestLabSummaryStats';
 import type { IntegrationsClient } from '../lib/integrations-client';
@@ -43,6 +43,8 @@ export function TestLabScreen({ client, runsClient, integrationsClient, projectI
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
+    // Clear a prior load error so a successful retry never leaves a stale banner (AC-37-04).
+    setError(null);
     try {
       const [s, f, t, r] = await Promise.all([
         client.listSlices(projectId),
@@ -130,22 +132,26 @@ export function TestLabScreen({ client, runsClient, integrationsClient, projectI
       setRuns(await runsClient.listRuns(projectId));
     });
 
+  // Load lifecycle: `error && slices === null` is a load failure (the shared `error` also carries
+  // action failures once the lab is loaded — those render inline below, per the slice-33 rule).
   if (error && slices === null) {
     return (
       <main className="gx-lab">
-        <p role="alert" className="gx-login__error">
-          {error}
-        </p>
+        <ErrorState message={error} onRetry={() => void load()} />
       </main>
     );
   }
   if (slices === null) {
     return (
       <main className="gx-lab">
-        <p>Loading…</p>
+        <Spinner label="Loading the Test Lab…" />
       </main>
     );
   }
+
+  // Loaded-but-empty: a genuinely empty lab. The banner COEXISTS with the authoring sections below —
+  // it never replaces them (you need the "Add slice" form to author the first slice).
+  const labEmpty = slices.length === 0 && features.length === 0 && testCases.length === 0;
 
   return (
     <main className="gx-lab">
@@ -157,6 +163,13 @@ export function TestLabScreen({ client, runsClient, integrationsClient, projectI
         featuresCount={features.length}
         testCasesCount={testCases.length}
       />
+
+      {labEmpty && (
+        <EmptyState
+          title="No tests authored yet"
+          hint="Add a slice, import a repo, or generate with AI to start building your suite."
+        />
+      )}
 
       {error && (
         <p role="alert" className="gx-login__error">

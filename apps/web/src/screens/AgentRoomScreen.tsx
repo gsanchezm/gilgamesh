@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AgentCard, portraitFor } from '@gilgamesh/ui';
+import { AgentCard, ErrorState, Spinner, portraitFor } from '@gilgamesh/ui';
 import type { AgentSlot } from '@gilgamesh/domain';
 import type { AgentRoomData, AgentsClient } from '../lib/agents-client';
 
@@ -39,6 +39,8 @@ export function AgentRoomScreen({
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
+    // Clear a prior load error so a successful retry never leaves a stale banner (AC-37-04).
+    setError(null);
     try {
       setData(await client.getAgentRoom(projectId));
     } catch (err) {
@@ -89,19 +91,19 @@ export function AgentRoomScreen({
     }
   }
 
+  // Load lifecycle (distinct from the per-action `actionError` inline banner below): the load `error`
+  // only fires when the room fails to load (data === null), so ErrorState + retry is the right slot.
   if (error) {
     return (
       <main className="gx-room">
-        <p role="alert" className="gx-login__error">
-          {error}
-        </p>
+        <ErrorState message={error} onRetry={() => void load()} />
       </main>
     );
   }
   if (!data) {
     return (
       <main className="gx-room">
-        <p>Loading…</p>
+        <Spinner label="Loading the agent room…" />
       </main>
     );
   }

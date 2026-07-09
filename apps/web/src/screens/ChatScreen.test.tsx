@@ -123,6 +123,44 @@ async function typeAndSend(text: string) {
 // ---- tests -----------------------------------------------------------------------------
 
 describe('ChatScreen (slice 11 re-skin)', () => {
+  // ---- slice 37: session-rail async states (streaming path untouched) --------------------
+  it('shows a spinner in the session rail while conversations load (slice 37)', async () => {
+    const chat = fakeChat({ listSessions: vi.fn(() => new Promise<never>(() => {})) });
+    renderChat(chat);
+    expect(await screen.findByRole('status')).toBeTruthy();
+    // The composer (streaming surface) still renders during the rail load.
+    expect(screen.getByLabelText('Message')).toBeTruthy();
+  });
+
+  it('shows an error state with retry in the rail on a conversation-load failure (slice 37)', async () => {
+    const listSessions = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Rail boom'))
+      .mockResolvedValueOnce(sessions);
+    renderChat(fakeChat({ listSessions }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Rail boom');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('hello pantheon')).toBeTruthy(); // rail session title
+    expect(screen.queryByRole('alert')).toBeNull(); // stale error cleared on the successful retry
+    expect(listSessions).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows an empty state when there are no conversations, composer intact (slice 37)', async () => {
+    renderChat(fakeChat({ listSessions: vi.fn(async () => []) }));
+    expect(await screen.findByText('No conversations yet')).toBeTruthy();
+    expect(screen.getByLabelText('Message')).toBeTruthy();
+  });
+
+  it('hides the empty state when conversations exist (slice 37)', async () => {
+    renderChat(fakeChat());
+    await screen.findByText('hello pantheon');
+    expect(screen.queryByText('No conversations yet')).toBeNull();
+  });
+
   it('renders the session rail newest-first with derived titles and a fallback', async () => {
     renderChat(fakeChat());
     // The routed pantheon header is a real heading (the Playwright chat e2e selects it by role).

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { AgentAvatar, portraitFor } from '@gilgamesh/ui';
+import { AgentAvatar, EmptyState, ErrorState, Spinner, portraitFor } from '@gilgamesh/ui';
 import type { AgentRuntimeStatus } from '@gilgamesh/domain';
 import type { AgentRoomAgent, AgentsClient } from '../lib/agents-client';
 import {
@@ -34,6 +34,10 @@ export function ChatScreen({
   onBack?: () => void;
 }) {
   const [sessions, setSessions] = useState<ChatSessionListItem[]>([]);
+  // Session-rail load lifecycle — distinct from the conversation `error` (send/select). `sessionsLoaded`
+  // gates the rail Spinner to the INITIAL load only, so the post-send refresh never flickers the rail.
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [agentsById, setAgentsById] = useState<Map<string, AgentRoomAgent> | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessageView[]>([]);
@@ -51,10 +55,14 @@ export function ChatScreen({
   }, []);
 
   const refreshSessions = useCallback(async () => {
+    // Clear a prior rail-load error so a successful retry never leaves a stale banner (AC-37-04).
+    setSessionsError(null);
     try {
       setSessions(await client.listSessions(projectId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load the conversations.');
+      setSessionsError(err instanceof Error ? err.message : 'Could not load the conversations.');
+    } finally {
+      setSessionsLoaded(true);
     }
   }, [client, projectId]);
 
@@ -209,8 +217,12 @@ export function ChatScreen({
             New chat
           </button>
         </div>
-        {sessions.length === 0 ? (
-          <p className="gx-chat__railempty">No conversations yet.</p>
+        {!sessionsLoaded ? (
+          <Spinner label="Loading conversations…" />
+        ) : sessionsError ? (
+          <ErrorState message={sessionsError} onRetry={() => void refreshSessions()} />
+        ) : sessions.length === 0 ? (
+          <EmptyState title="No conversations yet" hint="Start a new chat to begin." />
         ) : (
           <ul className="gx-chat__sessions">
             {sessions.map((s) => {

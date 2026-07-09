@@ -38,6 +38,32 @@ function fakeClient(overrides?: Partial<AgentsClient>): AgentsClient {
 }
 
 describe('AgentRoomScreen', () => {
+  it('shows a spinner while the agent room loads (slice 37)', async () => {
+    // A never-resolving load keeps the screen in its loading state.
+    const client = fakeClient({ getAgentRoom: vi.fn(() => new Promise<AgentRoomData>(() => {})) });
+    render(<AgentRoomScreen client={client} projectId="p-1" />);
+    expect(await screen.findByRole('status')).toBeTruthy();
+    expect(screen.queryByText('Quetzalcóatl')).toBeNull();
+  });
+
+  it('shows an error state with retry on load failure; retry re-invokes the load and clears the stale banner (slice 37)', async () => {
+    const getAgentRoom = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Network down'))
+      .mockResolvedValueOnce(room());
+    render(<AgentRoomScreen client={fakeClient({ getAgentRoom })} projectId="p-1" />);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Network down');
+    expect(screen.queryByText('Quetzalcóatl')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('Quetzalcóatl')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull(); // stale error cleared on the successful retry
+    expect(getAgentRoom).toHaveBeenCalledTimes(2);
+  });
+
   it('loads and renders the project, agents and KPIs', async () => {
     render(<AgentRoomScreen client={fakeClient()} projectId="p-1" />);
     expect(await screen.findByText('Quetzalcóatl')).toBeTruthy();
