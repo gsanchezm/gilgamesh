@@ -1,0 +1,493 @@
+/* Workspace-role views (Group D) — VIEW-ONLY rules. Consumes the read-only `.gx-adm*` primitives in
+   admin.css; adds only what those don't cover. Chrome uses design tokens (light/dark safe); literals
+   are pinned ONLY where the spec pins them: navy hero, switch active #2F8F5B, danger border
+   rgba(192,57,43,.4), status green/amber/red. Class prefix `.gx-ws-` — no collision with `.gx-adm-`. */
+
+/* ---- Assigned-agent pills (Proyectos) ------------------------------------------------------- */
+.gx-ws-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.gx-ws-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* ---- Narrower workspace tables (no client/cost columns) ------------------------------------- */
+.gx-adm-table.gx-ws-table {
+  min-width: 720px;
+}
+.gx-ws-name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ---- Page head with a trailing action (Ajustes save / Usuarios invite) ---------------------- */
+.gx-ws-pagehead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.gx-ws-pagehead .gx-adm-pagehead {
+  gap: 4px;
+}
+
+/* Buttons */
+.gx-ws-btn-gold {
+  flex: none;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #e7c877, #c9a14e);
+  color: #0e1b36;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.gx-ws-btn-gold:hover {
+  filter: brightness(1.05);
+}
+.gx-ws-btn-ghost {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--field);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.gx-ws-btn-ghost:hover {
+  filter: brightness(1.06);
+}
+.gx-ws-linkbtn {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ---- Resumen: cycle-usage bars -------------------------------------------------------------- */
+.gx-ws-usobars {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+.gx-ws-usobar__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+.gx-ws-usobar__label {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+}
+.gx-ws-usobar__val {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+.gx-ws-usobar .gx-adm-meter {
+  height: 8px;
+}
+
+/* Positive-tone KPI value renders green in the workspace overview (success rate, capture 21). */
+.gx-ws-resumen .gx-adm-kpi[data-tone='positive'] .gx-adm-kpi__value {
+  color: #3fb07a;
+}
+
+/* ---- Resumen: próximo cobro (navy) ---------------------------------------------------------- */
+.gx-ws-cobro {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gx-ws-cobro .gx-adm-eyebrow {
+  margin-bottom: 2px;
+}
+.gx-ws-cobro__amount {
+  font-family: var(--font-display);
+  font-size: 34px;
+  line-height: 1;
+  color: #eaf0fa;
+}
+.gx-ws-cobro__amount small {
+  font-size: 15px;
+  color: #8597b4;
+}
+.gx-ws-cobro__meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #b9c6dc;
+}
+.gx-ws-cobro__btn {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 9px 15px;
+  border: 1px solid rgba(201, 161, 78, 0.5);
+  border-radius: 9px;
+  background: rgba(201, 161, 78, 0.14);
+  color: #e7c877;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.gx-ws-cobro__btn:hover {
+  background: rgba(201, 161, 78, 0.22);
+}
+
+/* ---- Resumen: project rows (clickable) ------------------------------------------------------ */
+.gx-ws-prlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.gx-ws-prrow {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 8px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+.gx-ws-prlist li:last-child .gx-ws-prrow {
+  border-bottom: none;
+}
+.gx-ws-prrow:hover {
+  background: var(--surface);
+}
+.gx-ws-prrow__name {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gx-ws-prrow__runs {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.gx-ws-prrow__exito {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+/* ---- Uso: token-per-agent proportional bar -------------------------------------------------- */
+.gx-ws-tokbar {
+  width: 120px;
+  max-width: 40vw;
+}
+.gx-ws-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+.gx-ws-agent__glifo {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 7px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+}
+.gx-ws-mono {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text);
+}
+.gx-ws-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+/* ---- Facturación ---------------------------------------------------------------------------- */
+.gx-ws-billhero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.gx-ws-billhero__info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gx-ws-billhero__plan {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.gx-ws-billhero__planname {
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: #eaf0fa;
+}
+.gx-ws-billhero__price {
+  font-family: var(--font-display);
+  font-size: 30px;
+  color: #eaf0fa;
+}
+.gx-ws-billhero__price small {
+  font-size: 14px;
+  color: #8597b4;
+}
+.gx-ws-billhero__renew {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #b9c6dc;
+}
+.gx-ws-payrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.gx-ws-payrow__brand {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--text);
+  letter-spacing: 0.04em;
+}
+.gx-ws-next {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.gx-ws-next__amount {
+  font-family: var(--font-display);
+  font-size: 26px;
+  color: var(--text);
+}
+.gx-ws-next__sub {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* ---- Ajustes -------------------------------------------------------------------------------- */
+.gx-ws-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.gx-ws-fieldgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+}
+.gx-ws-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gx-ws-flabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.gx-ws-input {
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--field);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  outline: none;
+}
+.gx-ws-input:focus {
+  border-color: rgba(201, 161, 78, 0.55);
+}
+
+/* Segmented (default authoring format) */
+.gx-ws-seg {
+  display: inline-flex;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--field);
+  gap: 4px;
+  width: max-content;
+}
+.gx-ws-seg button {
+  border: none;
+  background: transparent;
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.gx-ws-seg button[data-active='true'] {
+  background: linear-gradient(180deg, #e7c877, #c9a14e);
+  color: #0e1b36;
+}
+
+/* Retention chips */
+.gx-ws-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.gx-ws-chip {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--field);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.gx-ws-chip[data-active='true'] {
+  background: var(--accent-soft);
+  border-color: rgba(201, 161, 78, 0.55);
+  color: var(--accent);
+}
+
+/* Notifications */
+.gx-ws-notif {
+  display: flex;
+  flex-direction: column;
+}
+.gx-ws-notif__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13.5px;
+  color: var(--text);
+}
+.gx-ws-notif__row:last-child {
+  border-bottom: none;
+}
+.gx-ws-switch {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 19px;
+  border-radius: 20px;
+  border: none;
+  background: var(--track);
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+.gx-ws-switch[data-on='true'] {
+  background: #2f8f5b;
+}
+.gx-ws-switch__knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.14s ease;
+}
+.gx-ws-switch[data-on='true'] .gx-ws-switch__knob {
+  transform: translateX(15px);
+}
+
+/* Danger zone */
+.gx-ws-danger {
+  border-color: rgba(192, 57, 43, 0.4);
+}
+.gx-ws-danger .gx-adm-eyebrow {
+  color: #e0738a;
+}
+.gx-ws-danger__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+.gx-ws-danger__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.gx-ws-danger__label {
+  font-size: 13.5px;
+  color: var(--text);
+}
+.gx-ws-btn-danger {
+  flex: none;
+  padding: 8px 14px;
+  border: 1px solid rgba(224, 115, 138, 0.6);
+  border-radius: 9px;
+  background: transparent;
+  color: #e0738a;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.gx-ws-btn-danger:hover {
+  background: rgba(224, 115, 138, 0.12);
+}
+
+@media (max-width: 720px) {
+  .gx-ws-tokbar {
+    display: none;
+  }
+}
