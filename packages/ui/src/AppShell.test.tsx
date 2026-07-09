@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { AppShell, type AppShellProps } from './AppShell';
@@ -65,5 +66,70 @@ describe('AppShell', () => {
     // Collapsed: nav labels and the agents rail are not rendered.
     expect(screen.queryByText('Agent room')).toBeNull();
     expect(screen.queryByText('Zeus')).toBeNull();
+  });
+
+  describe('mobile off-canvas nav', () => {
+    // A tiny stateful host wiring the mobile-nav callbacks to state, so a hamburger click actually
+    // flips the shell's `data-mobileopen` (the CSS slide-in keys off exactly that attribute).
+    function Controlled(props: Partial<AppShellProps> = {}) {
+      const [open, setOpen] = useState(false);
+      return (
+        <AppShell
+          {...makeProps(props)}
+          mobileNavOpen={open}
+          onToggleMobileNav={() => setOpen((o) => !o)}
+          onCloseMobileNav={() => setOpen(false)}
+        />
+      );
+    }
+
+    it('the hamburger toggles the shell `data-mobileopen` and renders the backdrop', () => {
+      const { container } = render(<Controlled />);
+      const shell = container.querySelector('.gx-shell') as HTMLElement;
+      expect(shell.getAttribute('data-mobileopen')).toBe('false');
+      expect(screen.queryByLabelText('Close navigation')).toBeNull();
+
+      const burger = screen.getByLabelText('Open navigation');
+      expect(burger.getAttribute('aria-expanded')).toBe('false');
+      expect(burger.getAttribute('aria-controls')).toBe('gx-sidebar');
+      fireEvent.click(burger);
+
+      expect(shell.getAttribute('data-mobileopen')).toBe('true');
+      expect(burger.getAttribute('aria-expanded')).toBe('true');
+      // The drawer id the hamburger controls actually exists.
+      expect(container.querySelector('#gx-sidebar')).not.toBeNull();
+      // The backdrop appears only while open.
+      expect(screen.getByLabelText('Close navigation')).toBeTruthy();
+    });
+
+    it('clicking the backdrop closes the drawer', () => {
+      const { container } = render(<Controlled />);
+      const shell = container.querySelector('.gx-shell') as HTMLElement;
+      fireEvent.click(screen.getByLabelText('Open navigation'));
+      expect(shell.getAttribute('data-mobileopen')).toBe('true');
+
+      fireEvent.click(screen.getByLabelText('Close navigation'));
+      expect(shell.getAttribute('data-mobileopen')).toBe('false');
+      expect(screen.queryByLabelText('Close navigation')).toBeNull();
+    });
+
+    it('Escape closes the drawer', () => {
+      const { container } = render(<Controlled />);
+      const shell = container.querySelector('.gx-shell') as HTMLElement;
+      fireEvent.click(screen.getByLabelText('Open navigation'));
+      expect(shell.getAttribute('data-mobileopen')).toBe('true');
+
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(shell.getAttribute('data-mobileopen')).toBe('false');
+    });
+
+    it('desktop-only usage (no mobile props) renders no hamburger or backdrop and stays closed', () => {
+      const { container } = render(<AppShell {...makeProps()} />);
+      const shell = container.querySelector('.gx-shell') as HTMLElement;
+      // The additive channel is inert: attribute present but false, no controls in the a11y tree.
+      expect(shell.getAttribute('data-mobileopen')).toBe('false');
+      expect(screen.queryByLabelText('Open navigation')).toBeNull();
+      expect(screen.queryByLabelText('Close navigation')).toBeNull();
+    });
   });
 });

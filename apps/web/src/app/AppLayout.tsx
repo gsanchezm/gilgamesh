@@ -83,8 +83,26 @@ export function AppLayout() {
 
   const [collapsed, setCollapsed] = useState(false);
 
+  // Mobile off-canvas drawer state (owned here; the shell is presentational). Close it on every
+  // route change, and lock body scroll while it is open so the page behind can't scroll.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mobileNavOpen]);
+
   const onNavigate = useCallback(
     (key: string) => {
+      // Tapping a nav item / agent closes the drawer on mobile (covers same-route taps, where the
+      // pathname effect above never fires).
+      setMobileNavOpen(false);
       const segment = PROJECT_SEGMENT[key];
       if (segment) {
         if (pid) navigate(`/projects/${pid}/${segment}`);
@@ -133,6 +151,9 @@ export function AppLayout() {
       user={{ initials: 'GG' }}
       theme={theme}
       onToggleTheme={toggle}
+      mobileNavOpen={mobileNavOpen}
+      onToggleMobileNav={() => setMobileNavOpen((o) => !o)}
+      onCloseMobileNav={() => setMobileNavOpen(false)}
     >
       {/* Keyed by pathname: a screen crash shows the fallback inside the content slot while the
           sidebar/topbar stay usable; navigating (key change) remounts the boundary → auto-recovery. */}

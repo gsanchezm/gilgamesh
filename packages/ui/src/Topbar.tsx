@@ -1,5 +1,5 @@
 import type { ThemeName } from './theme';
-import { IconChevronDown, IconMic, IconMoon, IconSearch, IconSun } from './icons';
+import { IconChevronDown, IconMenu, IconMic, IconMoon, IconSearch, IconSun } from './icons';
 
 export interface TopbarProject {
   name: string;
@@ -16,6 +16,12 @@ export interface TopbarProps {
   onOpenProject?: () => void;
   onOpenUser?: () => void;
   searchPlaceholder?: string;
+  /** Mobile off-canvas nav channel (distinct from the desktop `collapsed`). CSS shows the hamburger
+   *  only ≤767px; on desktop the button is `display:none` so it stays out of the a11y tree. */
+  mobileNavOpen?: boolean;
+  onToggleMobileNav?: () => void;
+  /** id of the drawer the hamburger controls (aria-controls). */
+  mobileNavId?: string;
 }
 
 /**
@@ -32,9 +38,24 @@ export function Topbar({
   onOpenProject,
   onOpenUser,
   searchPlaceholder = 'Search agents, suites, reports…',
+  mobileNavOpen = false,
+  onToggleMobileNav,
+  mobileNavId = 'gx-sidebar',
 }: TopbarProps) {
   return (
     <header className="gx-topbar">
+      {onToggleMobileNav && (
+        <button
+          type="button"
+          className="gx-topbar__menu"
+          aria-label="Open navigation"
+          aria-expanded={mobileNavOpen}
+          aria-controls={mobileNavId}
+          onClick={onToggleMobileNav}
+        >
+          <IconMenu />
+        </button>
+      )}
       {project && (
         <button type="button" className="gx-projswitch" onClick={onOpenProject}>
           <span className="gx-projswitch__mark">{project.name.slice(0, 2).toUpperCase()}</span>

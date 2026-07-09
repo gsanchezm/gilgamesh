@@ -29,6 +29,10 @@ export interface SidebarProps {
   onToggleCollapse: () => void;
   onLogout: () => void;
   brandMarkSrc?: string;
+  /** DOM id so the Topbar hamburger can `aria-controls` the drawer. */
+  id?: string;
+  /** Reflects the shell's mobile-drawer state (the slide CSS keys off the shell, this is advisory). */
+  mobileOpen?: boolean;
 }
 
 /** Two-letter tool tag for the agents rail (e.g. "Strategy" → "ST"). */
@@ -50,9 +54,11 @@ export function Sidebar({
   onToggleCollapse,
   onLogout,
   brandMarkSrc,
+  id,
+  mobileOpen = false,
 }: SidebarProps) {
   return (
-    <aside className="gx-sidebar" data-collapsed={collapsed}>
+    <aside className="gx-sidebar" id={id} data-collapsed={collapsed} data-mobileopen={mobileOpen}>
       <div className="gx-sidebar__brand">
         <span
           className="gx-sidebar__mark"
