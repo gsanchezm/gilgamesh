@@ -2140,6 +2140,90 @@ body {
   }
 }
 
+/* Chat "Conversations" drawer toggle — hidden on desktop, revealed only ≤767px. */
+.gx-chat__convbtn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--field);
+  color: var(--text);
+  cursor: pointer;
+}
+.gx-chat__railbackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  border: none;
+  padding: 0;
+  background: rgba(3, 8, 20, 0.55);
+  cursor: pointer;
+}
+@media (min-width: 768px) {
+  .gx-chat__railbackdrop {
+    display: none;
+  }
+}
+/* Mobile: the session rail becomes an off-canvas drawer (mirrors the shell); placed AFTER the @900
+   block so it wins at 390px. Only layout — the SSE/streaming path is untouched. */
+@media (max-width: 767px) {
+  .gx-chat__rail {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 60;
+    width: min(88vw, 320px);
+    border-radius: 0;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: var(--shadow);
+  }
+  .gx-chat__rail[data-open='true'] {
+    transform: none;
+  }
+  .gx-chat__convbtn {
+    display: inline-flex;
+  }
+  /* Run-narration console: long lines scroll inside their own box, never the page. */
+  .gx-chat__consolebody {
+    overflow-x: auto;
+  }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  .gx-chat__rail {
+    transition: none;
+  }
+}
+
+/* ---- Per-screen mobile reflow (≤767px) ------------------------------------- */
+/* Test Lab is otherwise unstyled default flow: keep its wide controls / any embedded media inside
+   the content width so they never force a horizontal scroll. Scoped to mobile → desktop unchanged. */
+@media (max-width: 767px) {
+  .gx-lab input,
+  .gx-lab textarea,
+  .gx-lab select {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .gx-lab pre,
+  .gx-lab img,
+  .gx-lab table {
+    max-width: 100%;
+  }
+  .gx-lab table {
+    display: block;
+    overflow-x: auto;
+  }
+  /* Knowledge search row stacks so the input + action fit a narrow column. */
+  .gx-kb__search {
+    flex-wrap: wrap;
+  }
+}
+
 /* ---- gx-recovery (slice 12 — forgot/reset password; appended block, do not fold into others) ---- */
 .gx-recovery__confirm {
   display: flex;

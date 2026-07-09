@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { AgentAvatar, EmptyState, ErrorState, Spinner, portraitFor } from '@gilgamesh/ui';
+import { AgentAvatar, EmptyState, ErrorState, IconMenu, Spinner, portraitFor } from '@gilgamesh/ui';
 import type { AgentRuntimeStatus } from '@gilgamesh/domain';
 import type { AgentRoomAgent, AgentsClient } from '../lib/agents-client';
 import {
@@ -46,6 +46,9 @@ export function ChatScreen({
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Mobile-only: the session rail is an off-canvas drawer (≤767px). Pure layout state — it does not
+  // touch the SSE/streaming path; the "Conversations" toggle + backdrop + tap-to-close set it.
+  const [railOpen, setRailOpen] = useState(false);
   const esRef = useRef<EventSource | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -210,10 +213,17 @@ export function ChatScreen({
 
   return (
     <div className="gx-chat">
-      <aside className="gx-chat__rail" aria-label="Conversations">
+      <aside className="gx-chat__rail" id="gx-chat-rail" data-open={railOpen} aria-label="Conversations">
         <div className="gx-chat__railhead">
           <span className="gx-chat__railtitle">Conversations</span>
-          <button type="button" className="gx-btn gx-btn--secondary" onClick={newChat}>
+          <button
+            type="button"
+            className="gx-btn gx-btn--secondary"
+            onClick={() => {
+              setRailOpen(false);
+              newChat();
+            }}
+          >
             New chat
           </button>
         </div>
@@ -232,7 +242,10 @@ export function ChatScreen({
                   <button
                     type="button"
                     className={`gx-chat__session${s.id === activeId ? ' gx-chat__session--active' : ''}`}
-                    onClick={() => void selectSession(s.id)}
+                    onClick={() => {
+                      setRailOpen(false);
+                      void selectSession(s.id);
+                    }}
                   >
                     <span className="gx-chat__sessiontitle">{s.title ?? 'New conversation'}</span>
                     <span className="gx-chat__sessionmeta">{deity ?? 'Pantheon'}</span>
@@ -246,6 +259,16 @@ export function ChatScreen({
 
       <section className="gx-chat__pane">
         <header className="gx-chat__head">
+          <button
+            type="button"
+            className="gx-chat__convbtn"
+            aria-label="Show conversations"
+            aria-expanded={railOpen}
+            aria-controls="gx-chat-rail"
+            onClick={() => setRailOpen(true)}
+          >
+            <IconMenu size={18} />
+          </button>
           {onBack && (
             <>
               <button type="button" className="gx-chat__back" onClick={onBack}>
@@ -347,6 +370,15 @@ export function ChatScreen({
         </form>
         <p className="gx-chat__kb">Answers from your private knowledge base.</p>
       </section>
+
+      {railOpen && (
+        <button
+          type="button"
+          className="gx-chat__railbackdrop"
+          aria-label="Close conversations"
+          onClick={() => setRailOpen(false)}
+        />
+      )}
     </div>
   );
 }
