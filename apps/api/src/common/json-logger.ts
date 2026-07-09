@@ -13,7 +13,12 @@ import type { LogFormat } from '../config';
  * `Unhandled error [requestId=<id>]`), so no request-scoped plumbing is needed here.
  */
 
-type Level = 'log' | 'error' | 'warn' | 'debug' | 'verbose';
+type Level = 'log' | 'error' | 'warn' | 'debug' | 'verbose' | 'fatal';
+
+/** Levels that carry error severity: routed to stderr and parsed for a trailing stack param. */
+function isErrorLevel(level: Level): boolean {
+  return level === 'error' || level === 'fatal';
+}
 
 /** Label for a context-less log call, so the `context` field is always present. */
 const DEFAULT_CONTEXT = 'Application';
@@ -23,7 +28,7 @@ interface LogRecord {
   time: string;
   context: string;
   message: string;
-  /** Present only for `error` calls that carry a stack/trace param. */
+  /** Present only for `error`/`fatal` calls that carry a stack/trace param. */
   stack?: string;
 }
 
@@ -51,18 +56,26 @@ export class JsonLogger implements LoggerService {
     this.emit('error', message, optionalParams);
   }
 
+  /**
+   * Nest's `LoggerService.fatal?` (v11). Same shape as `error` — routed to stderr and parsed for a
+   * trailing stack param — so an unrecoverable-failure log is machine-parseable at error severity.
+   */
+  fatal(message: unknown, ...optionalParams: unknown[]): void {
+    this.emit('fatal', message, optionalParams);
+  }
+
   private emit(level: Level, message: unknown, optionalParams: unknown[]): void {
     // Nest's `Logger` wrapper appends the instance's bound context as the TRAILING param (verified
     // against @nestjs/common v11 source + a `Logger.overrideLogger` test): `[context]` for
-    // log/warn/debug/verbose, `[stack?, context]` for error. So the last string param is the
-    // context, and — for error — the preceding string is the stack.
+    // log/warn/debug/verbose, `[stack?, context]` for error/fatal. So the last string param is the
+    // context, and — for the error-severity levels — the preceding string is the stack.
     const params = [...optionalParams];
     let context = DEFAULT_CONTEXT;
     if (params.length > 0 && typeof params[params.length - 1] === 'string') {
       context = params.pop() as string;
     }
     let stack: string | undefined;
-    if (level === 'error' && params.length > 0 && typeof params[params.length - 1] === 'string') {
+    if (isErrorLevel(level) && params.length > 0 && typeof params[params.length - 1] === 'string') {
       stack = params[params.length - 1] as string;
     }
 
@@ -78,9 +91,9 @@ export class JsonLogger implements LoggerService {
 
     // `JSON.stringify` escapes any embedded newline (`\n` -> `\\n`), so a multi-line message or a
     // stack trace collapses to a single ingestion line; the one trailing `\n` terminates the record.
-    // `error` -> stderr, everything else -> stdout, mirroring Nest's ConsoleLogger stream split so the
-    // platform preserves error severity.
-    const stream = level === 'error' ? process.stderr : process.stdout;
+    // `error`/`fatal` -> stderr, everything else -> stdout, mirroring Nest's ConsoleLogger stream split
+    // so the platform preserves error severity.
+    const stream = isErrorLevel(level) ? process.stderr : process.stdout;
     stream.write(`${serialize(record)}\n`);
   }
 }

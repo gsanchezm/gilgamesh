@@ -7,7 +7,7 @@ import { ProdAppModule } from './app.module';
 import { configureBodyParser } from './common/body-parser';
 import { createShutdownHandler } from './common/graceful-shutdown';
 import { selectLogger } from './common/json-logger';
-import { configureRequestId } from './common/request-id';
+import { REQUEST_ID_HEADER, configureRequestId } from './common/request-id';
 import { configureWebDist } from './common/web-dist';
 import { loadConfig } from './config';
 import { ShutdownState } from './health/shutdown-state';
@@ -20,14 +20,26 @@ import { ShutdownState } from './health/shutdown-state';
  */
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
-  const app = await NestFactory.create<NestExpressApplication>(ProdAppModule);
+  // Buffer every log call made during creation/init (slice 35). Without this, Nest's own bootstrap
+  // lines ("Starting Nest application…", route maps, "…successfully started") print through the
+  // default pretty ConsoleLogger BEFORE useLogger attaches — so in json mode they'd escape as
+  // pretty/ANSI. With bufferLogs, those lines stay buffered until the buffer is flushed and replay
+  // through whichever logger is the active override AT flush time.
+  const app = await NestFactory.create<NestExpressApplication>(ProdAppModule, { bufferLogs: true });
 
-  // Structured logging (slice 30): swap Nest's pretty ConsoleLogger for the single-line JSON logger
-  // only when LOG_FORMAT=json (deploy → Azure Log Analytics). Unset/`pretty` returns undefined here,
-  // so useLogger is never called and the default pretty logger is untouched — zero change for dev.
+  // Structured logging (slice 30 + slice 35): swap Nest's pretty ConsoleLogger for the single-line JSON
+  // logger only when LOG_FORMAT=json (deploy → Azure Log Analytics). In json mode, useLogger installs
+  // the JSON logger as the override; the buffered bootstrap lines then replay through it at listen()'s
+  // auto-flush (Nest resolves the active logger at flush time), so no pre-attach pretty line escapes.
+  // In pretty mode selectLogger returns undefined: flushLogs() immediately drains the buffer through
+  // Nest's default ConsoleLogger and detaches it, so subsequent lines print live — unchanged dev output,
+  // no lost lines. (autoFlushLogs defaults true, so listen() would flush regardless; flushing here keeps
+  // pretty timing identical to pre-slice-35.)
   const logger = selectLogger(config.logFormat);
   if (logger) {
     app.useLogger(logger);
+  } else {
+    app.flushLogs();
   }
 
   // Correlation id (slice 24): assign every request an X-Request-Id BEFORE any other middleware so
@@ -49,6 +61,10 @@ async function bootstrap(): Promise<void> {
   app.enableCors({
     origin: config.corsOrigins.length > 0 ? config.corsOrigins : false,
     credentials: true,
+    // Expose the correlation id (slice 24/35) so a cross-origin SPA can read it off the response via
+    // `fetch` (browsers hide all but the CORS-safelisted response headers unless explicitly exposed).
+    // Same-origin (the vite proxy / single-container deploy) is unaffected.
+    exposedHeaders: [REQUEST_ID_HEADER],
   });
 
   // Staging/prod single-container mode (spec staging-deploy SD-3): serve the built SPA from this

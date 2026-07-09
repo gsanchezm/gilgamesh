@@ -91,6 +91,33 @@ describe('JsonLogger', () => {
     expect(cap.lines[0]!.text.slice(0, -1)).not.toContain('\n');
   });
 
+  it('routes fatal to stderr with { level: "fatal" } and the same stack/context parsing as error', () => {
+    const cap = captureStreams();
+    const logger = new JsonLogger(fixedClock);
+    logger.fatal('boom', 'Error: down\n    at boot (m.ts:9:1)', 'FatalCtx'); // [stack, context], like error
+    logger.fatal('no stack here', 'OnlyCtx'); // [context] only — no stack param
+    cap.restore();
+
+    // error-severity stream split: fatal writes to stderr, mirroring error.
+    expect(cap.lines.map((l) => l.stream)).toEqual(['err', 'err']);
+
+    const withStack = JSON.parse(cap.lines[0]!.text);
+    expect(withStack.level).toBe('fatal');
+    expect(withStack.time).toMatch(ISO);
+    expect(withStack.context).toBe('FatalCtx'); // trailing string param → context
+    expect(withStack.message).toBe('boom');
+    expect(withStack.stack).toBe('Error: down\n    at boot (m.ts:9:1)'); // preceding string → stack
+    expect(cap.lines[0]!.text.slice(0, -1)).not.toContain('\n'); // stack collapsed to single line
+    // same fixed allowlist as error — no extra fields.
+    expect(Object.keys(withStack).sort()).toEqual(['context', 'level', 'message', 'stack', 'time']);
+
+    const noStack = JSON.parse(cap.lines[1]!.text);
+    expect(noStack.level).toBe('fatal');
+    expect(noStack.context).toBe('OnlyCtx');
+    expect(noStack.message).toBe('no stack here');
+    expect(noStack.stack).toBeUndefined(); // no stack field when no stack param is present
+  });
+
   it('defaults context to "Application" for a context-less call, and always emits the field', () => {
     const cap = captureStreams();
     new JsonLogger(fixedClock).log('no context here');
