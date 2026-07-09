@@ -1,15 +1,104 @@
-// clienteDetalle view copy. PHASE-2 STUB (Group A) — pre-registered in i18n/index.ts. Add this view's keys
-// here (prefix "cd."); no shared file needs editing. Phase 1 seeds only the title + subtitle.
+// clienteDetalle view copy (Group A). Prefix "cd." — pre-registered in i18n/index.ts.
 import type { ViewDict } from './dict';
 
 const clienteDetalle: ViewDict = {
   es: {
     'cd.title': 'Detalle de cliente',
     'cd.subtitle': 'Consumo, proyectos, facturas y equipo del workspace.',
+    'cd.back': 'Clientes',
+    'cd.since': 'Cliente desde',
+    'cd.action_plan': 'Cambiar plan',
+    'cd.suspend': 'Suspender workspace',
+    'cd.reactivate': 'Reactivar workspace',
+    'cd.toast_plan': 'Cambio de plan (demo).',
+    'cd.toast_suspended': 'Workspace suspendido.',
+    'cd.toast_reactivated': 'Workspace reactivado.',
+    'cd.notfound': 'Cliente no encontrado.',
+    // KPIs
+    'cd.kpi_proyectos': 'Proyectos',
+    'cd.kpi_usuarios': 'Usuarios',
+    'cd.kpi_exec': 'Ejecuciones 30d',
+    'cd.kpi_costo': 'Costo est. 30d',
+    'cd.kpi_margen': 'Margen del cliente',
+    // Cycle-usage bars
+    'cd.uso_title': 'Uso del ciclo',
+    'cd.uso_exec': 'Ejecuciones',
+    'cd.uso_hours': 'Agent-hours',
+    'cd.uso_voz': 'Minutos de voz',
+    'cd.uso_seats': 'Seats',
+    // Projects
+    'cd.proyectos_title': 'Proyectos',
+    'cd.pr_proyecto': 'Proyecto',
+    'cd.pr_formato': 'Formato',
+    'cd.pr_runs': 'Runs 30d',
+    'cd.pr_exito': 'Éxito',
+    'cd.pr_costo': 'Costo 30d',
+    'cd.pr_ultima': 'Última ejecución',
+    // Invoices
+    'cd.facturas_title': 'Facturas recientes',
+    'cd.fac_fecha': 'Fecha',
+    'cd.fac_folio': 'Folio',
+    'cd.fac_monto': 'Monto',
+    'cd.fac_estado': 'Estado',
+    'cd.fe_pagada': 'Pagada',
+    'cd.fe_pendiente': 'Pendiente',
+    'cd.fe_vencida': 'Vencida',
+    // Team
+    'cd.equipo_title': 'Equipo del workspace',
+    'cd.eq_nombre': 'Nombre',
+    'cd.eq_correo': 'Correo',
+    'cd.eq_rol': 'Rol',
+    'cd.eq_2fa': '2FA',
+    'cd.eq_actividad': 'Última actividad',
   },
   en: {
     'cd.title': 'Client detail',
     'cd.subtitle': 'Workspace usage, projects, invoices and team.',
+    'cd.back': 'Clients',
+    'cd.since': 'Client since',
+    'cd.action_plan': 'Change plan',
+    'cd.suspend': 'Suspend workspace',
+    'cd.reactivate': 'Reactivate workspace',
+    'cd.toast_plan': 'Plan change (demo).',
+    'cd.toast_suspended': 'Workspace suspended.',
+    'cd.toast_reactivated': 'Workspace reactivated.',
+    'cd.notfound': 'Client not found.',
+    // KPIs
+    'cd.kpi_proyectos': 'Projects',
+    'cd.kpi_usuarios': 'Users',
+    'cd.kpi_exec': 'Executions 30d',
+    'cd.kpi_costo': 'Est. cost 30d',
+    'cd.kpi_margen': 'Client margin',
+    // Cycle-usage bars
+    'cd.uso_title': 'Cycle usage',
+    'cd.uso_exec': 'Executions',
+    'cd.uso_hours': 'Agent-hours',
+    'cd.uso_voz': 'Voice minutes',
+    'cd.uso_seats': 'Seats',
+    // Projects
+    'cd.proyectos_title': 'Projects',
+    'cd.pr_proyecto': 'Project',
+    'cd.pr_formato': 'Format',
+    'cd.pr_runs': 'Runs 30d',
+    'cd.pr_exito': 'Success',
+    'cd.pr_costo': 'Cost 30d',
+    'cd.pr_ultima': 'Last run',
+    // Invoices
+    'cd.facturas_title': 'Recent invoices',
+    'cd.fac_fecha': 'Date',
+    'cd.fac_folio': 'Folio',
+    'cd.fac_monto': 'Amount',
+    'cd.fac_estado': 'Status',
+    'cd.fe_pagada': 'Paid',
+    'cd.fe_pendiente': 'Pending',
+    'cd.fe_vencida': 'Overdue',
+    // Team
+    'cd.equipo_title': 'Workspace team',
+    'cd.eq_nombre': 'Name',
+    'cd.eq_correo': 'Email',
+    'cd.eq_rol': 'Role',
+    'cd.eq_2fa': '2FA',
+    'cd.eq_actividad': 'Last activity',
   },
 };
 

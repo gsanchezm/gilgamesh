@@ -1,0 +1,110 @@
+/* Platform · Detalle de proyecto — view-only rules (Group A). Consumes .gx-adm* primitives read-only. */
+.gx-adm-pd__backlink {
+  align-self: flex-start;
+  margin-top: 0;
+}
+.gx-adm-pd__head {
+  gap: 10px;
+}
+.gx-adm-pd__titlerow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.gx-adm-pd__headmeta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.gx-adm-pd__client {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--text);
+}
+.gx-adm-pd__note {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.gx-adm-pd__agentsrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.gx-adm-pd__agentseyebrow {
+  margin-bottom: 0;
+}
+
+/* Runs table */
+.gx-adm-pd__runtable {
+  min-width: 860px;
+}
+.gx-adm-pd__runid {
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.gx-adm-pd__muted {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.gx-adm-pd__sesion {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.gx-adm-pd__sesion:hover {
+  filter: brightness(1.15);
+}
+
+/* Cost breakdown bars */
+.gx-adm-pd__costo {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.gx-adm-pd__crow {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px 0;
+}
+.gx-adm-pd__chead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+}
+.gx-adm-pd__clabel {
+  color: var(--text);
+}
+.gx-adm-pd__cval {
+  font-family: var(--font-mono);
+  color: var(--muted);
+}
+.gx-adm-pd__total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 12px;
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+}
