@@ -1,0 +1,155 @@
+/* Planes y precios (capture 18) — VIEW-ONLY rules (Group B). All selectors are `.gx-adm-planes-*`
+   so they cannot collide with another parallel group's co-located CSS. Colours come from theme vars
+   except pinned brand/status literals (gold #C9A14E / green #3FB07A / amber #C08A2E / red #E0738A),
+   per admin.css precedent. */
+
+.gx-adm-planes-publish {
+  align-self: flex-start;
+  padding: 11px 18px;
+  border: none;
+  border-radius: 10px;
+  background: #c9a14e;
+  color: #0e1b36;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+.gx-adm-planes-publish:hover {
+  filter: brightness(1.06);
+}
+
+.gx-adm-planes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+.gx-adm-planes-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 22px;
+}
+.gx-adm-planes-card--featured {
+  background: var(--accent-soft);
+  border: 1.5px solid #c9a14e;
+}
+
+.gx-adm-planes-badge--float {
+  position: absolute;
+  top: -11px;
+  left: 22px;
+  background: #c9a14e;
+  color: #0e1b36;
+  border: none;
+}
+
+.gx-adm-planes-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.gx-adm-planes-name {
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: var(--text);
+}
+
+.gx-adm-planes-eyebrow {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: -4px;
+}
+
+.gx-adm-planes-field {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--field);
+}
+.gx-adm-planes-currency {
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: var(--muted);
+}
+.gx-adm-planes-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1.1;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.gx-adm-planes-input::-webkit-outer-spin-button,
+.gx-adm-planes-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.gx-adm-planes-mo {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.gx-adm-planes-features {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 66px;
+}
+.gx-adm-planes-features li {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.gx-adm-planes-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.gx-adm-planes-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.gx-adm-planes-row__val {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text);
+}
+.gx-adm-planes-marginrow {
+  font-weight: 600;
+}
+.gx-adm-planes-marginpct {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+}

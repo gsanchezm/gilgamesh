@@ -1,0 +1,177 @@
+/* Ingresos (§4.2) — VIEW-ONLY rules (Group B). Selectors are `.gx-adm-ingresos-*` (collision-proof
+   against parallel groups). Theme vars for chrome; pinned brand/status literals only. */
+
+/* MRR por plan — horizontal bars */
+.gx-adm-ingresos-mrr {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.gx-adm-ingresos-mrr li {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.gx-adm-ingresos-mrrhead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.gx-adm-ingresos-mrrname {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+}
+.gx-adm-ingresos-mrrcount {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.gx-adm-ingresos-mrrval {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text);
+}
+
+/* Margen del negocio — donut */
+.gx-adm-ingresos-donutwrap {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.gx-adm-ingresos-donut {
+  position: relative;
+  width: 152px;
+  height: 152px;
+  flex: none;
+  border-radius: 50%;
+  background: conic-gradient(#2f8f5b 0 var(--deg), var(--track) var(--deg) 360deg);
+}
+.gx-adm-ingresos-donut::after {
+  content: '';
+  position: absolute;
+  inset: 24px;
+  border-radius: 50%;
+  background: var(--card);
+}
+.gx-adm-ingresos-donutlabel {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 27px;
+  color: var(--text);
+}
+.gx-adm-ingresos-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 160px;
+}
+.gx-adm-ingresos-legend li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--text);
+}
+.gx-adm-ingresos-legend li > span:nth-child(2) {
+  flex: 1;
+}
+.gx-adm-ingresos-legendval {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+/* Costos de infraestructura */
+.gx-adm-ingresos-infra {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.gx-adm-ingresos-infra li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text);
+}
+.gx-adm-ingresos-infra li:last-child {
+  border-bottom: none;
+}
+.gx-adm-ingresos-infraqty {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+.gx-adm-ingresos-infracost {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text);
+  min-width: 64px;
+  text-align: right;
+}
+.gx-adm-ingresos-infratotal {
+  font-weight: 700;
+  padding-top: 12px !important;
+  border-top: 1px solid var(--border);
+  border-bottom: none;
+}
+
+/* Facturas — filter chips */
+.gx-adm-ingresos-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.gx-adm-ingresos-chip {
+  padding: 6px 13px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.gx-adm-ingresos-chip[data-active='true'] {
+  background: #c9a14e;
+  color: #0e1b36;
+  border-color: #c9a14e;
+}
+.gx-adm-ingresos-dl {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.gx-adm-ingresos-empty {
+  padding: 22px 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
