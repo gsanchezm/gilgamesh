@@ -485,7 +485,7 @@ per merge.
   rollover job (resets BOTH counters) · Voyage live smoke (@manual) · Stripe portal/proration/refunds ·
   voice STT/TTS · Bloque 3 (owner decision).
 
-## Staging deploy (F0-F3) — BUILT + VALIDATED LOCALLY, F4 pending owner az login (2026-07-07, on `main`)
+## Staging deploy (F0-F4) — DEPLOYED + LIVE on Azure Container Apps (F4: 2026-07-09, supervised)
 
 `specs/infra/staging-deploy.md` (owner decisions SD-1..4: **Azure Container Apps** · **prod-like Key
 Vault** (`NODE_ENV=production`, never `VAULT_MODE=offline`) · **the API serves the SPA** (one container,
@@ -512,9 +512,21 @@ merged FF A->B->C with full gates per merge:
 - **Verified:** typecheck · lint · **930 Docker-free** (+12) · `test:int` 23 · **BDD 198/1680** ·
   **Playwright 18** (default; staging smoke excluded) · **staging image built from main, compose stack
   Healthy, staging smoke 1/1 green** · bicep recompiled clean post-merge.
-- **F4 (deploy):** blocked on owner — Azure CLI install + `az login` + Claude Console account
-  (workspace `gilgamesh-staging` + spend limit; Claude Max does NOT back the product API). Runbook:
-  spec §8 (two-phase, multi-tag, stopped-Postgres rules). Cost ~US$20-25/mo, Postgres stoppable.
+- **F4 (deploy) — DONE, LIVE:** `https://app.ashygrass-47d0b048.eastus2.azurecontainerapps.io` (RG
+  `rg-gilgamesh-staging`, resource suffix `lcnkcd`, brain=stub — no `ANTHROPIC_API_KEY` yet). Owner
+  `az login` + supervised agent execution (SD-4). Verified end-to-end on the real HTTPS origin: health +
+  readiness (=DB reachable) + the full **§7 Playwright staging smoke 2/2** (auth+onboarding+agent-room+
+  cookies `__Host-gg_session`+`csrf`+404-JSON+deep-link+knowledge-search · **lab→chat-SSE→run-narrated**,
+  the latter added to `staging-smoke.spec.ts` to close the §9 ACA-SSE risk).
+- **Two subscription-offer restrictions hit + worked around (baked into runbook §8):** (1)
+  `LocationIsOfferRestricted` — Postgres Flexible refused in eastus2 → **Postgres in `centralus`** (owner
+  Path A), app/ACR/KV/LAW stay eastus2, app↔DB cross-region; `main.bicep` gained `postgresLocation` +
+  `postgresServerName` params (the latter dodges the `InvalidResourceLocation` ghost-stub a failed create
+  leaves on the derived name). (2) `TasksOperationsNotAllowed` — `az acr build` refused → **local Docker
+  build + push** (single-arch, `--provenance=false --sbom=false` for a clean ACA-pullable manifest).
+  Prereq the module omits: the deploying principal needs **Key Vault Secrets Officer** at RG scope BEFORE
+  phase 1 (RBAC vault; Owner ≠ data-plane). On any failure: re-run idempotently, NEVER delete the KV
+  (purge-protection locks the name 90 days). Cost ~US$20-25/mo, Postgres stoppable when idle.
 
 ## Programa paralelo v4 — tsup-dts + ci-pin + voyage-hint + billing-rollover + web-error-boundary — DoD COMPLETE (2026-07-07, on `main`)
 

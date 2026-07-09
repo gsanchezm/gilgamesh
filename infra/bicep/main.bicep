@@ -46,6 +46,12 @@ targetScope = 'resourceGroup'
 @description('Azure region for all resources.')
 param location string = resourceGroup().location
 
+@description('Azure region for Postgres Flexible Server. Defaults to `location`; override when the subscription offer is restricted from Postgres in the primary region (e.g. eastus2 returns LocationIsOfferRestricted for MOSP/PAYG subs — staging uses centralus for the DB while the app/ACR/KV stay in eastus2). App↔DB then run cross-region; acceptable for staging.')
+param postgresLocation string = location
+
+@description('Override the Postgres server name. Empty = the derived `<prefix>-<env>-pg-<suffix>`. Set this when a prior FAILED create in another region left an ARM location stub on the derived name: ARM then blocks recreating that same name in a different location (InvalidResourceLocation), so the relocated retry needs a fresh name.')
+param postgresServerName string = ''
+
 @description('Workload name prefix used to compose resource names.')
 @minLength(3)
 @maxLength(12)
@@ -104,7 +110,7 @@ var acrName = take('${alnumPrefix}${env}acr${suffix}', 50)
 var kvName = take('${alnumPrefix}${env}kv${suffix}', 24)
 var storageName = take('${alnumPrefix}${env}st${suffix}', 24)
 var serviceBusName = take('${alnumPrefix}-${env}-sb-${suffix}', 50)
-var postgresName = take('${namePrefix}-${env}-pg-${suffix}', 63)
+var postgresName = empty(postgresServerName) ? take('${namePrefix}-${env}-pg-${suffix}', 63) : postgresServerName
 var caeName = '${namePrefix}-${env}-cae'
 
 // AcrPull built-in role.
@@ -177,7 +183,7 @@ module keyVault './modules/keyVault.bicep' = {
 module postgres './modules/postgres.bicep' = {
   name: 'postgres'
   params: {
-    location: location
+    location: postgresLocation
     tags: tags
     serverName: postgresName
     administratorLoginPassword: postgresAdminPassword

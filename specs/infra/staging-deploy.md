@@ -180,27 +180,59 @@ the inequality — and never lower ACA's termination grace below `SHUTDOWN_GRACE
 ## 8. Deploy runbook (F4 — also valid for manual re-runs)
 
 The container app references an image that must already exist in ACR, so the first deploy is
-**two-phase** (bicep param `deployApp`, default `false`, gates the Container Apps env + app):
+**two-phase** (bicep param `deployApp`, default `false`, gates the Container Apps env + app).
+
+> **First real F4 run (2026-07-09) — subscription-offer deviations, now baked into the commands below.**
+> `Azure subscription 1` (MOSP/PAYG) surfaced two persistent **offer restrictions** that the original
+> idealized runbook did not anticipate; both are handled inline:
+> 1. **`LocationIsOfferRestricted`** on Postgres Flexible in **eastus2** (persistent, not capacity). The RG,
+>    ACR, KV, Log Analytics and the ACA app all deploy fine in eastus2 — only Postgres is refused. Fix: put
+>    **Postgres in `centralus`** via `-p postgresLocation=centralus` (new bicep param, defaults to `location`);
+>    app↔DB then run cross-region (~20-60ms/query, fine for staging). A *failed* Postgres create also leaves an
+>    ARM "location stub" that pins the derived name to the failed region → `InvalidResourceLocation` on the
+>    relocated retry, so also pass `-p postgresServerName=<fresh-name>` (new bicep param) on the retry.
+> 2. **`TasksOperationsNotAllowed`** → `az acr build` (cloud build via ACR Tasks) is refused. Fix: **build the
+>    image locally with Docker + push** (needs Docker Desktop running). On an unrestricted subscription the
+>    original `az acr build` path still works — the extra params in (1) are harmless (defaults preserve behavior).
+>
+> **Prerequisite the module does not grant (do this BEFORE phase 1):** the KV is RBAC + purge-protection, so
+> ARM secret-seeding needs the *deploying* principal to hold **Key Vault Secrets Officer** on the RG (subscription
+> Owner is NOT enough — it's a data-plane role). Assign it at RG scope so it has propagated by the time phase 1
+> seeds `db-connection-string`/`session-secret`. Golden rule on any failure: **re-run the same deployment
+> idempotently — NEVER `az group delete`/`az keyvault delete` between attempts** (purge protection locks the
+> derived KV name for 90 days; a same-name recreate then fails).
 
 ```sh
 az login                                    # OWNER (interactive)
+az provider register -n Microsoft.App -n Microsoft.ContainerRegistry -n Microsoft.KeyVault \
+  -n Microsoft.DBforPostgreSQL -n Microsoft.OperationalInsights -n Microsoft.ManagedIdentity  # once per fresh sub
 az group create -n rg-gilgamesh-staging -l eastus2
-# Phase 1 — platform resources only (identity, LAW, ACR, KV, Postgres); no app yet:
+# Prereq — grant the DEPLOYING principal KV data-plane write (else phase-1 secret seeding 403s):
+az role assignment create --assignee-object-id <your-oid> --assignee-principal-type User \
+  --role "Key Vault Secrets Officer" --scope $(az group show -n rg-gilgamesh-staging --query id -o tsv)
+# Phase 1 — platform resources only (identity, LAW, ACR, KV, Postgres@centralus); no app yet.
+# Pass secrets via a gitignored JSON/.bicepparam (NOT inline: PSReadLine history + telemetry):
 az deployment group create -g rg-gilgamesh-staging -f infra/bicep/main.bicep \
-  -p env=staging -p deployApp=false \
+  -p env=staging -p deployApp=false -p postgresLocation=centralus \
+  -p postgresServerName=gilgamesh-staging-pg-cus-<sfx> \
   -p postgresAdminPassword=<gen> -p sessionSecret=<gen> [-p anthropicApiKey=...]
-# Phase 2 — build the image in the cloud (no local docker needed). Multi-tag so the template's
-# :latest fallback always resolves (review C D3):
-az acr build -r <acr> -t gilgamesh-app:<gitsha> -t gilgamesh-app:latest -f Dockerfile .
+# Phase 2 — build LOCALLY (ACR Tasks blocked) + push. Single-arch, no attestations (clean manifest for ACA):
+az acr login -n <acr>
+docker build --provenance=false --sbom=false \
+  -t <acr>.azurecr.io/gilgamesh-app:<gitsha> -t <acr>.azurecr.io/gilgamesh-app:latest -f Dockerfile .
+docker push <acr>.azurecr.io/gilgamesh-app:<gitsha> && docker push <acr>.azurecr.io/gilgamesh-app:latest
 # Phase 3 — same template, now with the app on the freshly pushed image:
 az deployment group create -g rg-gilgamesh-staging -f infra/bicep/main.bicep \
   -p env=staging -p deployApp=true -p appImage=<acr>.azurecr.io/gilgamesh-app:<gitsha> \
+  -p postgresLocation=centralus -p postgresServerName=gilgamesh-staging-pg-cus-<sfx> \
   -p postgresAdminPassword=<gen> -p sessionSecret=<gen> [-p anthropicApiKey=...]
-# Subsequent code rollouts: az acr build + az containerapp update --image <new tag>.
+# Subsequent code rollouts: docker build+push a new tag, then: az containerapp update -n app --image <new tag>.
+# Post-deploy smoke: STAGING_BASE_URL=https://<fqdn> playwright test --config playwright.staging.config.ts
 # Optional, later, one at a time:
 az keyvault secret set --vault-name <kv> --name anthropic-api-key --value sk-ant-...
 az containerapp revision restart ...
-pnpm --filter @gilgamesh/api ingest:corpus   # full RAG corpus (DATABASE_URL → staging, run locally)
+pnpm --filter @gilgamesh/api ingest:corpus   # full RAG corpus (DATABASE_URL → staging, run locally;
+                                             # add a Postgres firewall rule for your IP first)
 az postgres flexible-server stop ...         # park the DB when idle (cost)
 ```
 
