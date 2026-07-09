@@ -1,0 +1,56 @@
+/* Auditoría (§4.11) — VIEW-ONLY rules (Group C). Consumes the shared .gx-adm* primitives; adds only
+   the chip filter row + the log-table cell tweaks. Never edit admin.css/index.css. */
+
+/* Chip filters (README §4.11 / §8: in-memory, no reload; active = gold bg, navy text). */
+.gx-adm-audit__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.gx-adm-audit__chip {
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--field);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.gx-adm-audit__chip:hover {
+  color: var(--text);
+  border-color: rgba(201, 161, 78, 0.4);
+}
+.gx-adm-audit__chip[data-active='true'] {
+  background: #c9a14e;
+  border-color: #c9a14e;
+  color: #0e1b36;
+}
+
+/* Log table — 6 columns; a touch narrower than the 980px cross-tenant default. */
+.gx-adm-audit__table {
+  min-width: 860px;
+}
+.gx-adm-audit__ts {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.gx-adm-audit__accion {
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.gx-adm-audit__objetivo {
+  color: var(--text);
+}
+.gx-adm-audit__actor {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.gx-adm-audit__ip {
+  color: var(--muted);
+  white-space: nowrap;
+}

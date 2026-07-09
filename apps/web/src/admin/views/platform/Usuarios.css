@@ -1,0 +1,57 @@
+/* Usuarios (§4.10) — VIEW-ONLY rules (Group C). Consumes the shared .gx-adm* primitives; adds only
+   what the two roster tables need. Never edit admin.css/index.css. */
+
+/* These tables carry only 4–5 columns — relax the shared 980px min-width so they don't force a
+   scrollbar at the console's normal width, but still scroll gracefully when very narrow. */
+.gx-adm-usuarios__table {
+  min-width: 640px;
+}
+
+.gx-adm-usuarios__name {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.gx-adm-usuarios__email {
+  color: var(--muted);
+}
+.gx-adm-usuarios__activity {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Workspace cell — coloured abbr avatar + account name */
+.gx-adm-usuarios__ws {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.gx-adm-usuarios__wsname {
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Invite user — gold pill button (handoff §8: action → toast) */
+.gx-adm-usuarios__invite {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border: 1px solid rgba(201, 161, 78, 0.5);
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: filter 0.12s ease, background 0.12s ease;
+}
+.gx-adm-usuarios__invite:hover {
+  filter: brightness(1.08);
+}
