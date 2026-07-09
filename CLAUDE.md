@@ -663,3 +663,65 @@ claimed distinct slice numbers (29–33) — no spec collisions; no schema chang
   unimplemented (latent — no `.fatal` calls) · db-pool int test doesn't independently prove params reach the
   engine · everything from v5 unchanged (provenance/re-embed · Stripe portal/proration · billing scheduler ·
   voice · Bloque 3 owner decision).
+
+## Programa paralelo v7 (debt-closure + hardening) — stripe-portal + logging-cors + db-pool-proof + web-async-states + ci-sha-comments — DoD COMPLETE (2026-07-09, on `main`)
+
+Five NO-KEYSTONE follow-ups (owner-approved *set recomendado no-keystone*) in parallel `pnpm wt` worktrees
+(`slice-34-stripe-portal`/`-35-logging-cors`/`-36-db-pool-proof`/`-37-web-async-states`/`-38-ci-sha-pin`),
+each SDD→(BDD)→TDD by a Claude subagent verifying **Docker-free only** (Tier-0: shared Postgres/Redis/ports →
+subagents must NOT run int/bdd/e2e), then integrated by the orchestrator with **serialized** stack gates +
+sequential FF merges (34-38 = slices 34-38). No schema change → no migration. Design doc:
+`docs/superpowers/specs/2026-07-09-programa-v7-design.md`. Merged branches from v2-v6 were pruned first.
+- **stripe-portal (slice 34)** (`specs/slices/34-stripe-portal/`, 6 BDD AC-PORTAL-01..05) — Stripe **Customer
+  Portal, portal-only** (owner decision: hosted UI covers plan-change/proration/payment-method/cancel;
+  programmatic refund/proration APIs deferred): additive `PaymentProvider.createPortalSession(orgId)`
+  (**keystone untouched** — S13 `listInvoices`/`handleWebhook` precedent); `StartBillingPortal` (OWNER/ADMIN;
+  non-member → 404; no Stripe customer yet → `VALIDATION`/422, never 500); `MockPaymentProvider` deterministic
+  offline `https://mock.pay/portal/<orgId>`; `StripePaymentProvider.billingPortal.sessions.create` +
+  `STRIPE_PORTAL_RETURN_URL` (→ `STRIPE_SUCCESS_URL` → `/billing`); dedicated `BillingPortalController` at
+  `orgs/:orgId/billing` (a conscious split — `BillingController` hangs off `/subscription`, so the literal
+  keystone path needed its own controller; no route collision with `/billing/webhooks`) → `POST
+  /orgs/:orgId/billing/portal`; BillingScreen "Manage billing" button (navigates on success). Stripe key
+  never reaches the portal path (no-leak test). `PAYMENTS_MODE=offline` → mock (all suites offline).
+- **logging-cors (slice 35)** (`specs/slices/35-logging-cors/`) — closes the v6 structured-logging deferreds +
+  the v5 CORS deferred: `NestFactory.create(..., { bufferLogs: true })` so Nest's pre-`useLogger` bootstrap
+  lines route through the JSON logger in json mode (pretty mode → `app.flushLogs()` drains the buffer through
+  the default ConsoleLogger, **zero-change** dev output); `JsonLogger.fatal()` implemented → **stderr** via an
+  `isErrorLevel` helper (same stack/context parse as `error`); `enableCors({ exposedHeaders:
+  [REQUEST_ID_HEADER] })` so a cross-origin SPA can read `X-Request-Id` off `fetch` (reuses the constant, no
+  literal drift). Bootstrap-path effects (AC-LC-02/03/04) aren't Docker-free-testable — `main.ts` isn't run by
+  the harness; the `fatal` unit test is the automated proof.
+- **db-pool-proof (slice 36)** (`specs/slices/36-db-pool-proof/`) — closes the v6 gap ("int test doesn't prove
+  params reach the engine"): an ENGINE-LEVEL int test that a `connection_limit=2` client (built via the
+  production `withPoolDefaults`) never holds >2 concurrent backends under CONCURRENCY=6 `pg_sleep` load — an
+  independent observer client polls `pg_stat_activity` (filter keys off the intrinsic `pg_sleep`, self-excludes
+  via `pg_stat_activity` text + `pg_backend_pid()`), asserting `peak >= 1` (non-vacuous) AND `peak <= LIMIT`.
+  Read-only, cleans up both clients in `afterAll`. **Orchestrator fix round:** the subagent's `SELECT
+  pg_sleep(…)` returned SQL `void` which Prisma can't deserialize → rewrote as `SELECT 1 AS ok FROM pg_sleep(…)`
+  (caught only by the serial `test:int`, NOT by Docker-free typecheck/unit).
+- **web-async-states (slice 37)** (`specs/slices/37-web-async-states/`) — adopts the slice-28
+  `Spinner`/`ErrorState`/`EmptyState` in the remaining screens (Dashboard/AgentRoom, Test Lab, Chat),
+  load-lifecycle only. AgentRoom = Spinner+ErrorState (no EmptyState — the room is a fixed 11-agent roster).
+  TestLab = Spinner+ErrorState+EmptyState (the empty banner coexists with the authoring forms). **Chat = rail
+  only:** new `sessionsLoaded`/`sessionsError` scope the rail Spinner/ErrorState; the live SSE path
+  (`openLive`/DELTA/MESSAGE/DONE/send/resync) is byte-for-byte unchanged (diff-verified). `index.css` +
+  `packages/ui` untouched; EmptyState titles period-less.
+- **ci-sha-comments (slice 38)** — the premise was **stale**: SHA-pinning was already done (an earlier
+  CI-hardening pass; the `~~pin GitHub Actions to SHA~~ (done)` audit note). The delta shipped is comment
+  precision only — version comments upgraded major→concrete semver (`# v4` → `# v4.3.1`, codeql's mildly-stale
+  `# v3` → `# v3.36.3`, …) resolved via `gh api .../commits/<tag>`; **SHAs byte-identical** (17/17 lines), helps
+  Dependabot. Zero risk, no stack gate needed (YAML validated).
+- **Verified (post-merge on `main`):** typecheck · lint · **1122 Docker-free** (domain 106 · ui 39 ·
+  application 362 · web 226 · api 389) · `test:int` **40** · **BDD 209 scenarios / 1779 steps** ·
+  **Playwright 18/18** (one known chat-SSE-narration timing flake, green on isolated re-run).
+- **Process notes:** the Docker-free gate does NOT run `test:int` — slice 36's `void`-deserialize bug passed
+  typecheck+unit but was caught only by the serial `test:int`; run the stack gate before declaring even a
+  test-only int slice done · slice branches cut before the CI merge showed a phantom `.github/workflows` diff
+  (behind main) → rebase onto main before the FF-merge (all 5 rebased clean, disjoint) · running the `test:int`
+  gate WHILE the Docker-free subagents built flaked the `knowledge-upload`/`rate-limit` int TRUNCATE hooks
+  (10s hook timeout under CPU starvation, `collect` 30s→59s) — run stack gates on a quiet machine, one at a time.
+- **Deferred:** ~~structured-logging bootstrap lines / `JsonLogger.fatal`~~ (CLOSED, slice 35) · ~~db-pool
+  engine-level proof~~ (CLOSED, slice 36) · ~~CORS expose `X-Request-Id`~~ (CLOSED, slice 35) · ~~pin GitHub
+  Actions to SHA~~ (was already done; comments now concrete, slice 38) · Stripe portal→programmatic
+  proration/refunds · billing period scheduler · provenance/re-embed slice · voice STT/TTS · Bloque 3 (owner
+  decision — now minus the closed SHA-pin).

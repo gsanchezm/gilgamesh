@@ -17,8 +17,9 @@ v2 (Stripe 13 · SSO 15 · Voyage embeddings 16 · SMTP 17 · logout 18) + progr
 Voyage BYOK 19 · Key Vault 20 · Redis SSO state · Vitest 3) + programa v4 (billing rollover 21 · voyage
 hint 22 · error boundary 23) + v5 (request-id 24 · http resilience 25 · bundle gate 26 · readiness 27 ·
 async-states 28) + v6 (graceful shutdown 29 · structured logging 30 · db pool 31 · connection banner 32 ·
-adopt async-states 33), plus Reports, onboarding wizard, per-org RAG grounding, CI hardening. Gates:
-1095 Docker-free · int 39 · BDD 203/1734 · Playwright 18 · pnpm audit 0._
+adopt async-states 33) + v7 (stripe portal 34 · logging+CORS 35 · db-pool proof 36 · web async-states 37 ·
+CI sha-comments 38), plus Reports, onboarding wizard, per-org RAG grounding, CI hardening. Gates:
+1122 Docker-free · int 40 · BDD 209/1779 · Playwright 18 · pnpm audit 0._
 
 > **🚀 STAGING DEPLOYED (F4, 2026-07-09):** the whole app runs LIVE on **Azure Container Apps** —
 > `https://app.ashygrass-47d0b048.eastus2.azurecontainerapps.io` (app+ACR+KV in eastus2, Postgres in
@@ -66,7 +67,7 @@ Real vs. stub-behind-a-port. Swapping a stub for the real adapter is a future sl
 - [x] AI brain (chat · routing · draft generation) — ✅ **real `ClaudeBrain` adapter on `main` (slice 9)** behind `SelectingBrain`: real answers with `ANTHROPIC_API_KEY` (or org BYOK — call-time resolution pending `SecretVault.get()`), deterministic stub offline/CI; per-org `BrainUsage` metering + usage view + tool registry + live C3 SSE (`?live=1`)
 - [x] RAG embeddings — ✅ **real Voyage `voyage-4` semantic embeddings (slice 16)** behind the frozen `AgentBrainPort.embed` + the `embedAs(texts, kind)` extension: 1024-dim `vector(1024)` column (keystone v0.5 BREAKING; destructive migration + re-ingest), real with `VOYAGE_API_KEY`, deterministic lexical FNV-1a 1024-dim offline/CI; EMBED `BrainUsage` metering. **+ Voyage BYOK (slice 19)**: per-org voyage key via the S6 flow behind the **S19-6 coherence gate** (org key embeds only inside the platform voyage space — platform-keyless stays lexical, retrieval can never silently degrade); per-chunk provenance + re-embed on connect = future slice
 - [x] Brain token billing (slice 14) — ✅ real: per-plan AI-token allowances derived from `PLAN_CATALOG` (FREE 100k · STARTER 2M · GROWTH 10M · SCALE unlimited; billable = input+output, cache excluded), pre-check + atomic UoW charge with each `BrainUsage` row on every org-attributed surface, blocked chat NARRATES (never 402/500) / 402 elsewhere, quota meter on the Billing AI-usage card; rollover job (resets both counters) pending
-- [x] Payments / checkout — ✅ **real Stripe (slice 13)** behind the extended `PaymentProvider` port: Checkout Sessions priced from `PLAN_CATALOG`, signature-verified webhooks over raw bytes → `Invoice` rows + subscription status (`ApplyPaymentEvent`, UoW-atomic), Invoices panel in Billing; `PAYMENTS_MODE=offline`/no `STRIPE_SECRET_KEY` → deterministic mock (CI offline). Portal/proration/refunds deferred
+- [x] Payments / checkout — ✅ **real Stripe (slice 13)** behind the extended `PaymentProvider` port: Checkout Sessions priced from `PLAN_CATALOG`, signature-verified webhooks over raw bytes → `Invoice` rows + subscription status (`ApplyPaymentEvent`, UoW-atomic), Invoices panel in Billing; `PAYMENTS_MODE=offline`/no `STRIPE_SECRET_KEY` → deterministic mock (CI offline). **Customer Portal (slice 34)** — self-service plan/proration/payment-method/cancel via Stripe's hosted UI (`createPortalSession` + "Manage billing" button; mock offline URL); programmatic proration/refund APIs still deferred
 
 ## 3) Missing / deferred (with the blocker)
 
@@ -90,4 +91,4 @@ Real vs. stub-behind-a-port. Swapping a stub for the real adapter is a future sl
 - [x] **Batch C (auditoría v2)** — ✅ on `main` (`e82292c`): atomic reset-token claim (UoW) · timing-safe forgot · multer>=2.2.0 override · HNSW index + deterministic ANN query · AuthHero rAF pause · SSE withCredentials
 - [x] **Vitest 3 toolchain** — ✅ on `main` (programa v3): vitest 3.2.7 + vite 6.4.3, zero test adaptations, `pnpm audit` 6 vulns (1 critical) → **0**
 - [x] **Real secret vault** — ✅ on `main` (programa v3, `specs/slices/20-secret-vault/`): `AzureKeyVaultSecretVault` behind the frozen port, security inversion (`VAULT_MODE=offline` explicit-only, refused in prod; missing config = boot error), injective case-insensitive-safe name mapping
-- [ ] **Bloque 3 (owner decision):** rate-limit fail-open policy · per-IP backoff (own slice) · pagination (own slice) · RAG final posture · optimize heavy assets (E5) · pin GitHub Actions to SHA
+- [ ] **Bloque 3 (owner decision):** rate-limit fail-open policy · per-IP backoff (own slice) · pagination (own slice) · RAG final posture · optimize heavy assets (E5). (~~pin GitHub Actions to SHA~~ — done; version comments concretized in slice 38.)
