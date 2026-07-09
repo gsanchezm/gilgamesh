@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AgentRoomScreen } from '../screens/AgentRoomScreen';
 import { BillingScreen } from '../screens/BillingScreen';
@@ -17,6 +17,11 @@ import { TestLabScreen } from '../screens/TestLabScreen';
 import { AppLayout } from './AppLayout';
 import { useClients } from './clients';
 import { useSession } from './session';
+
+// The admin console (platform + workspace roles) is a SEPARATE lazy chunk so it never inflates the
+// main bundle. It is standalone (internal console at /admin) — deliberately NOT wrapped in RequireAuth;
+// its own RoleGuard seam is where real staff/owner permission-derivation lands later.
+const AdminApp = lazy(() => import('../admin/routes'));
 
 function Booting() {
   return <div className="gx-booting">Loading…</div>;
@@ -232,6 +237,24 @@ export function AppRoutes() {
         <Route path="/knowledge" element={<KnowledgeRoute />} />
         <Route path="/integrations" element={<IntegrationsRoute />} />
       </Route>
+      {/* Admin console — standalone, lazy. Two role trees behind splat routes; the descendant
+          <Routes> inside AdminApp matches the remainder relative to the consumed prefix. */}
+      <Route
+        path="/admin/*"
+        element={
+          <Suspense fallback={<Booting />}>
+            <AdminApp role="platform" />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/w/:wsId/admin/*"
+        element={
+          <Suspense fallback={<Booting />}>
+            <AdminApp role="workspace" />
+          </Suspense>
+        }
+      />
       <Route path="*" element={<Landing />} />
     </Routes>
   );

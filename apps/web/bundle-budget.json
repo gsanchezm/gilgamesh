@@ -3,15 +3,16 @@
   "//how": "Enforced by apps/web/scripts/check-bundle-size.mjs after `vite build`. Gzip = node zlib default level (6), matching vite's own reported gzip column.",
   "//bump": "To raise a limit: build (`pnpm --filter @gilgamesh/web build`), read the printed actual gzip, set the new maxGzipBytes with ~15% headroom, and say why in the commit. Keep this a small, reviewable diff.",
   "budgets": {
-    "js": { "maxGzipBytes": 114000 },
-    "css": { "maxGzipBytes": 11500 },
-    "total": { "maxGzipBytes": 126000 }
+    "js": { "maxGzipBytes": 130000 },
+    "css": { "maxGzipBytes": 16000 },
+    "total": { "maxGzipBytes": 146000 }
   },
   "baseline": {
-    "measuredOn": "2026-07-07",
-    "commit": "56b8d9b",
-    "node": "v24.16.0 local / node 22 in CI (zlib is stable across these; the 15% headroom absorbs any drift)",
-    "gzipBytes": { "js": 99148, "css": 9851, "total": 108999 },
-    "//": "Budgets = baseline gzip x ~1.15, rounded. js +15.0%, css +16.7%, total +15.6%."
+    "measuredOn": "2026-07-09",
+    "commit": "feat-admin-console (Phase 1)",
+    "node": "v24.16.0 local / node 22 in CI (zlib is stable across these; the headroom absorbs any drift)",
+    "gzipBytes": { "js": 116120, "css": 13860, "total": 129980 },
+    "//main": "The admin console loads as a SEPARATE lazy chunk (routes-*.js 14.2 kB + routes-*.css 3.0 kB gzip) reached only at /admin — it does NOT inflate the initial/main index chunk (js 101.9 kB, still under the old 114 kB). But this gate sums ALL dist/assets, so the JS+CSS totals grew and the budgets were bumped.",
+    "//bump": "Budgets = new gzip x ~1.12. NOTE for Phase 2: filling the admin view stubs grows the admin chunk further — re-measure and bump again at the Phase-2 -> main merge."
   }
 }
