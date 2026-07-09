@@ -70,6 +70,36 @@ body {
   color: var(--text);
   outline: none;
 }
+
+/* Test Lab authoring inputs were bare (default white browser controls, on every viewport — the
+   authoring forms predate the dark field treatment the auth/billing/knowledge screens use). Give
+   them the same dark `.gx-field` look so the screen matches the rest of the app. */
+.gx-lab input,
+.gx-lab textarea,
+.gx-lab select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  background: var(--field);
+  border-radius: 12px;
+  padding: 13px;
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+}
+.gx-lab input::placeholder,
+.gx-lab textarea::placeholder {
+  color: var(--muted);
+}
+.gx-lab input:focus,
+.gx-lab textarea:focus,
+.gx-lab select:focus {
+  border-color: var(--accent);
+}
+.gx-lab textarea {
+  min-height: 96px;
+  resize: vertical;
+}
 .gx-field__password {
   position: relative;
   display: block;
