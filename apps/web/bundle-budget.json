@@ -3,16 +3,16 @@
   "//how": "Enforced by apps/web/scripts/check-bundle-size.mjs after `vite build`. Gzip = node zlib default level (6), matching vite's own reported gzip column.",
   "//bump": "To raise a limit: build (`pnpm --filter @gilgamesh/web build`), read the printed actual gzip, set the new maxGzipBytes with ~15% headroom, and say why in the commit. Keep this a small, reviewable diff.",
   "budgets": {
-    "js": { "maxGzipBytes": 130000 },
-    "css": { "maxGzipBytes": 16000 },
-    "total": { "maxGzipBytes": 146000 }
+    "js": { "maxGzipBytes": 140000 },
+    "css": { "maxGzipBytes": 19000 },
+    "total": { "maxGzipBytes": 159000 }
   },
   "baseline": {
     "measuredOn": "2026-07-09",
-    "commit": "feat-admin-console (Phase 1)",
+    "commit": "feat-admin-console (Phase 1 + Phase 2 complete — all admin views filled)",
     "node": "v24.16.0 local / node 22 in CI (zlib is stable across these; the headroom absorbs any drift)",
-    "gzipBytes": { "js": 116120, "css": 13860, "total": 129980 },
-    "//main": "The admin console loads as a SEPARATE lazy chunk (routes-*.js 14.2 kB + routes-*.css 3.0 kB gzip) reached only at /admin — it does NOT inflate the initial/main index chunk (js 101.9 kB, still under the old 114 kB). But this gate sums ALL dist/assets, so the JS+CSS totals grew and the budgets were bumped.",
-    "//bump": "Budgets = new gzip x ~1.12. NOTE for Phase 2: filling the admin view stubs grows the admin chunk further — re-measure and bump again at the Phase-2 -> main merge."
+    "gzipBytes": { "js": 128190, "css": 16840, "total": 145030 },
+    "//main": "The admin console loads as a SEPARATE lazy chunk (routes-*.js 26.3 kB + routes-*.css 5.9 kB gzip) reached only at /admin|/w/:wsId/admin — it does NOT inflate the initial/main index chunk (js 101.9 kB, still under the old 114 kB). This gate sums ALL dist/assets, so the JS+CSS totals grew when the admin views were filled and the budgets were bumped ~12%.",
+    "//bump": "Budgets = new gzip x ~1.10-1.12. The admin console is feature-complete; future admin growth (real API wiring) should re-measure and bump here."
   }
 }
