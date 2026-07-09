@@ -83,6 +83,7 @@ function fakeClient(overrides?: Partial<BillingClient>): BillingClient {
     checkout: vi.fn(async () => ({ checkoutUrl: 'https://mock.pay/checkout/o' })),
     confirmCheckout: vi.fn(async () => ({ ...sub, status: 'ACTIVE' })),
     cancel: vi.fn(async () => ({ ...sub, status: 'CANCELED' })),
+    openPortal: vi.fn(async () => ({ portalUrl: 'https://mock.pay/portal/o1' })),
     ...overrides,
   };
 }
@@ -251,6 +252,43 @@ describe('BillingScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Checkout' }));
     await waitFor(() => expect(client.confirmCheckout).toHaveBeenCalledWith('o1'));
     await waitFor(() => expect(client.listInvoices).toHaveBeenCalledTimes(2));
+  });
+
+  // ---- Slice 34: Stripe billing portal ----
+
+  it('opens the billing portal and navigates the browser to the returned URL (AC-PORTAL-01)', async () => {
+    // jsdom no-ops a real location assignment; stub a writable location and restore it after.
+    const original = window.location;
+    Object.defineProperty(window, 'location', { configurable: true, writable: true, value: { href: '' } });
+    try {
+      const client = fakeClient({ openPortal: vi.fn(async () => ({ portalUrl: 'https://billing.stripe.com/p/session_9' })) });
+      render(<BillingScreen client={client} orgId="o1" />);
+      await screen.findByText(/Free · TRIALING/);
+      fireEvent.click(screen.getByRole('button', { name: 'Manage billing' }));
+      await waitFor(() => expect(client.openPortal).toHaveBeenCalledWith('o1'));
+      await waitFor(() => expect(window.location.href).toBe('https://billing.stripe.com/p/session_9'));
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, writable: true, value: original });
+    }
+  });
+
+  it('surfaces a billing-portal error without navigating or crashing (AC-PORTAL-04)', async () => {
+    const original = window.location;
+    Object.defineProperty(window, 'location', { configurable: true, writable: true, value: { href: '' } });
+    try {
+      const client = fakeClient({
+        openPortal: vi.fn(async () => {
+          throw new Error('No billing account yet — complete a checkout first.');
+        }),
+      });
+      render(<BillingScreen client={client} orgId="o1" />);
+      await screen.findByText(/Free · TRIALING/);
+      fireEvent.click(screen.getByRole('button', { name: 'Manage billing' }));
+      expect((await screen.findByRole('alert')).textContent).toContain('No billing account yet');
+      expect(window.location.href).toBe('');
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, writable: true, value: original });
+    }
   });
 
   it('surfaces a plan-change error without crashing', async () => {

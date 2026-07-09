@@ -49,6 +49,7 @@ function setup(opts: { webhookSecret?: string } = { webhookSecret: WEBHOOK_SECRE
       webhookSecret: opts.webhookSecret,
       successUrl: 'https://app.local/billing?checkout=success',
       cancelUrl: 'https://app.local/billing?checkout=canceled',
+      portalReturnUrl: 'https://app.local/billing?from=portal',
     },
     { events, invoices: ctx.invoices, subscriptions: ctx.subscriptions },
     stripe,
@@ -97,6 +98,15 @@ describe('provider selection (AC-PAY-07)', () => {
     expect(opts.webhookSecret).toBeUndefined();
     expect(opts.successUrl).toContain('/billing');
     expect(opts.cancelUrl).toContain('/billing');
+    // S34: portalReturnUrl defaults to the success URL when unset.
+    expect(opts.portalReturnUrl).toBe(opts.successUrl);
+  });
+
+  it('stripeOptionsFromEnv takes an explicit STRIPE_PORTAL_RETURN_URL over the success default (S34)', () => {
+    const opts = stripeOptionsFromEnv(
+      env({ STRIPE_SECRET_KEY: SECRET_KEY, STRIPE_PORTAL_RETURN_URL: ' https://app.local/account ' }),
+    );
+    expect(opts.portalReturnUrl).toBe('https://app.local/account');
   });
 });
 
@@ -275,5 +285,63 @@ describe('StripePaymentProvider checkout + invoices', () => {
     );
     await provider.handleWebhook(sig, body);
     expect(await provider.listInvoices('org-1')).toEqual(await ctx.invoices.listForOrg('org-1'));
+  });
+});
+
+describe('StripePaymentProvider.createPortalSession (AC-PORTAL-01/04/08)', () => {
+  function fakePortalStripe(url: string | null = 'https://billing.stripe.com/p/session_123') {
+    const create = vi.fn(async (_params: Record<string, unknown>) => ({ url }));
+    return { stripe: { billingPortal: { sessions: { create } } } as unknown as Stripe, create };
+  }
+
+  function setupPortal(stripe: Stripe) {
+    const ctx = createInMemoryContext();
+    const events = new ApplyPaymentEvent({ uow: ctx.uow, ids: ctx.ids, clock: ctx.clock });
+    const provider = new StripePaymentProvider(
+      {
+        secretKey: SECRET_KEY,
+        webhookSecret: WEBHOOK_SECRET,
+        successUrl: 'https://app.local/billing?checkout=success',
+        cancelUrl: 'https://app.local/billing?checkout=canceled',
+        portalReturnUrl: 'https://app.local/billing?from=portal',
+      },
+      { events, invoices: ctx.invoices, subscriptions: ctx.subscriptions },
+      stripe,
+    );
+    return { ctx, provider };
+  }
+
+  it('mints a portal session for the org customer with the configured return_url', async () => {
+    const { stripe, create } = fakePortalStripe();
+    const { ctx, provider } = setupPortal(stripe);
+    await ctx.subscriptions.create(subscription({ providerCustomerId: 'cus_live_1' }));
+
+    const res = await provider.createPortalSession('org-1');
+    expect(res).toEqual({ portalUrl: 'https://billing.stripe.com/p/session_123' });
+    expect(create).toHaveBeenCalledWith({ customer: 'cus_live_1', return_url: 'https://app.local/billing?from=portal' });
+  });
+
+  it('rejects with VALIDATION and never calls Stripe when the org has no provider customer (AC-PORTAL-04)', async () => {
+    const { stripe, create } = fakePortalStripe();
+    const { ctx, provider } = setupPortal(stripe);
+    await ctx.subscriptions.create(subscription({ providerCustomerId: null }));
+    await expect(provider.createPortalSession('org-1')).rejects.toMatchObject({ code: 'VALIDATION' });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('rejects with VALIDATION when Stripe returns no portal url, and never leaks a secret (AC-PORTAL-08)', async () => {
+    const { stripe } = fakePortalStripe(null);
+    const { ctx, provider } = setupPortal(stripe);
+    await ctx.subscriptions.create(subscription({ providerCustomerId: 'cus_live_2' }));
+
+    let failure: Error | null = null;
+    try {
+      await provider.createPortalSession('org-1');
+    } catch (e) {
+      failure = e as Error;
+    }
+    expect(failure).toMatchObject({ code: 'VALIDATION' });
+    expect(failure?.message).not.toContain(SECRET_KEY);
+    expect(failure?.message).not.toContain(WEBHOOK_SECRET);
   });
 });

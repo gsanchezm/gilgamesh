@@ -68,6 +68,8 @@ export interface BillingClient {
   checkout(orgId: string): Promise<{ checkoutUrl: string }>;
   confirmCheckout(orgId: string): Promise<SubscriptionView>;
   cancel(orgId: string): Promise<SubscriptionView>;
+  /** Slice 34: mint a Stripe hosted billing-portal link; the caller navigates the browser to it. */
+  openPortal(orgId: string): Promise<{ portalUrl: string }>;
   getBrainUsage(orgId: string): Promise<BrainUsageView>;
   listInvoices(orgId: string): Promise<InvoiceView[]>;
 }
@@ -81,6 +83,7 @@ export const httpBillingClient: BillingClient = {
   checkout: (orgId) => sendJson('POST', `${base(orgId)}/checkout`, {}, 'Could not start checkout.'),
   confirmCheckout: (orgId) => sendJson('POST', `${base(orgId)}/checkout/confirm`, {}, 'Could not confirm checkout.'),
   cancel: (orgId) => sendJson('POST', `${base(orgId)}/cancel`, {}, 'Could not cancel the subscription.'),
+  openPortal: (orgId) => sendJson('POST', `/orgs/${orgId}/billing/portal`, {}, 'Could not open the billing portal.'),
   getBrainUsage: (orgId) => getJson(`/orgs/${orgId}/brain/usage`, 'Could not load the AI usage.'),
   listInvoices: (orgId) => getJson(`/orgs/${orgId}/invoices`, 'Could not load the invoices.'),
 };

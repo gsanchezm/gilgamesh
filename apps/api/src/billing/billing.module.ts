@@ -9,6 +9,7 @@ import {
   ListInvoices,
   type MembershipRepository,
   type PaymentProvider,
+  StartBillingPortal,
   StartCheckout,
   type SubscriptionRepository,
   UpdateSeats,
@@ -16,6 +17,7 @@ import {
 import { Module, type Provider } from '@nestjs/common';
 import { TOKENS as T } from '../persistence/tokens';
 import { BillingController } from './billing.controller';
+import { BillingPortalController } from './billing-portal.controller';
 import { BillingWebhooksController } from './billing-webhooks.controller';
 import { InvoicesController } from './invoices.controller';
 
@@ -50,11 +52,12 @@ function subProvider<U>(UseCase: Ctor<U>): Provider {
  * persistence wiring (`paymentsFromEnv`: mock offline, Stripe in auto).
  */
 @Module({
-  controllers: [BillingController, InvoicesController, BillingWebhooksController],
+  controllers: [BillingController, BillingPortalController, InvoicesController, BillingWebhooksController],
   providers: [
     subProvider(ChangeSubscription),
     subProvider(UpdateSeats),
     subProvider(StartCheckout),
+    subProvider(StartBillingPortal),
     subProvider(ConfirmCheckout),
     subProvider(CancelSubscription),
     {

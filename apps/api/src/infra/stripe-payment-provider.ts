@@ -30,14 +30,20 @@ export interface StripeProviderOptions {
   webhookSecret?: string;
   successUrl: string;
   cancelUrl: string;
+  /** Where Stripe's hosted billing portal returns the admin (slice 34). Defaults to the success URL. */
+  portalReturnUrl: string;
 }
 
 export function stripeOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): StripeProviderOptions {
+  const successUrl = env.STRIPE_SUCCESS_URL?.trim() || 'http://localhost:5173/billing?checkout=success';
   return {
     secretKey: env.STRIPE_SECRET_KEY?.trim() ?? '',
     webhookSecret: env.STRIPE_WEBHOOK_SECRET?.trim() || undefined,
-    successUrl: env.STRIPE_SUCCESS_URL?.trim() || 'http://localhost:5173/billing?checkout=success',
+    successUrl,
     cancelUrl: env.STRIPE_CANCEL_URL?.trim() || 'http://localhost:5173/billing?checkout=canceled',
+    // S34: the portal return URL falls back to the success URL, then its default — following the
+    // existing trim-and-default convention for the redirect URLs.
+    portalReturnUrl: env.STRIPE_PORTAL_RETURN_URL?.trim() || successUrl,
   };
 }
 
@@ -128,6 +134,24 @@ export class StripePaymentProvider implements PaymentProvider {
   async listInvoices(orgId: string): Promise<InvoiceRecord[]> {
     // S13-C: the local webhook-fed store is the read model — no network call on a page view.
     return this.deps.invoices.listForOrg(orgId);
+  }
+
+  async createPortalSession(orgId: string): Promise<{ portalUrl: string }> {
+    // S34 (portal-only): resolve the org's Stripe customer and mint a one-time hosted-portal link.
+    // The use case already gated OWNER/ADMIN; this defends the precondition again (a null customer
+    // → VALIDATION, exactly like confirmCheckout — never a crash, never a bare Stripe error).
+    const sub = await this.deps.subscriptions.findByOrg(orgId);
+    if (!sub?.providerCustomerId) {
+      throw new ApplicationError('VALIDATION', 'No billing account yet — complete a checkout first.');
+    }
+    const session = await this.stripe.billingPortal.sessions.create({
+      customer: sub.providerCustomerId,
+      return_url: this.opts.portalReturnUrl,
+    });
+    if (!session.url) {
+      throw new ApplicationError('VALIDATION', 'Stripe did not return a portal URL.');
+    }
+    return { portalUrl: session.url };
   }
 
   async handleWebhook(sig: string, body: Buffer): Promise<void> {

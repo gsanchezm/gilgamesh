@@ -130,6 +130,20 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
     return Math.min(100, Math.round((sub.brainTokensUsed / sub.brainTokensQuota) * 100));
   }, [sub]);
 
+  // S34: open Stripe's hosted billing portal in the same tab. Not routed through `action` because it
+  // returns a portal URL (not a SubscriptionView) and its success is a full-page navigation.
+  const manageBilling = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const { portalUrl } = await client.openPortal(orgId);
+      window.location.href = portalUrl;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not open the billing portal.');
+      setBusy(false);
+    }
+  };
+
   const changePlan = () => action(() => client.changePlan(orgId, { plan, billingCycle: cycle }));
   const saveWorkspaces = () => action(() => client.updateSeats(orgId, Number(workspaces)));
   const cancel = () => action(() => client.cancel(orgId));
@@ -359,6 +373,9 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
           </button>
           <button type="button" className="gx-btn gx-btn--secondary" onClick={checkout} disabled={busy}>
             {busy ? 'Working...' : 'Checkout'}
+          </button>
+          <button type="button" className="gx-btn gx-btn--secondary" onClick={manageBilling} disabled={busy}>
+            Manage billing
           </button>
           <button type="button" className="gx-billing__cancel" onClick={cancel} disabled={busy}>
             Cancel subscription

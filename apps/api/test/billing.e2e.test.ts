@@ -100,3 +100,61 @@ describe('Subscription & Billing API', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// Slice 34 — the Stripe billing portal over its own fresh org so state is controlled per-assertion.
+describe('Billing portal API (slice 34)', () => {
+  let pAuth: Auth;
+  let pOrgId: string;
+
+  beforeAll(async () => {
+    const reg = await request(server())
+      .post('/auth/register')
+      .send({ firstName: 'P', lastName: 'O', email: 'portal@uruk.io', password: 'C0rrect-Horse!' });
+    pAuth = authFrom(reg);
+    const proj = await request(server())
+      .post('/projects')
+      .set('Cookie', pAuth.cookie)
+      .set('X-CSRF-Token', pAuth.csrf)
+      .send({ projectName: 'PortalCo', format: 'BDD' });
+    pOrgId = proj.body.orgId;
+  });
+
+  const pmutate = (req: request.Test) => req.set('Cookie', pAuth.cookie).set('X-CSRF-Token', pAuth.csrf);
+
+  it('requires authentication (401)', async () => {
+    expect((await request(server()).post(`/orgs/${pOrgId}/billing/portal`)).status).toBe(401);
+  });
+
+  it('rejects a portal request without the CSRF token (403)', async () => {
+    const res = await request(server()).post(`/orgs/${pOrgId}/billing/portal`).set('Cookie', pAuth.cookie);
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 422 before any checkout establishes a billing account (AC-PORTAL-04)', async () => {
+    const res = await pmutate(request(server()).post(`/orgs/${pOrgId}/billing/portal`));
+    expect(res.status).toBe(422);
+    expect(res.body).toMatchObject({ title: 'VALIDATION' });
+  });
+
+  it('opens the portal after a checkout+confirm establishes the customer (AC-PORTAL-01)', async () => {
+    await pmutate(request(server()).post(`/orgs/${pOrgId}/subscription/checkout`)).send();
+    const confirmed = await pmutate(request(server()).post(`/orgs/${pOrgId}/subscription/checkout/confirm`)).send();
+    expect(confirmed.body.providerCustomerId).toMatch(/^cus_mock_/);
+
+    const res = await pmutate(request(server()).post(`/orgs/${pOrgId}/billing/portal`));
+    expect(res.status).toBe(200);
+    expect(res.body.portalUrl).toMatch(/^https:\/\/mock\.pay\/portal\//);
+  });
+
+  it("hides another tenant's portal (404, AC-PORTAL-03)", async () => {
+    const reg2 = await request(server())
+      .post('/auth/register')
+      .send({ firstName: 'E', lastName: 'X', email: 'portal-eve@uruk.io', password: 'C0rrect-Horse!' });
+    const auth2 = authFrom(reg2);
+    const res = await request(server())
+      .post(`/orgs/${pOrgId}/billing/portal`)
+      .set('Cookie', auth2.cookie)
+      .set('X-CSRF-Token', auth2.csrf);
+    expect(res.status).toBe(404);
+  });
+});

@@ -143,6 +143,14 @@ describe('MockPaymentProvider payments surface', () => {
     expect(await provider.listInvoices('org-2')).toEqual([]);
   });
 
+  it('createPortalSession returns a deterministic offline URL derived from the orgId (AC-PORTAL-06)', async () => {
+    const { provider } = setup();
+    expect(await provider.createPortalSession('org-1')).toEqual({ portalUrl: 'https://mock.pay/portal/org-1' });
+    // Deterministic: identical input → identical output; distinct orgs → distinct URLs.
+    expect(await provider.createPortalSession('org-1')).toEqual({ portalUrl: 'https://mock.pay/portal/org-1' });
+    expect(await provider.createPortalSession('org-2')).toEqual({ portalUrl: 'https://mock.pay/portal/org-2' });
+  });
+
   it('handleWebhook rejects a bad signature and persists nothing (AC-PAY-05)', async () => {
     const { ctx, provider } = setup();
     await expect(

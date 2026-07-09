@@ -153,6 +153,21 @@ export class StartCheckout {
   }
 }
 
+export class StartBillingPortal {
+  constructor(private readonly deps: SubDeps) {}
+  async execute(input: { userId: string; orgId: string }): Promise<{ portalUrl: string }> {
+    await requireOrgAdmin(this.deps, input.userId, input.orgId);
+    const sub = await requireSub(this.deps, input.orgId);
+    // S34-D: an org that never completed a checkout has no provider customer — reject with
+    // VALIDATION (the confirmCheckout precedent), never call the provider or 500.
+    if (!sub.providerCustomerId) {
+      throw new ApplicationError('VALIDATION', 'No billing account yet — complete a checkout first.');
+    }
+    await audit(this.deps, input.orgId, input.userId, 'subscription.portal_opened', {});
+    return this.deps.payment.createPortalSession(input.orgId);
+  }
+}
+
 export class ConfirmCheckout {
   constructor(private readonly deps: SubDeps) {}
   async execute(input: { userId: string; orgId: string }): Promise<SubscriptionView> {

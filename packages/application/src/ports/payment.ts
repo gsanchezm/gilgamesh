@@ -5,8 +5,10 @@ import type { BillingCycle, InvoiceRecord, Plan } from './records';
  * Slice 4 wired a deterministic {@link MockPaymentProvider} (offline, no Stripe/network); slice 13
  * grows the implemented subset toward the keystone signature with `listInvoices` + `handleWebhook`
  * and adds the real Stripe adapter behind `paymentsFromEnv` (owner decision S13-B, the slice-9
- * brain pattern). The still-deferred keystone methods are `getSubscription`/`updateSeats`;
- * `confirmCheckout` remains the mock's stand-in for the provider's success webhook.
+ * brain pattern). Slice 34 adds `createPortalSession` the SAME additive way (owner decision S34-A —
+ * NO keystone amendment, exactly like `listInvoices`/`handleWebhook`). The still-deferred keystone
+ * methods are `getSubscription`/`updateSeats`; `confirmCheckout` remains the mock's stand-in for the
+ * provider's success webhook.
  */
 export interface CheckoutRequest {
   orgId: string;
@@ -28,4 +30,12 @@ export interface PaymentProvider {
    * persist nothing; unhandled event types are acknowledged silently.
    */
   handleWebhook(sig: string, body: Buffer): Promise<void>;
+  /**
+   * Slice 34 (additive, portal-only): mint a one-time hosted billing-portal link for the org's
+   * provider customer (plan change / proration / payment method / cancel are all Stripe's hosted UI).
+   * The mock returns a deterministic offline URL; the Stripe adapter resolves the org's
+   * `providerCustomerId` and calls `billingPortal.sessions.create`. The caller (use case) gates
+   * OWNER/ADMIN and rejects an org with no billing account BEFORE this is reached.
+   */
+  createPortalSession(orgId: string): Promise<{ portalUrl: string }>;
 }

@@ -7,6 +7,7 @@ import {
   CancelSubscription,
   ChangeSubscription,
   ConfirmCheckout,
+  StartBillingPortal,
   StartCheckout,
   UpdateSeats,
 } from './subscription';
@@ -102,6 +103,58 @@ describe('Subscription & Billing', () => {
 
   it('cancels the subscription (AC-SUB-06)', async () => {
     expect((await new CancelSubscription(ctx).execute({ userId, orgId })).status).toBe('CANCELED');
+  });
+
+  // ---- Slice 34: Stripe billing portal (portal-only) ----
+
+  it('opens the portal for an admin once a checkout established a customer, and audits it (AC-PORTAL-01)', async () => {
+    // A fresh org has no provider customer yet → the portal is blocked (AC-PORTAL-04).
+    await expect(new StartBillingPortal(ctx).execute({ userId, orgId })).rejects.toMatchObject({ code: 'VALIDATION' });
+
+    // Complete a mock checkout: confirm mints cus_mock_<orgId> on the subscription.
+    await new StartCheckout(ctx).execute({ userId, orgId });
+    await new ConfirmCheckout(ctx).execute({ userId, orgId });
+
+    const { portalUrl } = await new StartBillingPortal(ctx).execute({ userId, orgId });
+    expect(portalUrl).toBe(`https://mock.pay/portal/${orgId}`);
+    expect(ctx.audit.rows.some((r) => r.action === 'subscription.portal_opened')).toBe(true);
+  });
+
+  it('an ADMIN (not only the OWNER) can open the portal', async () => {
+    await new StartCheckout(ctx).execute({ userId, orgId });
+    await new ConfirmCheckout(ctx).execute({ userId, orgId });
+    const admin = (
+      await new RegisterUser(ctx).execute({ firstName: 'A', lastName: 'D', email: 'padmin@uruk.io', password: 'C0rrect-Horse!' })
+    ).userId;
+    await ctx.memberships.create({ id: ctx.ids.next(), orgId, userId: admin, role: 'ADMIN', createdAt: ctx.clock.now() });
+    const { portalUrl } = await new StartBillingPortal(ctx).execute({ userId: admin, orgId });
+    expect(portalUrl).toBe(`https://mock.pay/portal/${orgId}`);
+  });
+
+  it('enforces RBAC + tenant isolation on the portal (AC-PORTAL-02/03)', async () => {
+    // Establish a customer so the RBAC checks are what fails, not the no-customer precondition.
+    await new StartCheckout(ctx).execute({ userId, orgId });
+    await new ConfirmCheckout(ctx).execute({ userId, orgId });
+
+    const member = (
+      await new RegisterUser(ctx).execute({ firstName: 'M', lastName: 'R', email: 'pm@uruk.io', password: 'C0rrect-Horse!' })
+    ).userId;
+    await ctx.memberships.create({ id: ctx.ids.next(), orgId, userId: member, role: 'MEMBER', createdAt: ctx.clock.now() });
+    await expect(new StartBillingPortal(ctx).execute({ userId: member, orgId })).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+
+    const outsider = (
+      await new RegisterUser(ctx).execute({ firstName: 'E', lastName: 'X', email: 'peve@uruk.io', password: 'C0rrect-Horse!' })
+    ).userId;
+    await expect(new StartBillingPortal(ctx).execute({ userId: outsider, orgId })).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+  });
+
+  it('does not audit or call the provider when there is no billing account (AC-PORTAL-04)', async () => {
+    await expect(new StartBillingPortal(ctx).execute({ userId, orgId })).rejects.toMatchObject({ code: 'VALIDATION' });
+    expect(ctx.audit.rows.some((r) => r.action === 'subscription.portal_opened')).toBe(false);
   });
 
   it('discounts the annual cycle (AC-SUB-08)', async () => {

@@ -51,6 +51,11 @@ export class MockPaymentProvider implements PaymentProvider {
     return (await this.deps.invoices?.listForOrg(orgId)) ?? [];
   }
 
+  async createPortalSession(orgId: string): Promise<{ portalUrl: string }> {
+    // S34: deterministic, offline — no Stripe, no network. Same shape the Stripe adapter returns.
+    return { portalUrl: `https://mock.pay/portal/${orgId}` };
+  }
+
   async handleWebhook(sig: string, body: Buffer): Promise<void> {
     if (sig !== MOCK_WEBHOOK_SIGNATURE) {
       throw new ApplicationError('FORBIDDEN', 'Invalid webhook signature.');
