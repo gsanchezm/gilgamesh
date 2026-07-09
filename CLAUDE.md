@@ -758,3 +758,41 @@ worktree fanout), verified with Playwright mobile screenshots.
 - **Deferred:** pre-auth Login/Register helix-hero responsiveness (separate phase) · a pre-existing 16px
   document overflow at the 768px tablet band on tall/scrollbarred project screens (vertical-scrollbar
   interaction, outside the 390px hard invariant — left to protect the desktop invariant) · native Expo app.
+
+## Admin console — DoD COMPLETE (2026-07-09, on `main`)
+
+`docs/superpowers/specs/2026-07-09-admin-console-design.md` — the internal **administration console** from the
+design handoff (`design_handoff_gilgamesh/README-admin.md` + captures 15–22), built in the existing
+web stack. Two roles in one panel behind a **role switch**: **Platform** (Gilgamesh HQ back-office) and
+**Workspace** (one customer account). Orchestrated as a foundation phase + 4 parallel view groups.
+- **Placement/stack:** `apps/web/src/admin/` (React + Vite + React Router 7), a **lazy chunk** (code-split so
+  it does NOT inflate the main bundle — reached only at `/admin` · `/w/:wsId/admin`). One dedicated
+  `admin/admin.css` (all `.gx-adm*`, NOT `index.css`). Reuses the app's `data-theme` provider; the admin's
+  README CSS vars ARE the app's tokens. **New scoped i18n** es/en (`T(lang,key)` + per-view dict modules with
+  an es/en key-parity test) — the main app is English-only, so the admin introduces its own.
+- **Routes + guard:** `/admin/*` (platform) and `/w/:wsId/admin/*` (workspace), added to `AppRoutes.tsx` under
+  a lazy `AdminLayout`, standalone (outside `RequireAuth`). `RoleGuard` is a **seam that permits for now** —
+  real staff/owner permission-derivation is the documented follow-up; the switch demonstrates both roles.
+- **Data:** typed §7 shapes in `data/types.ts`; complete mock in `data/mock.ts` (the spec's exact figures);
+  an `AdminService` interface + `MockAdminService` (real API later). **Cost-visibility rule enforced
+  structurally:** workspace-role methods return cost-stripped view-models (no per-project cost, token/minute
+  cost, or margins — the fields don't exist at the type level; built by explicit field selection, never a
+  spread; runtime-asserted by tests). Platform role sees costs.
+- **Views (14):** platform Resumen (cap 15) · Ingresos · Clientes (16) + ClienteDetalle (17) · Planes (18,
+  **live-margin recompute** on price edit) · Proyectos (19) + ProyectoDetalle · Uso · Salud (20) · Usuarios ·
+  Auditoría (in-memory category filters); workspace Resumen (21) · Proyectos/Uso/Usuarios (scoped, cost-free)
+  · Facturación · Ajustes (22, switches + danger zone). No emoji; stroke SVG; mono numbers/folios.
+- **Orchestration:** Phase 1 = one cohesive subagent built the foundation (types, mock, service, i18n
+  registry, `AdminContext`, shell [sidebar 240px w/ role switch + workspace selector + grouped nav, topbar
+  w/ role badge + ES/EN + theme, toast], routes wired to per-view **stub files**, `admin.css` primitives) +
+  Resumen fully. Phase 2 = **4 parallel worktree subagents** (Group A clients/projects · B plans/revenue/
+  usage/health · C users/audit · D workspace role) each filled its own stub views + own `<view>.css` + own
+  i18n modules — **zero shared-file edits** (the seam made it collision-free; each verified on its own vite
+  port since the admin is mock-only, no api/DB). Merged rebase+FF, disjoint.
+- **Verified (on `main`):** typecheck (all pkgs) · lint · **web 286 tests** (Docker-free; +60: 19 foundation +
+  41 across groups incl. cost-stripping + i18n parity + live-margin + filter tests) · bundle-size ok (budget
+  bumped for the lazy admin chunk; **main index chunk unchanged 101.9 kB**) · **Playwright 19** (existing app
+  e2e unaffected by the added routes). Visual fidelity vs captures 15/16/17/18/20/21/22 confirmed by
+  screenshot (dark + light), sidebar stays navy in light.
+- **Deferred:** real API behind `AdminService` · real permission-derived `RoleGuard` (replace the demo switch)
+  · wire an entry into the app nav for staff · retention seed 60-vs-capture-90 (mock value, flip if desired).
