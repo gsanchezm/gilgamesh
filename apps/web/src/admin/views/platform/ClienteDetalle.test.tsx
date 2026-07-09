@@ -45,6 +45,15 @@ describe('admin · platform ClienteDetalle', () => {
     expect(screen.getByText('Suspendido')).toBeTruthy();
   });
 
+  it('renders the recent-invoices and workspace-team panels (§4.4 content)', () => {
+    renderDetalle();
+    // An invoice row (folio + a paid status chip) and a team member (from EQUIPO_WS).
+    expect(screen.getByText('INV-2026-07-004')).toBeTruthy();
+    expect(screen.getByText('Sofía Ramírez')).toBeTruthy();
+    // The 2FA chip maps through the shared twofa.* labels.
+    expect(screen.getAllByText('Activa').length).toBeGreaterThan(0);
+  });
+
   it('opens a project detail from the client projects table', () => {
     renderDetalle();
     fireEvent.click(screen.getByText('Checkout Web'));
