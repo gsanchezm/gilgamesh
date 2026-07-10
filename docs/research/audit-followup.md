@@ -58,9 +58,11 @@ all green Docker-free: `typecheck · lint · pnpm -r test` (the orchestrator run
    in-memory bucket for the blip (availability *and* a floor of protection) rather than silently
    unthrottled. Needs a yes/no.
 
-4. **Per-IP global bound + backoff/lockout** (`rate-limit.guard.ts:26`, currently deferred §10.2).
-   Real defense vs credential-stuffing / org-farming. This is a **security feature with its own spec**
-   (SDD→BDD→TDD), not a refactor — recommend promoting from "deferred" to a near-term slice.
+4. ~~**Per-IP global bound + backoff/lockout**~~ — ✅ **DONE (slice 39, programa v8, 2026-07-10, on `main`)**.
+   New `AuthAbuseGuard` (sibling of `RateLimitGuard`): a per-IP request ceiling (org-farming) + an
+   exponential-backoff lockout after N failed credential attempts (stuffing), both keyed on client IP
+   (never per-account → no victim DoS), fail-open, fed by a global `LoginOutcomeInterceptor` + a Redis/in-mem
+   `LoginAttemptStore`. See CLAUDE.md "Programa paralelo v8".
 
 5. **Pagination** (`prisma-repositories.ts` list methods). Keyset pagination on
    features/testCases/runs changes the **list response shape** → ripples to the web client + BDD +

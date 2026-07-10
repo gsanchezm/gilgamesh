@@ -844,3 +844,46 @@ script / a future ACA Job — recorded, not built).
 - **Deferred/skipped (need an owner policy decision or keystone — not built this round):** Bloque-3 rate-limit
   fail-open · per-IP backoff · pagination · RAG posture (all policy) · billing period scheduler (ACA Job infra)
   · provenance/re-embed (keystone+migration) · Stripe proration/refunds · voice.
+
+## Programa paralelo v8 — per-IP lockout (39) + Stripe proration/refunds (40) — DoD COMPLETE (2026-07-10, on `main`)
+
+Owner `/goal` continuation ("continua en paralelo más features, máximo 4 worktrees"). Owner picked a **2-feature**
+tanda from a menu (didn't pad the max). Both **additive — no keystone amendment, no schema migration.** Design
+doc: `docs/superpowers/specs/2026-07-10-programa-v8-design.md`. Two disjoint domains (auth/rate-limit vs
+billing) → the FF merges touched **zero common files**. **Process note (new):** the slice-39 subagent stalled
+mid-stream TWICE (API "Response stalled", 0 bytes persisted both times despite ~30 tool calls) — after the
+second stall the orchestrator built slice 39 **inline** (disjoint from the still-running slice-40 subagent), which
+is the reliable fallback when a background agent won't converge; incremental commits are the mitigation.
+- **per-IP lockout (slice 39)** (`specs/slices/39-ip-lockout/`, AC-IPLOCK-01..07; @wip feature, e2e/unit are the
+  executable proof à la AC-AUTH-13) — closes Bloque-3 #4. A **new `AuthAbuseGuard`** (sibling of the untouched
+  `RateLimitGuard`, so its proven tests don't churn), bound as a second `APP_GUARD`: **A1** a per-IP request
+  ceiling across the auth mutation routes (login/register/forgot/reset share one `auth-ceil:<ip>` budget —
+  org-farming/spray) + **A2** an exponential-backoff lockout after N consecutive failed credential attempts
+  (`lockedUntilFor`: `base*2^(failures-threshold)` capped at max). Both keyed on **client IP, never per-account**
+  (an attacker can only lock their own IP — no victim DoS). New `LoginAttemptStore` port (in-memory + Redis/Lua,
+  `REDIS_URL` idiom); a global `LoginOutcomeInterceptor` feeds it (clear on 2xx, record on `INVALID_CREDENTIALS`
+  [login] or `VALIDATION` [reset]; a Nest DTO error is not an `ApplicationError` so it's never miscounted).
+  **Fail-open** on store outage (matches RateLimitGuard). Config `AUTH_IP_RATE_LIMIT`/`_WINDOW_MS` +
+  `AUTH_LOCKOUT_THRESHOLD` (10) `/_BASE_MS` (60s) `/_MAX_MS` (15m). The three sweep harnesses
+  (vitest.config/cucumber.cjs/playwright.config) pin the new knobs sky-high (the `AUTH_RATE_LIMIT=1000000`
+  idiom) — which also fixed a `rate-limit.e2e` cross-test regression the lockout introduced.
+- **Stripe proration + refunds (slice 40)** (`specs/slices/40-stripe-proration/`, AC-PRORATE-01..07) — programmatic
+  billing over the existing `providerSubscriptionId`/`providerCustomerId` (NO checkout, NO migration). Additive
+  `PaymentProvider.{previewProration,changePlan,refund}` (S13/S34 additive precedent, keystone untouched); a pure
+  `packages/domain/src/billing/proration.ts` (single source for both arms). **B-1 = `create_prorations`** (rides
+  to next invoice; preview shows the amount). **B-2 = prorated refund of the UNUSED period, opt-in** via
+  `CancelSubscription({refund?})` → a credit `Invoice` row (negative `amountCents`, VOID). `ChangeSubscription`
+  now prorates when a provider sub exists (else pure-row path, `prorationCents:0`, regression-safe — spy-verified);
+  new `PreviewPlanChange` use case + `POST /orgs/:orgId/subscription/preview`; `INVOICE_WEBHOOK_EFFECTS` gains
+  `charge.refunded`/`credit_note.created`. Stripe arm (fake `Stripe`, never live): `invoices.createPreview`
+  (SDK renamed `retrieveUpcoming`→`createPreview` in 22.3.0) + `subscriptions.update(proration_behavior)` +
+  `refunds.create({payment_intent, amount})`; secret no-leak asserted. Mock arm deterministic (Clock-derived
+  fraction; the e2e/BDD assert the proration SIGN, exact cents pinned in FakeClock unit tests).
+- **Verified (post-merge on `main` @ `4d59e56` + int fix):** typecheck (5 pkgs) · lint · **1267 Docker-free**
+  (domain 117 · application 375 · ui 43 · web 305 · api 427; +67) · `test:int` **43** (+3: Redis login-attempt) ·
+  **BDD 217 scenarios / 1857 steps** (+8, slice-40 proration; slice-39 @wip) · **Playwright 20/20**. **NOT pushed
+  to origin** (standing owner-gated posture) and **not deployed** (a code-only rollout when desired).
+- **Deferred:** lockout Retry-After exact math + exponential growth are unit/store-proven (real-time e2e can't wait
+  minutes) · Stripe `always_invoice` mode · partial/line-level refunds · a refund-preview endpoint (to show the
+  exact "$Z" pre-cancel) · everything prior unchanged (Bloque-3 fail-open/pagination/RAG posture · billing
+  scheduler · provenance/re-embed · voice).
