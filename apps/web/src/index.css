@@ -338,7 +338,11 @@ body {
   font-size: 12.5px;
   cursor: pointer;
 }
-@media (max-width: 900px) {
+/* Below desktop (<1024): the two-column hero composition is a desktop-only treatment. Drop the
+   decorative (aria-hidden) hero and let the form column take the full width — a squeezed hero strip
+   would clip the 196px brand mark, and hiding it also sidesteps canvas-sizing on small viewports.
+   Pre-auth stays always-dark. Desktop (≥1024) is deliberately untouched (byte-for-byte invariant). */
+@media (max-width: 1023px) {
   .gx-auth__hero {
     display: none;
   }
@@ -347,6 +351,16 @@ body {
     width: 100%;
     padding: 40px 28px;
     align-items: center;
+  }
+}
+/* Phone: tighten the horizontal padding so the 368px form never overflows a 390px viewport, and pull
+   the absolute "View plans →" affordance in to match the reduced gutter. */
+@media (max-width: 767px) {
+  .gx-auth__panel {
+    padding: 32px 20px;
+  }
+  .gx-auth__viewplans {
+    right: 20px;
   }
 }
 

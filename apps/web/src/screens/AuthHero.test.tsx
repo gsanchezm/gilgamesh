@@ -32,6 +32,7 @@ function setHidden(hidden: boolean) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks(); // restore the window.addEventListener/removeEventListener spies below
   Object.defineProperty(document, 'hidden', { value: false, configurable: true });
 });
 
@@ -72,5 +73,39 @@ describe('AuthHero animation lifecycle (audit #11)', () => {
     setHidden(true);
     setHidden(false);
     expect(raf).toHaveBeenCalledTimes(calls);
+  });
+});
+
+describe('AuthHero resize handling (redraw on viewport change)', () => {
+  it('registers a window resize listener and removes it on unmount (animated path)', () => {
+    stubRaf();
+    stubReducedMotion(false);
+    const addSpy = vi.spyOn(window, 'addEventListener');
+    const removeSpy = vi.spyOn(window, 'removeEventListener');
+
+    const { unmount } = render(<AuthHero />);
+    const resizeAdd = addSpy.mock.calls.find(([type]) => type === 'resize');
+    expect(resizeAdd, 'a resize listener is registered').toBeDefined();
+    const handler = resizeAdd![1];
+
+    unmount();
+    expect(removeSpy).toHaveBeenCalledWith('resize', handler); // same handler reference torn down
+  });
+
+  it('still registers + removes the resize listener under prefers-reduced-motion', () => {
+    // The reduced-motion branch draws a single static frame and returns early — the resize listener
+    // (and its cleanup) is exactly what keeps that lone frame sized after a rotate/resize.
+    const { raf } = stubRaf();
+    stubReducedMotion(true);
+    const addSpy = vi.spyOn(window, 'addEventListener');
+    const removeSpy = vi.spyOn(window, 'removeEventListener');
+
+    const { unmount } = render(<AuthHero />);
+    expect(raf).not.toHaveBeenCalled(); // no animation loop under reduced motion (audit #11)
+    const resizeAdd = addSpy.mock.calls.find(([type]) => type === 'resize');
+    expect(resizeAdd, 'a resize listener is registered even under reduced motion').toBeDefined();
+
+    unmount();
+    expect(removeSpy).toHaveBeenCalledWith('resize', resizeAdd![1]);
   });
 });

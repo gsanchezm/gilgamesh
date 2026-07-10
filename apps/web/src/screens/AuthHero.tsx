@@ -140,10 +140,19 @@ export function AuthHero() {
       draw();
     };
 
-    // prefers-reduced-motion: one static frame, no animation loop (audit #11).
+    // Redraw once on viewport resize/rotate. This matters most for the prefers-reduced-motion path
+    // below (a single static frame that would otherwise go stale/mis-sized after a resize) and gives
+    // the animated path an immediate response before its next rAF tick. Registered BEFORE the branch
+    // so BOTH cleanups remove it. draw() early-returns when the hero is display:none (0×0 on mobile),
+    // so this is a harmless no-op there.
+    const onResize = () => draw();
+    window.addEventListener('resize', onResize);
+
+    // prefers-reduced-motion: one static frame, no animation loop (audit #11). The resize listener
+    // above keeps that lone frame correctly sized after a rotate/resize.
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
       draw();
-      return;
+      return () => window.removeEventListener('resize', onResize);
     }
 
     // Pause the rAF loop while the tab is hidden — the helix is pure decoration and would
@@ -159,6 +168,7 @@ export function AuthHero() {
     document.addEventListener('visibilitychange', onVisibility);
     if (!document.hidden) raf = requestAnimationFrame(loop);
     return () => {
+      window.removeEventListener('resize', onResize);
       document.removeEventListener('visibilitychange', onVisibility);
       cancelAnimationFrame(raf);
     };

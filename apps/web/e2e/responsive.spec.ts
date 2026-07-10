@@ -86,3 +86,16 @@ test('mobile @390: shell + screens do not scroll horizontally and the drawers wo
     await expectNoOverflow(page, path);
   }
 });
+
+test('mobile @390: pre-auth screens hide the decorative hero and do not scroll horizontally', async ({ page }) => {
+  await page.setViewportSize(MOBILE);
+
+  // Every pre-auth screen shares the .gx-auth two-column layout + the aria-hidden helix hero.
+  // On a phone the hero is hidden and the auth card takes the full width — no horizontal overflow.
+  for (const path of ['/login', '/register', '/forgot-password', '/reset-password?token=demo']) {
+    await page.goto(path);
+    await page.waitForSelector('.gx-auth');
+    await expect(page.locator('.gx-auth__hero'), `${path}: hero hidden on mobile`).toBeHidden();
+    await expectNoOverflow(page, `pre-auth ${path}`);
+  }
+});
