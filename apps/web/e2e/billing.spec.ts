@@ -52,8 +52,9 @@ test('Billing: view plan + usage, change plan, mock checkout to ACTIVE', async (
   await page.getByRole('combobox', { name: 'Plan' }).selectOption('SCALE');
   await expect(page.getByTestId('proration-preview')).toContainText(/Changing to Scale: \+\$\d+ now/);
 
-  // Opt into the prorated refund and cancel — the subscription ends CANCELED.
-  await page.getByRole('checkbox').check();
+  // Opt into the prorated refund and cancel — the subscription ends CANCELED. Name the checkbox so a
+  // theme/nav toggle in the shell can't make the role selector ambiguous (Playwright strict mode).
+  await page.getByRole('checkbox', { name: /Refund the unused portion/ }).check();
   await page.getByRole('button', { name: 'Cancel subscription' }).click();
   await expect(page.getByText(/· CANCELED/)).toBeVisible();
 });
