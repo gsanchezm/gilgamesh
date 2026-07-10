@@ -40,6 +40,9 @@ export default defineConfig({
         REDIS_URL,
         API_PORT: String(API_PORT),
         AUTH_RATE_LIMIT: '1000000',
+        // Slice 39: neutralize the per-IP ceiling + lockout too (trust-proxy collapses req.ip).
+        AUTH_IP_RATE_LIMIT: '1000000',
+        AUTH_LOCKOUT_THRESHOLD: '1000000',
         CORS_ORIGINS: '',
         NODE_ENV: 'development',
         // S9/S13: the browser e2e runs against the deterministic stubs — no network calls.

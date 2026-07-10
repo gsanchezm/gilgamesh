@@ -12,6 +12,10 @@ process.env.DATABASE_URL =
 // Effectively disable the auth rate limit for the acceptance sweep (it re-registers the same
 // user across dozens of scenarios); the 429 behavior is proven by a dedicated e2e instead.
 process.env.AUTH_RATE_LIMIT = process.env.AUTH_RATE_LIMIT || '1000000';
+// Slice 39: same reason — the sweep re-logs-in from one collapsed req.ip; neutralize the per-IP
+// ceiling + failure lockout so scenarios never trip them (the behavior is proven by e2e/unit).
+process.env.AUTH_IP_RATE_LIMIT = process.env.AUTH_IP_RATE_LIMIT || '1000000';
+process.env.AUTH_LOCKOUT_THRESHOLD = process.env.AUTH_LOCKOUT_THRESHOLD || '1000000';
 // Slice 9: force the deterministic stub brain — the sweep never calls the network, even when the
 // developer machine has ANTHROPIC_API_KEY set. Metering is unconditional (the application layer
 // meters every brain call, stub included), so the metering scenarios observe stub usage rows.

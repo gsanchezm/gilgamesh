@@ -27,6 +27,10 @@ export default defineConfig({
     // selector refuses to boot unconfigured (never a silent stub) vs AZURE_KEY_VAULT_URL.
     env: {
       AUTH_RATE_LIMIT: '1000000',
+      // Slice 39: neutralize the per-IP ceiling + failure lockout for the general sweep (many
+      // suites re-login/register from one IP); the dedicated ip-lockout.e2e overrides these low.
+      AUTH_IP_RATE_LIMIT: '1000000',
+      AUTH_LOCKOUT_THRESHOLD: '1000000',
       BRAIN_MODE: 'offline',
       EMAIL_MODE: 'offline',
       PAYMENTS_MODE: 'offline',
