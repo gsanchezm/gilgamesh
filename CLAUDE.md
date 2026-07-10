@@ -881,8 +881,15 @@ is the reliable fallback when a background agent won't converge; incremental com
   fraction; the e2e/BDD assert the proration SIGN, exact cents pinned in FakeClock unit tests).
 - **Verified (post-merge on `main` @ `4d59e56` + int fix):** typecheck (5 pkgs) · lint · **1267 Docker-free**
   (domain 117 · application 375 · ui 43 · web 305 · api 427; +67) · `test:int` **43** (+3: Redis login-attempt) ·
-  **BDD 217 scenarios / 1857 steps** (+8, slice-40 proration; slice-39 @wip) · **Playwright 20/20**. **NOT pushed
-  to origin** (standing owner-gated posture) and **not deployed** (a code-only rollout when desired).
+  **BDD 217 scenarios / 1857 steps** (+8, slice-40 proration; slice-39 @wip) · **Playwright 20/20**. **PUSHED to
+  `origin/main`** (`bbc09a1..84c7633`) and **not deployed** (staging still runs `:bbc09a1`; a code-only rollout
+  when desired).
+- **Two tuning notes surfaced to the owner (advisor-caught, non-blocking — env-configurable, unchanged this
+  round):** (1) the A1 per-IP ceiling default (30/min, one bucket across login+register+forgot+reset, counts
+  successful logins) is **NAT-hostile** — a corporate egress IP with a login surge could 429 legit users; raise
+  the default or scope the ceiling to register/forgot/reset (the A2 failure-lockout already covers login
+  stuffing and is NAT-safe). (2) reset-password lockout counts a weak-new-password fumble as a failure, not just
+  a bad token (minor, self-resolving). Both await an owner tuning decision.
 - **Deferred:** lockout Retry-After exact math + exponential growth are unit/store-proven (real-time e2e can't wait
   minutes) · Stripe `always_invoice` mode · partial/line-level refunds · a refund-preview endpoint (to show the
   exact "$Z" pre-cancel) · everything prior unchanged (Bloque-3 fail-open/pagination/RAG posture · billing
