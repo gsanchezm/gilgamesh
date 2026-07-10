@@ -796,3 +796,51 @@ web stack. Two roles in one panel behind a **role switch**: **Platform** (Gilgam
   screenshot (dark + light), sidebar stays navy in light.
 - **Deferred:** real API behind `AdminService` · real permission-derived `RoleGuard` (replace the demo switch)
   · wire an entry into the app nav for staff · retention seed 60-vs-capture-90 (mock value, flip if desired).
+
+## Staging redeploy + 3 follow-ups — DoD COMPLETE (2026-07-09 noche, on `main`)
+
+Owner `/goal` continuation. Two things this session: (1) **redeployed staging** so the live ACA image
+matches `main`, and (2) a small **parallel program** (2 worktree subagents + 1 inline task) of clean,
+keystone-free, no-pending-decision follow-ups. All merged to `main` via cherry-pick; one combined stack
+gate. Advisor-scoped down from 4 candidate streams to 3 (dropped an in-app billing scheduler — an
+`@nestjs/schedule` cron is a no-op under ACA `minReplicas 0`; the reliable path is the existing operator
+script / a future ACA Job — recorded, not built).
+
+- **Staging redeploy → image `:3dcd73f`** (was `:b578d7f`) — code-only rollout (zero migrations b578d7f→
+  3dcd73f), so: local `docker build --provenance=false --sbom=false` → push to ACR (only the changed layer;
+  base identical to F4) → `az containerapp update -n app --image …:3dcd73f`. `az` is NOT on PATH this machine
+  → ran every `az` via the `mcr.microsoft.com/azure-cli` container with a **persistent config volume**
+  (`gilgamesh-azcli`); owner did the device-code `az login` (SD-4). Postgres-`Ready` gated first (else the new
+  revision crash-loops on `migrate deploy`). Verified on the real origin: `/api/v1/health[/ready]` 200/200 ·
+  `/admin` renders (a11y tree, lazy chunk loads) · §7 smoke 2/2 green warm (the tight 5s timeouts vs the
+  eastus2↔centralus cross-region latency flake on cold start, green when warm). Revision `app--0000002`
+  Healthy/100%, `:b578d7f` deprovisioned. (Full rollout recipe recorded in the auto-memory.)
+- **A · pre-auth responsive** (`feat-preauth-responsive`, subagent) — closes the deferred pre-auth half of
+  the responsive pass. The shared `.gx-auth` hero+card only had a stray `@media (max-width:900px)`; realigned
+  to the project breakpoints — hero is now a **desktop-only ≥1024** two-column treatment (`≤1023` hides the
+  decorative hero + full-width form; `≤767` tightens the gutter so a 368px form never overflows 390px),
+  **desktop ≥1024 byte-for-byte unchanged**. Fixed the genuine bug: `AuthHero`'s `prefers-reduced-motion`
+  path drew ONE static canvas frame and never redrew → added a `window` resize→`draw()` listener (audit-#11
+  reduced-motion + hidden-tab-pause + full cleanup all preserved). +2 unit tests; new `responsive.spec.ts`
+  pre-auth @390 case (Playwright #17, green).
+- **C · admin access gate** (`feat-admin-access-gate`, subagent) — the mock admin console was reachable with
+  NO session and `RoleGuard` permitted everyone (exposing fabricated MRR/customer figures as if real). Made
+  `RoleGuard` the single real gate: `booting`→loader, `!authed`→`/login` (both trees), workspace tree requires
+  `wsId === activeOrgId` (else redirect, not-found behavior — no cross-tenant leak), platform tree behind
+  `VITE_ENABLE_PLATFORM_ADMIN === 'true'` (**default OFF** → redirect; a stopgap, real staff-permission gate
+  is the follow-up). Added a "Demo data" badge in the admin shell; **no nav entry** (stays undiscoverable
+  while data is mock). +12 unit tests (full RoleGuard matrix + redirect through the real lazy chunk + badge).
+  NOTE: staging still runs the OPEN console until the next redeploy.
+- **B · image-asset slim** (inline) — `public/` ships verbatim into the vite build, so oversized assets ship
+  even when drawn tiny. `browser-firefox.png` was 3840×3840 / 1.6 MB for a ~44px helix mark. Resized the
+  helix/mark icons to fit 256px + recompressed (firefox 1656→14 KB · edge 281→12 · chrome 107→8 · webkit
+  102→8 · mark-dark 452→104 KB truecolor to keep the brand gradients), and deleted the unreferenced
+  `brand-dark`/`brand-light` exports (~1.5 MB) — **~3.95 MB off the build**. Paths unchanged → no code touched;
+  both key assets eyeballed crisp. Closes Bloque-3 E5 ("optimize heavy assets") — no policy needed.
+- **Verified (on `main` @ `29688f3`):** typecheck (5 pkgs) · lint · **1200 Docker-free** (domain 106 · ui 43 ·
+  application 362 · web 300 · api 389; +14: A 2, C 12) · **Playwright 20/20** (+1 = A's pre-auth @390 case;
+  no regression). int 40 / BDD 209/1779 unchanged (zero api/domain/application/prisma changes). **NOT pushed
+  to origin** (pending owner) and the 3 slices are **not yet deployed** (a code-only rollout when desired).
+- **Deferred/skipped (need an owner policy decision or keystone — not built this round):** Bloque-3 rate-limit
+  fail-open · per-IP backoff · pagination · RAG posture (all policy) · billing period scheduler (ACA Job infra)
+  · provenance/re-embed (keystone+migration) · Stripe proration/refunds · voice.

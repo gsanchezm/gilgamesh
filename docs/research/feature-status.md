@@ -21,13 +21,20 @@ adopt async-states 33) + v7 (stripe portal 34 · logging+CORS 35 · db-pool proo
 CI sha-comments 38) + **responsive pass** (mobile drawer shell + per-screen reflow, all 7 authed screens,
 desktop unchanged) + **admin console** (platform + workspace roles, 14 views from captures 15–22, lazy chunk,
 i18n es/en, mock behind a service, workspace never sees costs), plus Reports, onboarding wizard, per-org RAG
-grounding, CI hardening. Gates: 1186 Docker-free · int 40 · BDD 209/1779 · Playwright 19 · pnpm audit 0._
+grounding, CI hardening, plus a **pre-auth responsive** pass (Login/Register/Forgot/Reset on mobile), an
+**admin access gate** (the mock admin console is now behind real auth + org checks + a platform flag, no nav
+entry, "Demo data" badge), and an **image-asset slim** (~3.95 MB off the build). Gates: 1200 Docker-free ·
+int 40 · BDD 209/1779 · Playwright 20 · pnpm audit 0._
 
-> **🚀 STAGING DEPLOYED (F4, 2026-07-09):** the whole app runs LIVE on **Azure Container Apps** —
+> **🚀 STAGING LIVE + REDEPLOYED (2026-07-09):** the whole app runs LIVE on **Azure Container Apps** —
 > `https://app.ashygrass-47d0b048.eastus2.azurecontainerapps.io` (app+ACR+KV in eastus2, Postgres in
-> centralus due to an offer restriction, full RAG corpus = 2655 chunks, §7 smoke green 2/2 on the real
-> HTTPS origin). Brain runs the deterministic stub until `ANTHROPIC_API_KEY` is set. Runbook +
-> subscription-restriction workarounds: [`../../specs/infra/staging-deploy.md`](../../specs/infra/staging-deploy.md) §8. Commit `8a5082e`.
+> centralus due to an offer restriction, full RAG corpus = 2655 chunks). **Redeployed to image `:3dcd73f`**
+> (responsive pass + test-lab polish + admin console all live; revision `app--0000002` Healthy/100%; §7
+> smoke 2/2 green warm + `/admin` renders confirmed). Brain runs the deterministic stub until
+> `ANTHROPIC_API_KEY` is set. Runbook + subscription-restriction workarounds:
+> [`../../specs/infra/staging-deploy.md`](../../specs/infra/staging-deploy.md) §8. The 3 latest follow-ups
+> (pre-auth responsive · admin access gate · asset slim) are on `main` but **not yet deployed** (a code-only
+> rollout: `docker build`+push + `az containerapp update`).
 
 ---
 
@@ -93,4 +100,4 @@ Real vs. stub-behind-a-port. Swapping a stub for the real adapter is a future sl
 - [x] **Batch C (auditoría v2)** — ✅ on `main` (`e82292c`): atomic reset-token claim (UoW) · timing-safe forgot · multer>=2.2.0 override · HNSW index + deterministic ANN query · AuthHero rAF pause · SSE withCredentials
 - [x] **Vitest 3 toolchain** — ✅ on `main` (programa v3): vitest 3.2.7 + vite 6.4.3, zero test adaptations, `pnpm audit` 6 vulns (1 critical) → **0**
 - [x] **Real secret vault** — ✅ on `main` (programa v3, `specs/slices/20-secret-vault/`): `AzureKeyVaultSecretVault` behind the frozen port, security inversion (`VAULT_MODE=offline` explicit-only, refused in prod; missing config = boot error), injective case-insensitive-safe name mapping
-- [ ] **Bloque 3 (owner decision):** rate-limit fail-open policy · per-IP backoff (own slice) · pagination (own slice) · RAG final posture · optimize heavy assets (E5). (~~pin GitHub Actions to SHA~~ — done; version comments concretized in slice 38.)
+- [ ] **Bloque 3 (owner decision):** rate-limit fail-open policy · per-IP backoff (own slice) · pagination (own slice) · RAG final posture. (~~pin GitHub Actions to SHA~~ — done, slice 38. ~~optimize heavy assets (E5)~~ — **done 2026-07-09**: the oversized `public/` PNGs were resized to fit 256px + the orphaned brand exports deleted, ~3.95 MB off the build; no policy needed, so it didn't wait on the Bloque-3 decision.)
