@@ -10,7 +10,7 @@ const cfg: IpLockoutConfig = {
   ipLimit: 30,
   ipWindowMs: 60_000,
   threshold: 2,
-  baseMs: 1_000,
+  baseMs: 100, // < maxMs so the first (base) lock is not capped
   maxMs: 300, // short retention so the TTL-eviction test is fast
 };
 let store: RedisLoginAttemptStore;
