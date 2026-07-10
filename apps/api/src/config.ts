@@ -52,6 +52,38 @@ export function rateLimitFromEnv(env: NodeJS.ProcessEnv = process.env): RateLimi
   };
 }
 
+/**
+ * Per-IP abuse knobs (slice 39), consumed by the AuthAbuseGuard + LoginAttemptStore. Standalone
+ * (no DATABASE_URL dependency) like {@link rateLimitFromEnv}, so it resolves even in the Docker-free
+ * in-memory app; each value falls back to a realistic prod default when unset or malformed.
+ *
+ *  - `ipLimit`/`ipWindowMs` — the per-IP request ceiling across auth mutation routes (org-farming).
+ *  - `threshold` — consecutive failed credential attempts before an IP locks (earmarked N=10).
+ *  - `baseMs`/`maxMs` — the first lock window and its exponential cap.
+ */
+export interface IpLockoutConfig {
+  ipLimit: number;
+  ipWindowMs: number;
+  threshold: number;
+  baseMs: number;
+  maxMs: number;
+}
+
+function positiveInt(raw: string | undefined, fallback: number): number {
+  const n = Number(raw ?? fallback);
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
+export function ipLockoutFromEnv(env: NodeJS.ProcessEnv = process.env): IpLockoutConfig {
+  return {
+    ipLimit: positiveInt(env.AUTH_IP_RATE_LIMIT, 30),
+    ipWindowMs: positiveInt(env.AUTH_IP_RATE_WINDOW_MS, 60_000),
+    threshold: positiveInt(env.AUTH_LOCKOUT_THRESHOLD, 10),
+    baseMs: positiveInt(env.AUTH_LOCKOUT_BASE_MS, 60_000),
+    maxMs: positiveInt(env.AUTH_LOCKOUT_MAX_MS, 900_000),
+  };
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   const databaseUrl = env.DATABASE_URL?.trim();
   if (!databaseUrl) {

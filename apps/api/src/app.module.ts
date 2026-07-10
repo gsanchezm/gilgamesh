@@ -1,17 +1,23 @@
 import type { Clock } from '@gilgamesh/application';
 import { Module } from '@nestjs/common';
-import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { AgentsModule } from './agents/agents.module';
 import { AuthModule } from './auth/auth.module';
+import { AuthAbuseGuard } from './auth/auth-abuse.guard';
+import { IP_LOCKOUT } from './auth/abuse-tokens';
 import { CsrfGuard } from './auth/csrf.guard';
+import { InMemoryLoginAttemptStore } from './auth/in-memory-login-attempt-store';
 import { InMemoryRateLimitStore } from './auth/in-memory-rate-limit-store';
+import { LOGIN_ATTEMPT_STORE } from './auth/login-attempt-store';
+import { LoginOutcomeInterceptor } from './auth/login-outcome.interceptor';
 import { RATE_LIMIT_STORE } from './auth/rate-limit-store';
 import { RATE_LIMIT, RateLimitGuard } from './auth/rate-limit.guard';
+import { RedisLoginAttemptStore } from './auth/redis-login-attempt-store';
 import { RedisRateLimitStore } from './auth/redis-rate-limit-store';
 import { SecurityModule } from './auth/security.module';
 import { DomainExceptionFilter } from './common/domain-exception.filter';
 import { buildValidationPipe } from './common/validation.pipe';
-import { rateLimitFromEnv } from './config';
+import { type IpLockoutConfig, ipLockoutFromEnv, rateLimitFromEnv } from './config';
 import { HealthController } from './health.controller';
 import { ShutdownState } from './health/shutdown-state';
 import { OrgsModule } from './orgs/orgs.module';
@@ -54,6 +60,8 @@ export const APP_PROVIDERS = [
   ShutdownState,
   { provide: APP_PIPE, useValue: buildValidationPipe() },
   { provide: RATE_LIMIT, useFactory: () => rateLimitFromEnv() },
+  // Slice 39: per-IP abuse config (ceiling + lockout backoff), standalone like RATE_LIMIT.
+  { provide: IP_LOCKOUT, useFactory: () => ipLockoutFromEnv() },
   // Redis store when REDIS_URL is set (production / multi-replica, native TTL eviction), else the
   // in-memory store — which keeps the Docker-free unit/e2e suites and the BDD sweep dependency-free.
   {
@@ -66,8 +74,25 @@ export const APP_PROVIDERS = [
     },
     inject: [TOKENS.Clock],
   },
+  // Slice 39: the per-IP failure-lockout store (same REDIS_URL selection idiom as RATE_LIMIT_STORE).
+  {
+    provide: LOGIN_ATTEMPT_STORE,
+    useFactory: (clock: Clock, cfg: IpLockoutConfig) => {
+      const redisUrl = process.env.REDIS_URL?.trim();
+      return redisUrl
+        ? new RedisLoginAttemptStore(redisUrl, clock, cfg)
+        : new InMemoryLoginAttemptStore(clock, cfg);
+    },
+    inject: [TOKENS.Clock, IP_LOCKOUT],
+  },
   { provide: APP_GUARD, useClass: RateLimitGuard },
+  // Slice 39: additive per-IP ceiling + failure lockout (sibling of RateLimitGuard). Runs before
+  // CsrfGuard so a locked/sprayed IP is rejected before any handler work.
+  { provide: APP_GUARD, useClass: AuthAbuseGuard },
   { provide: APP_GUARD, useClass: CsrfGuard },
+  // Slice 39: feeds the lockout counter from credential outcomes (clear on success, record on a
+  // matching domain failure). Global, but a no-op for every non-credential route.
+  { provide: APP_INTERCEPTOR, useClass: LoginOutcomeInterceptor },
   { provide: APP_FILTER, useClass: DomainExceptionFilter },
 ];
 
