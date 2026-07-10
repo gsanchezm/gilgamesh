@@ -36,6 +36,7 @@ const shell: ViewDict = {
     'shell.theme_toggle': 'Cambiar tema',
     'shell.coming_soon': 'Próximamente',
     'shell.coming_soon_sub': 'Esta vista llega en la siguiente fase de la consola admin.',
+    'shell.demo': 'Datos de demostración',
   },
   en: {
     'shell.brand': 'GILGAMESH',
@@ -71,6 +72,7 @@ const shell: ViewDict = {
     'shell.theme_toggle': 'Toggle theme',
     'shell.coming_soon': 'Coming soon',
     'shell.coming_soon_sub': 'This view lands in the next phase of the admin console.',
+    'shell.demo': 'Demo data',
   },
 };
 

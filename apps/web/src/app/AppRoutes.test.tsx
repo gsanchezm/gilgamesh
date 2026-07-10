@@ -1,7 +1,7 @@
 import { ThemeProvider } from '@gilgamesh/ui';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AgentRoomData } from '../lib/agents-client';
 import { AppRoutes } from './AppRoutes';
 import { ClientsProvider, type Clients } from './clients';
@@ -123,6 +123,12 @@ function renderApp(clients: Clients, initialPath: string) {
 }
 
 describe('AppRoutes', () => {
+  // Warm the lazy admin chunk (14 views + mock) once so React.lazy resolves it from vitest's module
+  // cache — an on-demand compile can otherwise race findBy's default timeout on a loaded machine.
+  beforeAll(async () => {
+    await import('../admin/routes');
+  });
+
   it('redirects an unauthenticated user from a protected route to login', () => {
     renderApp(makeClients(), '/onboarding');
     expect(screen.getByPlaceholderText('name@company.com')).toBeTruthy();
@@ -362,5 +368,18 @@ describe('AppRoutes', () => {
     // The route wires the runs client with the projectId from the URL (the fake returns no runs).
     expect(await screen.findByText(/No runs yet/i)).toBeTruthy();
     await waitFor(() => expect(clients.runs.listRuns).toHaveBeenCalledWith('p1'));
+  });
+
+  it('gates the platform admin console: a logged-out visitor at /admin is bounced to /login', async () => {
+    // The admin routes are no longer outside auth: the lazy chunk loads, then RoleGuard redirects an
+    // anonymous visitor to the login form (full end-to-end proof of the wiring; the matrix lives in
+    // RoleGuard.test.tsx).
+    renderApp(makeClients(), '/admin');
+    expect(await screen.findByPlaceholderText('name@company.com', {}, { timeout: 4000 })).toBeTruthy();
+  });
+
+  it('gates the workspace admin console: a logged-out visitor at /w/:wsId/admin is bounced to /login', async () => {
+    renderApp(makeClients(), '/w/org-1/admin');
+    expect(await screen.findByPlaceholderText('name@company.com', {}, { timeout: 4000 })).toBeTruthy();
   });
 });

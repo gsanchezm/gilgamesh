@@ -29,6 +29,39 @@
   background: var(--bg);
 }
 
+/* ---- Demo-data indicator (the console renders MOCK data — make that unmistakable) ------------ */
+.gx-adm-demo-badge {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border: 1px solid rgba(192, 138, 46, 0.55);
+  border-radius: 20px;
+  background: rgba(192, 138, 46, 0.16);
+  color: #c08a2e;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none; /* never blocks a control it happens to overlap */
+  backdrop-filter: blur(4px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+}
+.gx-adm-demo-badge::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #c08a2e; /* amber warning dot (handoff §4.2), distinct from the gold accent badge */
+  box-shadow: 0 0 0 3px rgba(192, 138, 46, 0.22);
+}
+
 /* ---- Sidebar (stays NAVY in BOTH themes — pin token values, like the app sidebar) ----------- */
 .gx-adm-sidebar {
   display: flex;

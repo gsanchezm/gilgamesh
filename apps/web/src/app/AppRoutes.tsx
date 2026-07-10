@@ -19,8 +19,11 @@ import { useClients } from './clients';
 import { useSession } from './session';
 
 // The admin console (platform + workspace roles) is a SEPARATE lazy chunk so it never inflates the
-// main bundle. It is standalone (internal console at /admin) — deliberately NOT wrapped in RequireAuth;
-// its own RoleGuard seam is where real staff/owner permission-derivation lands later.
+// main bundle. Access is gated INSIDE the chunk by <RoleGuard> (in AdminLayout), NOT by the shell's
+// RequireAuth: it requires an authenticated session for BOTH trees (logged-out → /login), restricts
+// the workspace tree to the user's active org, and keeps the all-customer platform back-office behind
+// the off-by-default `VITE_ENABLE_PLATFORM_ADMIN` flag (a stopgap until a real staff-permission model
+// exists). Keeping the gate in the chunk means a future permission-derived role check touches one file.
 const AdminApp = lazy(() => import('../admin/routes'));
 
 function Booting() {
