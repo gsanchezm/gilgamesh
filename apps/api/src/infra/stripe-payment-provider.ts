@@ -1,7 +1,9 @@
 import {
   ApplicationError,
   type ApplyPaymentEvent,
+  type ChangePlanRequest,
   type CheckoutRequest,
+  type Clock,
   INVOICE_WEBHOOK_EFFECTS,
   type InvoiceRecord,
   type InvoiceRepository,
@@ -9,7 +11,7 @@ import {
   type PaymentProvider,
   type SubscriptionRepository,
 } from '@gilgamesh/application';
-import { ANNUAL_MONTHS_CHARGED, priceCents } from '@gilgamesh/domain';
+import { ANNUAL_MONTHS_CHARGED, priceCents, prorationAmountCents, remainingPeriodFraction } from '@gilgamesh/domain';
 import Stripe from 'stripe';
 
 /**
@@ -52,12 +54,43 @@ export interface PaymentProviderDeps {
   events: ApplyPaymentEvent;
   invoices: InvoiceRepository;
   subscriptions: SubscriptionRepository;
+  /** Slice 40: the clock driving the deterministic prorated-refund amount. */
+  clock: Clock;
 }
 
 /** Basil-era invoices carry the subscription metadata under `parent.subscription_details`. */
 interface InvoiceSubscriptionMetadata {
   parent?: { subscription_details?: { metadata?: Record<string, string | null> | null } | null } | null;
   subscription_details?: { metadata?: Record<string, string | null> | null } | null;
+}
+
+/**
+ * Minimal INBOUND read-shape for a preview invoice's proration lines (slice 40). Basil moved the
+ * per-line `proration` flag under `parent.{subscription_item_details|invoice_item_details}`; we read
+ * either that or a flat legacy `proration`, without depending on Stripe's churny full line type
+ * (the `InvoiceSubscriptionMetadata` cast precedent). OUTBOUND params stay natively typed.
+ */
+interface ProrationPreviewLine {
+  amount?: number | null;
+  proration?: boolean | null;
+  parent?: {
+    subscription_item_details?: { proration?: boolean | null } | null;
+    invoice_item_details?: { proration?: boolean | null } | null;
+  } | null;
+}
+
+/** Sum the proration line amounts of a preview invoice (signed: + charge / − credit). */
+function sumProrationLines(preview: Stripe.Invoice): number {
+  const lines = (preview as unknown as { lines?: { data?: ProrationPreviewLine[] } }).lines?.data ?? [];
+  let total = 0;
+  for (const line of lines) {
+    const isProration =
+      line.proration === true ||
+      line.parent?.subscription_item_details?.proration === true ||
+      line.parent?.invoice_item_details?.proration === true;
+    if (isProration) total += line.amount ?? 0;
+  }
+  return total;
 }
 
 const toDate = (unixSeconds: unknown): Date | null =>
@@ -152,6 +185,93 @@ export class StripePaymentProvider implements PaymentProvider {
       throw new ApplicationError('VALIDATION', 'Stripe did not return a portal URL.');
     }
     return { portalUrl: session.url };
+  }
+
+  // ---- Slice 40: programmatic proration + refunds ------------------------------------------------
+
+  async previewProration(req: ChangePlanRequest): Promise<{ prorationCents: number }> {
+    const item = await this.resolveSubscriptionItem(req.orgId);
+    return { prorationCents: await this.previewProrationAmount(item, req) };
+  }
+
+  async changePlan(req: ChangePlanRequest): Promise<{ prorationCents: number }> {
+    const item = await this.resolveSubscriptionItem(req.orgId);
+    // Compute the amount from a preview (no side-effect), THEN apply the change so the delta rides to
+    // the next invoice (owner decision B-1: `create_prorations`). Same price_data on both calls.
+    const prorationCents = await this.previewProrationAmount(item, req);
+    await this.stripe.subscriptions.update(item.subscriptionId, {
+      items: [{ id: item.itemId, price_data: this.subscriptionPriceData(req, item.productId) }],
+      proration_behavior: 'create_prorations',
+    });
+    return { prorationCents };
+  }
+
+  async refund(req: { orgId: string; reason: 'cancellation' }): Promise<{ refundedCents: number }> {
+    // B-2: refund the prorated UNUSED portion of the current period against the latest paid invoice's
+    // payment intent. No paid invoice / no time remaining → 0 (nothing to refund).
+    const sub = await this.deps.subscriptions.findByOrg(req.orgId);
+    const invoices = await this.deps.invoices.listForOrg(req.orgId); // newest-first (S13-C read model)
+    const latestPaid = invoices.find((i) => i.status === 'PAID' && i.providerInvoiceId);
+    if (!sub || !latestPaid?.providerInvoiceId) return { refundedCents: 0 };
+    const fraction = remainingPeriodFraction(sub.currentPeriodEnd, sub.billingCycle, this.deps.clock.now());
+    const refundedCents = prorationAmountCents(0, priceCents(sub.plan, sub.billingCycle, sub.seats), fraction);
+    if (refundedCents <= 0) return { refundedCents: 0 };
+    const invoice = await this.stripe.invoices.retrieve(latestPaid.providerInvoiceId);
+    // Basil moved `payment_intent` off the base Invoice type — read it via a local shape (the
+    // `InvoiceSubscriptionMetadata` precedent). No paymentIntent resolvable → nothing to refund.
+    const pi = (invoice as unknown as { payment_intent?: string | { id?: string } | null }).payment_intent;
+    const paymentIntent = typeof pi === 'string' ? pi : pi?.id;
+    if (!paymentIntent) return { refundedCents: 0 };
+    const refund = await this.stripe.refunds.create({ payment_intent: paymentIntent, amount: refundedCents });
+    return { refundedCents: refund.amount ?? refundedCents };
+  }
+
+  /** Resolve the org's Stripe subscription + its single line item id and product id. */
+  private async resolveSubscriptionItem(
+    orgId: string,
+  ): Promise<{ subscriptionId: string; itemId: string; productId: string }> {
+    const sub = await this.deps.subscriptions.findByOrg(orgId);
+    if (!sub?.providerSubscriptionId) {
+      throw new ApplicationError('VALIDATION', 'No billing account yet — complete a checkout first.');
+    }
+    const stripeSub = await this.stripe.subscriptions.retrieve(sub.providerSubscriptionId);
+    const item = stripeSub.items.data[0];
+    if (!item) {
+      throw new ApplicationError('VALIDATION', 'The subscription has no line item to change.');
+    }
+    // Reuse the existing item's product (created inline at checkout) — the codebase keeps no
+    // persistent Price/Product; we only vary the amount/interval.
+    const productId = typeof item.price.product === 'string' ? item.price.product : item.price.product.id;
+    return { subscriptionId: sub.providerSubscriptionId, itemId: item.id, productId };
+  }
+
+  /** The inline subscription-item price for the target plan — mirrors the checkout price shape. */
+  private subscriptionPriceData(
+    req: ChangePlanRequest,
+    productId: string,
+  ): Stripe.SubscriptionUpdateParams.Item.PriceData {
+    const monthly = priceCents(req.plan, 'MONTHLY', req.seats);
+    const annual = req.cycle === 'ANNUAL';
+    return {
+      currency: 'usd',
+      unit_amount: annual ? monthly * ANNUAL_MONTHS_CHARGED : monthly,
+      recurring: { interval: annual ? 'year' : 'month' },
+      product: productId,
+    };
+  }
+
+  private async previewProrationAmount(
+    item: { subscriptionId: string; itemId: string; productId: string },
+    req: ChangePlanRequest,
+  ): Promise<number> {
+    const preview = await this.stripe.invoices.createPreview({
+      subscription: item.subscriptionId,
+      subscription_details: {
+        items: [{ id: item.itemId, price_data: this.subscriptionPriceData(req, item.productId) }],
+        proration_behavior: 'create_prorations',
+      },
+    });
+    return sumProrationLines(preview);
   }
 
   async handleWebhook(sig: string, body: Buffer): Promise<void> {

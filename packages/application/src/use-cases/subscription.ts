@@ -2,7 +2,7 @@ import { planLimits, priceCents } from '@gilgamesh/domain';
 import { ApplicationError } from '../errors';
 import type { Clock } from '../ports/clock';
 import type { IdGenerator } from '../ports/id';
-import type { PaymentProvider } from '../ports/payment';
+import type { ChangePlanRequest, PaymentProvider } from '../ports/payment';
 import type { BillingCycle, Plan, Role, SubscriptionRecord, SubscriptionStatus } from '../ports/records';
 import type { AuditLogRepository, MembershipRepository, SubscriptionRepository } from '../ports/repositories';
 
@@ -30,6 +30,22 @@ export interface SubscriptionView {
   priceCents: number;
   providerCustomerId: string | null;
   currentPeriodEnd: Date | null;
+  /**
+   * Slice 40 (additive, optional): the SIGNED proration applied by a plan change (positive charge /
+   * negative credit). Present on a `ChangeSubscription` view; absent on reads. 0 when the org has no
+   * provider subscription (never checked out).
+   */
+  prorationCents?: number;
+  /** Slice 40 (additive, optional): the amount refunded by an opt-in cancel-with-refund. */
+  refundedCents?: number;
+}
+
+/** Slice 40: the read-only proration estimate the UI shows before the user confirms a plan change. */
+export interface PlanChangePreview {
+  plan: Plan;
+  billingCycle: BillingCycle;
+  /** Signed: positive = charged now, negative = credited. 0 when there is no provider subscription. */
+  prorationCents: number;
 }
 
 export function subscriptionView(sub: SubscriptionRecord): SubscriptionView {
@@ -105,10 +121,24 @@ export class ChangeSubscription {
     if (sub.seats > limits.maxSeats) {
       throw new ApplicationError('VALIDATION', 'Current active workspaces exceed the new plan limit; reduce them first.');
     }
+    const billingCycle = input.billingCycle ?? sub.billingCycle;
+    // S40: a plan change on an ALREADY provisioned provider subscription prorates over the remaining
+    // period. Call the provider BEFORE the local save so it observes the still-current row (the mock
+    // derives the old price from it) and a provider failure leaves the local state untouched. No
+    // provider subscription (still FREE / never checked out) → today's pure-row path, prorationCents 0.
+    let prorationCents = 0;
+    if (sub.providerSubscriptionId) {
+      ({ prorationCents } = await this.deps.payment.changePlan({
+        orgId: input.orgId,
+        plan: input.plan,
+        cycle: billingCycle,
+        seats: sub.seats,
+      }));
+    }
     const updated: SubscriptionRecord = {
       ...sub,
       plan: input.plan,
-      billingCycle: input.billingCycle ?? sub.billingCycle,
+      billingCycle,
       runMinutesQuota: limits.runMinutesQuota,
       // S14: the token quota remaps from the new plan exactly like the executions quota;
       // brainTokensUsed is PRESERVED — nothing but the (deferred, shared) period rollover resets it.
@@ -119,7 +149,40 @@ export class ChangeSubscription {
       plan: input.plan,
       billingCycle: updated.billingCycle,
     });
-    return subscriptionView(updated);
+    if (sub.providerSubscriptionId) {
+      await audit(this.deps, input.orgId, input.userId, 'subscription.plan_prorated', {
+        plan: input.plan,
+        prorationCents,
+      });
+    }
+    return { ...subscriptionView(updated), prorationCents };
+  }
+}
+
+/**
+ * Slice 40: the read-only proration estimate for a prospective plan change — so the UI can show
+ * "you'll be charged/credited $X" before the user confirms. OWNER/ADMIN gate; non-member NOT_FOUND.
+ * Mutates nothing. 0 when the org has no provider subscription.
+ */
+export class PreviewPlanChange {
+  constructor(private readonly deps: SubDeps) {}
+  async execute(input: {
+    userId: string;
+    orgId: string;
+    plan: Plan;
+    billingCycle?: BillingCycle;
+  }): Promise<PlanChangePreview> {
+    await requireOrgAdmin(this.deps, input.userId, input.orgId);
+    const sub = await requireSub(this.deps, input.orgId);
+    const billingCycle = input.billingCycle ?? sub.billingCycle;
+    if (!sub.providerSubscriptionId) return { plan: input.plan, billingCycle, prorationCents: 0 };
+    const { prorationCents } = await this.deps.payment.previewProration({
+      orgId: input.orgId,
+      plan: input.plan,
+      cycle: billingCycle,
+      seats: sub.seats,
+    });
+    return { plan: input.plan, billingCycle, prorationCents };
   }
 }
 
@@ -192,12 +255,27 @@ export class ConfirmCheckout {
 
 export class CancelSubscription {
   constructor(private readonly deps: SubDeps) {}
-  async execute(input: { userId: string; orgId: string }): Promise<SubscriptionView> {
+  async execute(input: { userId: string; orgId: string; refund?: boolean }): Promise<SubscriptionView> {
     await requireOrgAdmin(this.deps, input.userId, input.orgId);
     const sub = await requireSub(this.deps, input.orgId);
+    // S40 (owner decision B-2): an OPT-IN prorated refund of the unused period, BEFORE the status
+    // flips. The provider refunds only when there is a paid invoice; a 0 result records/audits
+    // nothing. Default (refund omitted/false) is byte-for-byte the pre-slice-40 cancel.
+    let refundedCents: number | undefined;
+    if (input.refund) {
+      const { refundedCents: refunded } = await this.deps.payment.refund({
+        orgId: input.orgId,
+        reason: 'cancellation',
+      });
+      if (refunded > 0) refundedCents = refunded;
+    }
     const updated: SubscriptionRecord = { ...sub, status: 'CANCELED' };
     await this.deps.subscriptions.save(updated);
     await audit(this.deps, input.orgId, input.userId, 'subscription.canceled', {});
-    return subscriptionView(updated);
+    if (refundedCents !== undefined) {
+      await audit(this.deps, input.orgId, input.userId, 'subscription.refunded', { refundedCents });
+    }
+    const view = subscriptionView(updated);
+    return refundedCents !== undefined ? { ...view, refundedCents } : view;
   }
 }

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInMemoryContext, type InMemoryContext } from '../testing/in-memory';
 import { CompleteOnboarding } from './complete-onboarding';
 import { GetOrgSubscription } from './org-queries';
@@ -7,6 +7,7 @@ import {
   CancelSubscription,
   ChangeSubscription,
   ConfirmCheckout,
+  PreviewPlanChange,
   StartBillingPortal,
   StartCheckout,
   UpdateSeats,
@@ -103,6 +104,100 @@ describe('Subscription & Billing', () => {
 
   it('cancels the subscription (AC-SUB-06)', async () => {
     expect((await new CancelSubscription(ctx).execute({ userId, orgId })).status).toBe('CANCELED');
+  });
+
+  // ---- Slice 40: Stripe proration + refunds ----
+
+  /** Onboard → GROWTH → checkout+confirm, so the org has a provider subscription + a paid invoice. */
+  async function provisionGrowth(): Promise<void> {
+    await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'GROWTH' });
+    await new StartCheckout(ctx).execute({ userId, orgId });
+    await new ConfirmCheckout(ctx).execute({ userId, orgId }); // currentPeriodEnd = now + 30d, PAID invoice 9900
+  }
+
+  it('prorates an upgrade on a provisioned subscription and audits it (AC-PRORATE-01)', async () => {
+    await provisionGrowth();
+    // Full period remaining (clock unadvanced): (49900 SCALE − 9900 GROWTH) × 1.0 = 40000.
+    const v = await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'SCALE' });
+    expect(v.plan).toBe('SCALE');
+    expect(v.prorationCents).toBe(40000);
+    expect(ctx.audit.rows.some((r) => r.action === 'subscription.plan_prorated' && r.metadata.prorationCents === 40000)).toBe(true);
+  });
+
+  it('prorates a downgrade as a negative credit (AC-PRORATE-02)', async () => {
+    await provisionGrowth();
+    // (2900 STARTER − 9900 GROWTH) × 1.0 = -7000.
+    const v = await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'STARTER' });
+    expect(v.prorationCents).toBe(-7000);
+  });
+
+  it('applies NO proration and no plan_prorated audit when the org has no provider subscription (AC-PRORATE-03)', async () => {
+    // The provider is NEVER called on the no-billing-account path (regression-safe, byte-for-byte).
+    const spy = vi.spyOn(ctx.payment, 'changePlan');
+    const v = await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'GROWTH' });
+    expect(spy).not.toHaveBeenCalled();
+    expect(v.prorationCents).toBe(0);
+    expect(ctx.audit.rows.some((r) => r.action === 'subscription.plan_prorated')).toBe(false);
+    // No proration invoice was recorded — the row path is unchanged.
+    expect(await ctx.invoices.listForOrg(orgId)).toEqual([]);
+  });
+
+  it('previewPlanChange returns the same amount a change would apply, without mutating (AC-PRORATE-04)', async () => {
+    await provisionGrowth();
+    const before = JSON.stringify(await ctx.invoices.listForOrg(orgId));
+    const planBefore = (await ctx.subscriptions.findByOrg(orgId))!.plan;
+
+    const preview = await new PreviewPlanChange(ctx).execute({ userId, orgId, plan: 'SCALE' });
+    expect(preview).toMatchObject({ plan: 'SCALE', prorationCents: 40000 });
+
+    // Read-only: neither the invoices nor the subscription changed.
+    expect(JSON.stringify(await ctx.invoices.listForOrg(orgId))).toBe(before);
+    expect((await ctx.subscriptions.findByOrg(orgId))!.plan).toBe(planBefore);
+  });
+
+  it('previewPlanChange is 0 without a provider subscription and enforces RBAC + tenant isolation', async () => {
+    expect((await new PreviewPlanChange(ctx).execute({ userId, orgId, plan: 'GROWTH' })).prorationCents).toBe(0);
+
+    const member = (
+      await new RegisterUser(ctx).execute({ firstName: 'M', lastName: 'R', email: 'prev-m@uruk.io', password: 'C0rrect-Horse!' })
+    ).userId;
+    await ctx.memberships.create({ id: ctx.ids.next(), orgId, userId: member, role: 'MEMBER', createdAt: ctx.clock.now() });
+    await expect(new PreviewPlanChange(ctx).execute({ userId: member, orgId, plan: 'GROWTH' })).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+    const outsider = (
+      await new RegisterUser(ctx).execute({ firstName: 'E', lastName: 'X', email: 'prev-eve@uruk.io', password: 'C0rrect-Horse!' })
+    ).userId;
+    await expect(new PreviewPlanChange(ctx).execute({ userId: outsider, orgId, plan: 'GROWTH' })).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+  });
+
+  it('cancels with an opt-in prorated refund, records a credit, and audits it (AC-PRORATE-05)', async () => {
+    await provisionGrowth();
+    ctx.clock.advance(15 * 24 * 60 * 60 * 1000); // half the 30-day period remaining → fraction 0.5
+
+    const v = await new CancelSubscription(ctx).execute({ userId, orgId, refund: true });
+    expect(v.status).toBe('CANCELED');
+    expect(v.refundedCents).toBe(4950); // round(9900 × 0.5)
+    expect(ctx.audit.rows.some((r) => r.action === 'subscription.refunded' && r.metadata.refundedCents === 4950)).toBe(true);
+    const credit = (await ctx.invoices.listForOrg(orgId)).find((i) => i.providerInvoiceId === `in_mock_refund_${orgId}`);
+    expect(credit).toMatchObject({ status: 'VOID', amountCents: -4950 });
+  });
+
+  it('cancels without a refund by default — no refund, no refunded audit (AC-PRORATE-06)', async () => {
+    await provisionGrowth();
+    const invoicesBefore = (await ctx.invoices.listForOrg(orgId)).length;
+    // The provider refund path is NEVER touched on the default (no-flag) cancel — byte-for-byte.
+    const spy = vi.spyOn(ctx.payment, 'refund');
+
+    const v = await new CancelSubscription(ctx).execute({ userId, orgId });
+    expect(spy).not.toHaveBeenCalled();
+    expect(v.status).toBe('CANCELED');
+    expect(v.refundedCents).toBeUndefined();
+    expect(ctx.audit.rows.some((r) => r.action === 'subscription.refunded')).toBe(false);
+    // No credit invoice recorded.
+    expect((await ctx.invoices.listForOrg(orgId)).length).toBe(invoicesBefore);
   });
 
   // ---- Slice 34: Stripe billing portal (portal-only) ----

@@ -46,4 +46,14 @@ test('Billing: view plan + usage, change plan, mock checkout to ACTIVE', async (
   // Slice 13: the confirm records a deterministic PAID invoice, listed in-app with its hosted link.
   await expect(page.getByText('PAID', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'View invoice' })).toBeVisible();
+
+  // Slice 40: with a billing account, selecting a different plan shows the proration preview line and
+  // the opt-in refund checkbox appears. (Amounts run under the real clock — assert the sign, not cents.)
+  await page.getByRole('combobox', { name: 'Plan' }).selectOption('SCALE');
+  await expect(page.getByTestId('proration-preview')).toContainText(/Changing to Scale: \+\$\d+ now/);
+
+  // Opt into the prorated refund and cancel — the subscription ends CANCELED.
+  await page.getByRole('checkbox').check();
+  await page.getByRole('button', { name: 'Cancel subscription' }).click();
+  await expect(page.getByText(/· CANCELED/)).toBeVisible();
 });

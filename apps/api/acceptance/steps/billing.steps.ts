@@ -49,6 +49,15 @@ When('I cancel the subscription', async function (this: GilgameshWorld) {
   this.response = await this.applyAuth(server(this).post(this.url('/orgs/{orgId}/subscription/cancel'))).send();
 });
 
+// Slice 40 — proration + refunds.
+When('I preview a change to {string}', async function (this: GilgameshWorld, plan: string) {
+  this.response = await this.applyAuth(server(this).post(this.url('/orgs/{orgId}/subscription/preview'))).send({ plan });
+});
+
+When('I cancel the subscription with a refund', async function (this: GilgameshWorld) {
+  this.response = await this.applyAuth(server(this).post(this.url('/orgs/{orgId}/subscription/cancel'))).send({ refund: true });
+});
+
 Then('the subscription plan is {string}', function (this: GilgameshWorld, plan: string) {
   assert.equal(body(this).plan, plan);
 });
@@ -80,4 +89,26 @@ Then('the subscription has {int} active workspaces', function (this: GilgameshWo
 
 Then('the subscription executions are unlimited', function (this: GilgameshWorld) {
   assert.equal(body(this).unlimited, true);
+});
+
+// Slice 40 — proration/refund amounts. The BDD sweep runs the mock arm under SystemClock (real time),
+// so amounts aren't pinnable to the cent — we assert the SIGN.
+Then('the proration amount is zero', function (this: GilgameshWorld) {
+  assert.equal(body(this).prorationCents, 0);
+});
+
+Then('the proration amount is positive', function (this: GilgameshWorld) {
+  assert.ok(Number(body(this).prorationCents) > 0, `expected prorationCents > 0, got ${body(this).prorationCents}`);
+});
+
+Then('the proration amount is negative', function (this: GilgameshWorld) {
+  assert.ok(Number(body(this).prorationCents) < 0, `expected prorationCents < 0, got ${body(this).prorationCents}`);
+});
+
+Then('the refund amount is positive', function (this: GilgameshWorld) {
+  assert.ok(Number(body(this).refundedCents) > 0, `expected refundedCents > 0, got ${body(this).refundedCents}`);
+});
+
+Then('no refund amount is returned', function (this: GilgameshWorld) {
+  assert.equal(body(this).refundedCents, undefined);
 });

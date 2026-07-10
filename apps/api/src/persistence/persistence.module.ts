@@ -213,6 +213,8 @@ import { TOKENS } from './tokens';
           events: new ApplyPaymentEvent({ uow, ids, clock }),
           invoices,
           subscriptions,
+          // S40: the clock drives the deterministic prorated-refund amount.
+          clock,
         }),
       inject: [TOKENS.UnitOfWork, TOKENS.Ids, TOKENS.Clock, TOKENS.Invoices, TOKENS.Subscriptions],
     },

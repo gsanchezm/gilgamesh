@@ -1,7 +1,8 @@
-import { priceCents } from '@gilgamesh/domain';
+import { priceCents, prorationAmountCents, remainingPeriodFraction } from '@gilgamesh/domain';
 import { ApplicationError } from '../errors';
-import type { CheckoutRequest, PaymentProvider } from '../ports/payment';
-import type { InvoiceRecord } from '../ports/records';
+import type { Clock } from '../ports/clock';
+import type { ChangePlanRequest, CheckoutRequest, PaymentProvider } from '../ports/payment';
+import type { InvoiceRecord, SubscriptionRecord } from '../ports/records';
 import type { InvoiceRepository, SubscriptionRepository } from '../ports/repositories';
 import { type ApplyPaymentEvent, INVOICE_WEBHOOK_EFFECTS } from './apply-payment-event';
 
@@ -13,6 +14,8 @@ export interface MockPaymentDeps {
   events?: ApplyPaymentEvent;
   invoices?: InvoiceRepository;
   subscriptions?: SubscriptionRepository;
+  /** Slice 40: the injected clock for deterministic proration (no `Date.now`). */
+  clock?: Clock;
 }
 
 /**
@@ -54,6 +57,70 @@ export class MockPaymentProvider implements PaymentProvider {
   async createPortalSession(orgId: string): Promise<{ portalUrl: string }> {
     // S34: deterministic, offline — no Stripe, no network. Same shape the Stripe adapter returns.
     return { portalUrl: `https://mock.pay/portal/${orgId}` };
+  }
+
+  /**
+   * S40: the signed proration a plan change WOULD apply — `round((newPrice − oldPrice) × remaining
+   * fraction)`, both prices from the domain catalog, the fraction from the injected clock + the
+   * (pre-change) subscription's `currentPeriodEnd`. Deterministic; `null`/no clock → 0. The use case
+   * calls this BEFORE saving the new plan, so the `sub` read here is the still-current row.
+   */
+  private async computeProration(req: ChangePlanRequest): Promise<number> {
+    const sub = await this.deps.subscriptions?.findByOrg(req.orgId);
+    if (!sub || !this.deps.clock) return 0;
+    const fraction = remainingPeriodFraction(sub.currentPeriodEnd, sub.billingCycle, this.deps.clock.now());
+    const oldPrice = priceCents(sub.plan, sub.billingCycle, sub.seats);
+    const newPrice = priceCents(req.plan, req.cycle, req.seats);
+    return prorationAmountCents(oldPrice, newPrice, fraction);
+  }
+
+  async previewProration(req: ChangePlanRequest): Promise<{ prorationCents: number }> {
+    // AC-PRORATE-04: read-only — computes the SAME amount as changePlan, mutates nothing.
+    return { prorationCents: await this.computeProration(req) };
+  }
+
+  async changePlan(req: ChangePlanRequest): Promise<{ prorationCents: number }> {
+    const prorationCents = await this.computeProration(req);
+    // Record the proration as an OPEN invoice so it shows in the Invoices panel (owner decision B-1:
+    // it rides to the next invoice). Signed amount; skip a no-op 0. Deterministic upsert key.
+    if (prorationCents !== 0 && this.deps.events) {
+      const providerInvoiceId = `in_mock_prorate_${req.orgId}`;
+      await this.deps.events.invoiceEvent({
+        orgId: req.orgId,
+        providerInvoiceId,
+        status: 'OPEN',
+        amountCents: prorationCents,
+        hostedInvoiceUrl: `https://mock.pay/invoice/${providerInvoiceId}`,
+      });
+    }
+    return { prorationCents };
+  }
+
+  async refund(req: { orgId: string; reason: 'cancellation' }): Promise<{ refundedCents: number }> {
+    // B-2: a prorated refund of the UNUSED portion of the current period — but only when there is a
+    // paid invoice to refund. Recorded as a credit invoice (negative amount, VOID). Deterministic.
+    const sub = await this.deps.subscriptions?.findByOrg(req.orgId);
+    const invoices = (await this.deps.invoices?.listForOrg(req.orgId)) ?? [];
+    const hasPaidInvoice = invoices.some((i: InvoiceRecord) => i.status === 'PAID');
+    if (!sub || !this.deps.clock || !hasPaidInvoice) return { refundedCents: 0 };
+    const refundedCents = this.unusedCredit(sub);
+    if (refundedCents > 0 && this.deps.events) {
+      const providerInvoiceId = `in_mock_refund_${req.orgId}`;
+      await this.deps.events.invoiceEvent({
+        orgId: req.orgId,
+        providerInvoiceId,
+        status: 'VOID',
+        amountCents: -refundedCents,
+        hostedInvoiceUrl: `https://mock.pay/invoice/${providerInvoiceId}`,
+      });
+    }
+    return { refundedCents };
+  }
+
+  /** The unused-portion credit: `round(currentPrice × remainingFraction)`. */
+  private unusedCredit(sub: SubscriptionRecord): number {
+    const fraction = remainingPeriodFraction(sub.currentPeriodEnd, sub.billingCycle, this.deps.clock!.now());
+    return prorationAmountCents(0, priceCents(sub.plan, sub.billingCycle, sub.seats), fraction);
   }
 
   async handleWebhook(sig: string, body: Buffer): Promise<void> {

@@ -27,7 +27,13 @@ function subscription(overrides: Partial<SubscriptionRecord> = {}): Subscription
 function setup() {
   const ctx = createInMemoryContext();
   const events = new ApplyPaymentEvent({ uow: ctx.uow, ids: ctx.ids, clock: ctx.clock });
-  const provider = new MockPaymentProvider({ events, invoices: ctx.invoices, subscriptions: ctx.subscriptions });
+  // S40: the clock drives deterministic proration, mirroring the production payment wiring.
+  const provider = new MockPaymentProvider({
+    events,
+    invoices: ctx.invoices,
+    subscriptions: ctx.subscriptions,
+    clock: ctx.clock,
+  });
   return { ctx, events, provider };
 }
 
@@ -206,13 +212,111 @@ describe('MockPaymentProvider payments surface', () => {
 });
 
 describe('INVOICE_WEBHOOK_EFFECTS', () => {
-  it('covers exactly the spec §3 provider events', () => {
+  it('covers the spec §3 invoice events plus the slice-40 refund events', () => {
     expect(Object.keys(INVOICE_WEBHOOK_EFFECTS).sort()).toEqual([
+      'charge.refunded',
+      'credit_note.created',
       'invoice.finalized',
       'invoice.marked_uncollectible',
       'invoice.paid',
       'invoice.payment_failed',
       'invoice.voided',
     ]);
+    // The refund events void the invoice (owner decision B-2 reflection).
+    expect(INVOICE_WEBHOOK_EFFECTS['charge.refunded']).toEqual({ status: 'VOID' });
+    expect(INVOICE_WEBHOOK_EFFECTS['credit_note.created']).toEqual({ status: 'VOID' });
+  });
+});
+
+describe('MockPaymentProvider proration + refunds (slice 40)', () => {
+  // A checked-out GROWTH sub, monthly, with exactly half the 30-day period remaining from the
+  // FakeClock's default now (2026-06-29T12:00:00Z + 15 days) → remaining fraction 0.5.
+  function prorated(overrides: Partial<SubscriptionRecord> = {}) {
+    const { ctx, provider } = setup();
+    const now = ctx.clock.now();
+    const currentPeriodEnd = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000);
+    const sub = subscription({
+      plan: 'GROWTH',
+      billingCycle: 'MONTHLY',
+      seats: 1,
+      providerCustomerId: 'cus_mock_org-1',
+      providerSubscriptionId: 'sub_mock_org-1',
+      currentPeriodEnd,
+      ...overrides,
+    });
+    return { ctx, provider, sub };
+  }
+
+  it('previews a positive proration on an upgrade without mutating any row (AC-PRORATE-01/04)', async () => {
+    const { ctx, provider, sub } = prorated();
+    await ctx.subscriptions.create(sub);
+    const before = JSON.stringify(await ctx.invoices.listForOrg('org-1'));
+
+    // (49900 SCALE − 9900 GROWTH) × 0.5 = 20000.
+    const preview = await provider.previewProration({ orgId: 'org-1', plan: 'SCALE', cycle: 'MONTHLY', seats: 1 });
+    expect(preview.prorationCents).toBe(20000);
+
+    // Read-only: no invoice recorded, the subscription is untouched.
+    expect(await ctx.invoices.listForOrg('org-1')).toEqual([]);
+    expect(JSON.stringify(await ctx.invoices.listForOrg('org-1'))).toBe(before);
+    expect((await ctx.subscriptions.findByOrg('org-1'))?.plan).toBe('GROWTH');
+  });
+
+  it('applies the SAME amount changePlan records as an OPEN invoice (AC-PRORATE-04)', async () => {
+    const { ctx, provider, sub } = prorated();
+    await ctx.subscriptions.create(sub);
+    const req = { orgId: 'org-1', plan: 'SCALE' as const, cycle: 'MONTHLY' as const, seats: 1 };
+
+    const preview = await provider.previewProration(req);
+    const change = await provider.changePlan(req);
+    expect(change.prorationCents).toBe(preview.prorationCents);
+    expect(change.prorationCents).toBe(20000);
+
+    const rows = await ctx.invoices.listForOrg('org-1');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      providerInvoiceId: 'in_mock_prorate_org-1',
+      status: 'OPEN',
+      amountCents: 20000,
+    });
+  });
+
+  it('produces a negative proration (credit) on a downgrade (AC-PRORATE-02)', async () => {
+    const { ctx, provider, sub } = prorated();
+    await ctx.subscriptions.create(sub);
+    // (2900 STARTER − 9900 GROWTH) × 0.5 = -3500.
+    const change = await provider.changePlan({ orgId: 'org-1', plan: 'STARTER', cycle: 'MONTHLY', seats: 1 });
+    expect(change.prorationCents).toBe(-3500);
+    expect((await ctx.invoices.listForOrg('org-1'))[0]).toMatchObject({ status: 'OPEN', amountCents: -3500 });
+  });
+
+  it('returns 0 and records nothing when there is no provider subscription / period (AC-PRORATE-03)', async () => {
+    const { ctx, provider } = setup();
+    // A fresh FREE sub: no currentPeriodEnd → fraction 0 → proration 0, and no invoice recorded.
+    await ctx.subscriptions.create(subscription({ plan: 'FREE', currentPeriodEnd: null }));
+    expect((await provider.previewProration({ orgId: 'org-1', plan: 'GROWTH', cycle: 'MONTHLY', seats: 1 })).prorationCents).toBe(0);
+    expect((await provider.changePlan({ orgId: 'org-1', plan: 'GROWTH', cycle: 'MONTHLY', seats: 1 })).prorationCents).toBe(0);
+    expect(await ctx.invoices.listForOrg('org-1')).toEqual([]);
+  });
+
+  it('refunds the prorated unused portion as a credit VOID invoice when a paid invoice exists (AC-PRORATE-05)', async () => {
+    const { ctx, provider, sub } = prorated();
+    await ctx.subscriptions.create(sub);
+    await provider.confirmCheckout('org-1'); // records the PAID checkout invoice at 9900
+
+    // round(9900 × 0.5) = 4950.
+    const res = await provider.refund({ orgId: 'org-1', reason: 'cancellation' });
+    expect(res.refundedCents).toBe(4950);
+
+    const credit = (await ctx.invoices.listForOrg('org-1')).find((i) => i.providerInvoiceId === 'in_mock_refund_org-1');
+    expect(credit).toMatchObject({ status: 'VOID', amountCents: -4950 });
+  });
+
+  it('refunds 0 and records nothing when there is no paid invoice (AC-PRORATE-05 edge)', async () => {
+    const { ctx, provider, sub } = prorated();
+    await ctx.subscriptions.create(sub); // no PAID invoice recorded
+    const res = await provider.refund({ orgId: 'org-1', reason: 'cancellation' });
+    expect(res.refundedCents).toBe(0);
+    expect(await ctx.invoices.listForOrg('org-1')).toEqual([]);
   });
 });

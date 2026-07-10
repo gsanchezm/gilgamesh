@@ -689,6 +689,8 @@ export function createInMemoryContext(): InMemoryContext {
       events: new ApplyPaymentEvent({ uow, ids, clock }),
       invoices: repos.invoices,
       subscriptions: repos.subscriptions,
+      // S40: the mock computes proration from the injected clock + currentPeriodEnd (no Date.now).
+      clock,
     }),
     retrieval: new KnowledgeRetriever({ knowledge, brain }),
   };

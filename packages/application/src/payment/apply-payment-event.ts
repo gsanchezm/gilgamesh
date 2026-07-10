@@ -20,6 +20,10 @@ export const INVOICE_WEBHOOK_EFFECTS: Readonly<Record<string, InvoiceWebhookEffe
   'invoice.payment_failed': { status: 'OPEN', subscriptionStatus: 'PAST_DUE' },
   'invoice.voided': { status: 'VOID' },
   'invoice.marked_uncollectible': { status: 'UNCOLLECTIBLE' },
+  // S40: a programmatic refund (cancellation credit) voids the related invoice on webhook
+  // redelivery. Idempotent by provider-invoice id via `upsertByProviderInvoiceId`.
+  'charge.refunded': { status: 'VOID' },
+  'credit_note.created': { status: 'VOID' },
 };
 
 export interface InvoiceEventInput {

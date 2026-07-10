@@ -18,6 +18,18 @@ export interface CheckoutRequest {
   seats: number;
 }
 
+/**
+ * The target of a plan change (slice 40). Carries ONLY the desired plan/cycle/seats — the provider
+ * resolves the org's current (pre-change) subscription itself to compute the signed proration.
+ */
+export interface ChangePlanRequest {
+  orgId: string;
+  plan: Plan;
+  cycle: BillingCycle;
+  /** Active workspaces (same seam name as CheckoutRequest). */
+  seats: number;
+}
+
 export interface PaymentProvider {
   createCheckout(req: CheckoutRequest): Promise<{ checkoutUrl: string }>;
   /** Mock stand-in for the provider's success webhook: mints the customer/subscription ids. */
@@ -38,4 +50,25 @@ export interface PaymentProvider {
    * OWNER/ADMIN and rejects an org with no billing account BEFORE this is reached.
    */
   createPortalSession(orgId: string): Promise<{ portalUrl: string }>;
+  /**
+   * Slice 40 (additive, programmatic proration): apply a plan change to the provider subscription,
+   * prorated over the remaining period (`create_prorations` — the delta rides to the next invoice,
+   * owner decision B-1). Returns the SIGNED proration in cents (positive = charge / negative =
+   * credit). The mock records it as an OPEN Invoice; a real Stripe change schedules it on the next
+   * invoice. Called by the use case only when the subscription already has a `providerSubscriptionId`.
+   */
+  changePlan(req: ChangePlanRequest): Promise<{ prorationCents: number }>;
+  /**
+   * Slice 40: the read-only estimate of the SAME signed amount {@link changePlan} would apply, with
+   * NO mutation (no invoice row, no provider write) — so the UI can show "+$X now / −$Y credit"
+   * before the user confirms (AC-PRORATE-04).
+   */
+  previewProration(req: ChangePlanRequest): Promise<{ prorationCents: number }>;
+  /**
+   * Slice 40 (owner decision B-2): refund the UNUSED portion of the current period on cancellation.
+   * Returns the positive refunded amount in cents (0 when there is nothing to refund — no paid
+   * invoice or no time remaining). The mock records a credit Invoice (negative `amountCents`, VOID);
+   * a real Stripe refund hits the latest paid invoice's payment intent.
+   */
+  refund(req: { orgId: string; reason: 'cancellation' }): Promise<{ refundedCents: number }>;
 }

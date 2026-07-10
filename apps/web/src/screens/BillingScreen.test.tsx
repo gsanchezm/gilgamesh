@@ -80,6 +80,11 @@ function fakeClient(overrides?: Partial<BillingClient>): BillingClient {
       priceCents: input.plan === 'GROWTH' ? 9900 : 2900,
     })),
     updateSeats: vi.fn(async (_o, seats) => ({ ...sub, seats })),
+    previewProration: vi.fn(async (_o, input) => ({
+      plan: input.plan,
+      billingCycle: input.billingCycle ?? sub.billingCycle,
+      prorationCents: 0,
+    })),
     checkout: vi.fn(async () => ({ checkoutUrl: 'https://mock.pay/checkout/o' })),
     confirmCheckout: vi.fn(async () => ({ ...sub, status: 'ACTIVE' })),
     cancel: vi.fn(async () => ({ ...sub, status: 'CANCELED' })),
@@ -87,6 +92,9 @@ function fakeClient(overrides?: Partial<BillingClient>): BillingClient {
     ...overrides,
   };
 }
+
+// A checked-out subscription (has a billing account) — proration + refund controls only appear here.
+const activeSub: SubscriptionView = { ...sub, plan: 'STARTER', priceCents: 2900, providerCustomerId: 'cus_1' };
 
 describe('BillingScreen', () => {
   it('loads and shows the plan, status and usage meter', async () => {
@@ -289,6 +297,58 @@ describe('BillingScreen', () => {
     } finally {
       Object.defineProperty(window, 'location', { configurable: true, writable: true, value: original });
     }
+  });
+
+  // ---- Slice 40: proration preview + opt-in refund on cancel ----
+
+  it('shows a positive proration preview line when upgrading a billed subscription (AC-PRORATE-01)', async () => {
+    const previewProration = vi.fn(async () => ({ plan: 'GROWTH' as const, billingCycle: 'MONTHLY' as const, prorationCents: 3500 }));
+    const client = fakeClient({ getSubscription: vi.fn(async () => activeSub), previewProration });
+    render(<BillingScreen client={client} orgId="o1" />);
+    await screen.findByText(/Starter · TRIALING/);
+
+    fireEvent.change(screen.getByLabelText('Plan'), { target: { value: 'GROWTH' } });
+    await waitFor(() => expect(previewProration).toHaveBeenCalledWith('o1', { plan: 'GROWTH', billingCycle: 'MONTHLY' }));
+    expect(await screen.findByText('Changing to Growth: +$35 now')).toBeTruthy();
+  });
+
+  it('shows a credit proration preview line when downgrading (AC-PRORATE-02)', async () => {
+    const previewProration = vi.fn(async () => ({ plan: 'FREE' as const, billingCycle: 'MONTHLY' as const, prorationCents: -1450 }));
+    const client = fakeClient({ getSubscription: vi.fn(async () => activeSub), previewProration });
+    render(<BillingScreen client={client} orgId="o1" />);
+    await screen.findByText(/Starter · TRIALING/);
+    fireEvent.change(screen.getByLabelText('Plan'), { target: { value: 'FREE' } });
+    expect(await screen.findByText('Changing to Free: $15 credit')).toBeTruthy();
+  });
+
+  it('does not preview proration when the org has no billing account (AC-PRORATE-03)', async () => {
+    const client = fakeClient(); // default sub has providerCustomerId null
+    render(<BillingScreen client={client} orgId="o1" />);
+    await screen.findByText(/Free · TRIALING/);
+    fireEvent.change(screen.getByLabelText('Plan'), { target: { value: 'GROWTH' } });
+    await waitFor(() => expect(screen.queryByTestId('proration-preview')).toBeNull());
+    expect(client.previewProration).not.toHaveBeenCalled();
+  });
+
+  it('cancels without a refund by default (AC-PRORATE-06)', async () => {
+    const client = fakeClient();
+    render(<BillingScreen client={client} orgId="o1" />);
+    await screen.findByText(/Free · TRIALING/);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel subscription' }));
+    await waitFor(() => expect(client.cancel).toHaveBeenCalledWith('o1', { refund: false }));
+  });
+
+  it('cancels with an opt-in refund when the checkbox is ticked (AC-PRORATE-05)', async () => {
+    const client = fakeClient({
+      getSubscription: vi.fn(async () => activeSub),
+      cancel: vi.fn(async () => ({ ...activeSub, status: 'CANCELED', refundedCents: 1450 })),
+    });
+    render(<BillingScreen client={client} orgId="o1" />);
+    await screen.findByText(/Starter · TRIALING/);
+
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel subscription' }));
+    await waitFor(() => expect(client.cancel).toHaveBeenCalledWith('o1', { refund: true }));
   });
 
   it('surfaces a plan-change error without crashing', async () => {

@@ -9,6 +9,7 @@ import {
   ListInvoices,
   type MembershipRepository,
   type PaymentProvider,
+  PreviewPlanChange,
   StartBillingPortal,
   StartCheckout,
   type SubscriptionRepository,
@@ -55,6 +56,7 @@ function subProvider<U>(UseCase: Ctor<U>): Provider {
   controllers: [BillingController, BillingPortalController, InvoicesController, BillingWebhooksController],
   providers: [
     subProvider(ChangeSubscription),
+    subProvider(PreviewPlanChange),
     subProvider(UpdateSeats),
     subProvider(StartCheckout),
     subProvider(StartBillingPortal),

@@ -23,6 +23,18 @@ export interface SubscriptionView {
   priceCents: number;
   providerCustomerId: string | null;
   currentPeriodEnd: string | null;
+  /** Slice 40: the signed proration a plan change applied (+charge / −credit); absent on reads. */
+  prorationCents?: number;
+  /** Slice 40: the amount refunded by an opt-in cancel-with-refund. */
+  refundedCents?: number;
+}
+
+/** Slice 40: the read-only proration estimate shown before a plan change is confirmed. */
+export interface PlanChangePreview {
+  plan: Plan;
+  billingCycle: BillingCycle;
+  /** Signed: positive = charged now, negative = credited. 0 when there is no billing account. */
+  prorationCents: number;
 }
 
 /** Keystone §1 v0.5 — mirrors the provider's (Stripe) invoice lifecycle. */
@@ -64,10 +76,13 @@ export interface BrainUsageView {
 export interface BillingClient {
   getSubscription(orgId: string): Promise<SubscriptionView>;
   changePlan(orgId: string, input: { plan: Plan; billingCycle?: BillingCycle }): Promise<SubscriptionView>;
+  /** Slice 40: a read-only proration estimate for a prospective plan change (no mutation). */
+  previewProration(orgId: string, input: { plan: Plan; billingCycle?: BillingCycle }): Promise<PlanChangePreview>;
   updateSeats(orgId: string, seats: number): Promise<SubscriptionView>;
   checkout(orgId: string): Promise<{ checkoutUrl: string }>;
   confirmCheckout(orgId: string): Promise<SubscriptionView>;
-  cancel(orgId: string): Promise<SubscriptionView>;
+  /** Slice 40: cancel gains an opt-in prorated refund of the unused period (defaults to no refund). */
+  cancel(orgId: string, opts?: { refund?: boolean }): Promise<SubscriptionView>;
   /** Slice 34: mint a Stripe hosted billing-portal link; the caller navigates the browser to it. */
   openPortal(orgId: string): Promise<{ portalUrl: string }>;
   getBrainUsage(orgId: string): Promise<BrainUsageView>;
@@ -79,10 +94,13 @@ const base = (orgId: string) => `/orgs/${orgId}/subscription`;
 export const httpBillingClient: BillingClient = {
   getSubscription: (orgId) => getJson(base(orgId), 'Could not load the subscription.'),
   changePlan: (orgId, input) => sendJson('PATCH', base(orgId), input, 'Could not change the plan.'),
+  previewProration: (orgId, input) =>
+    sendJson('POST', `${base(orgId)}/preview`, input, 'Could not preview the plan change.'),
   updateSeats: (orgId, seats) => sendJson('PATCH', `${base(orgId)}/seats`, { seats }, 'Could not update seats.'),
   checkout: (orgId) => sendJson('POST', `${base(orgId)}/checkout`, {}, 'Could not start checkout.'),
   confirmCheckout: (orgId) => sendJson('POST', `${base(orgId)}/checkout/confirm`, {}, 'Could not confirm checkout.'),
-  cancel: (orgId) => sendJson('POST', `${base(orgId)}/cancel`, {}, 'Could not cancel the subscription.'),
+  cancel: (orgId, opts) =>
+    sendJson('POST', `${base(orgId)}/cancel`, { refund: opts?.refund ?? false }, 'Could not cancel the subscription.'),
   openPortal: (orgId) => sendJson('POST', `/orgs/${orgId}/billing/portal`, {}, 'Could not open the billing portal.'),
   getBrainUsage: (orgId) => getJson(`/orgs/${orgId}/brain/usage`, 'Could not load the AI usage.'),
   listInvoices: (orgId) => getJson(`/orgs/${orgId}/invoices`, 'Could not load the invoices.'),

@@ -7,6 +7,7 @@ import type {
   BrainUsageView,
   InvoiceView,
   Plan,
+  PlanChangePreview,
   SubscriptionView,
 } from '../lib/billing-client';
 
@@ -55,6 +56,14 @@ function planName(plan: Plan): string {
   return PLAN_COPY[plan].name;
 }
 
+// S40: the human-readable proration line ("+$35 now" / "$35 credit" / "no proration").
+function prorationLabel(p: PlanChangePreview): string {
+  const amount = money(Math.abs(p.prorationCents));
+  if (p.prorationCents > 0) return `Changing to ${planName(p.plan)}: +${amount} now`;
+  if (p.prorationCents < 0) return `Changing to ${planName(p.plan)}: ${amount} credit`;
+  return `Changing to ${planName(p.plan)}: no proration`;
+}
+
 export function BillingScreen({ client, orgId }: BillingScreenProps) {
   const [sub, setSub] = useState<SubscriptionView | null>(null);
   const [usage, setUsage] = useState<BrainUsageView | null>(null);
@@ -66,6 +75,9 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
   const [plan, setPlan] = useState<Plan>('FREE');
   const [cycle, setCycle] = useState<BillingCycle>('MONTHLY');
   const [workspaces, setWorkspaces] = useState('1');
+  // S40: the live proration preview for the selected plan/cycle, and the opt-in refund on cancel.
+  const [preview, setPreview] = useState<PlanChangePreview | null>(null);
+  const [refundOnCancel, setRefundOnCancel] = useState(false);
 
   // The invoices card degrades independently, like AI usage — and refreshes after a checkout.
   const loadInvoices = useCallback(async () => {
@@ -102,6 +114,28 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // S40: preview the proration whenever the selection differs from the current plan/cycle AND the org
+  // has a billing account (an org that never checked out has nothing to prorate). Read-only; a failed
+  // estimate simply hides the line (it never blocks the screen).
+  useEffect(() => {
+    if (!sub || !sub.providerCustomerId || (plan === sub.plan && cycle === sub.billingCycle)) {
+      setPreview(null);
+      return;
+    }
+    let active = true;
+    client
+      .previewProration(orgId, { plan, billingCycle: cycle })
+      .then((p) => {
+        if (active) setPreview(p);
+      })
+      .catch(() => {
+        if (active) setPreview(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [client, orgId, plan, cycle, sub]);
 
   async function action(fn: () => Promise<SubscriptionView>) {
     setError(null);
@@ -146,7 +180,7 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
 
   const changePlan = () => action(() => client.changePlan(orgId, { plan, billingCycle: cycle }));
   const saveWorkspaces = () => action(() => client.updateSeats(orgId, Number(workspaces)));
-  const cancel = () => action(() => client.cancel(orgId));
+  const cancel = () => action(() => client.cancel(orgId, { refund: refundOnCancel }));
   const checkout = () =>
     action(async () => {
       await client.checkout(orgId);
@@ -364,6 +398,13 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
           />
         </label>
 
+        {/* S40: the live proration estimate for the selected plan/cycle (only with a billing account). */}
+        {preview && (
+          <p className="gx-billing__note" role="status" data-testid="proration-preview">
+            {prorationLabel(preview)}
+          </p>
+        )}
+
         <div className="gx-billing__actions">
           <button type="button" className="gx-btn gx-btn--primary" onClick={changePlan} disabled={busy}>
             Save plan
@@ -381,6 +422,19 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
             Cancel subscription
           </button>
         </div>
+
+        {/* S40: opt-in prorated refund of the unused period on cancel (owner decision B-2). Only
+            offered once a billing account exists — there is nothing to refund otherwise. */}
+        {sub.providerCustomerId && (
+          <label className="gx-billing__note">
+            <input
+              type="checkbox"
+              checked={refundOnCancel}
+              onChange={(e) => setRefundOnCancel(e.target.checked)}
+            />{' '}
+            Refund the unused portion of this period when I cancel
+          </label>
+        )}
       </section>
 
       <p className="gx-billing__note">

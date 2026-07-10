@@ -89,6 +89,8 @@ describe('Subscription & Billing API', () => {
 
     const canceled = await mutate(request(server()).post(`/orgs/${orgId}/subscription/cancel`)).send();
     expect(canceled.body.status).toBe('CANCELED');
+    // AC-PRORATE-06: a cancel with no refund flag never carries a refunded amount.
+    expect(canceled.body.refundedCents).toBeUndefined();
   });
 
   it("hides another tenant's subscription (404)", async () => {
@@ -155,6 +157,95 @@ describe('Billing portal API (slice 34)', () => {
       .post(`/orgs/${pOrgId}/billing/portal`)
       .set('Cookie', auth2.cookie)
       .set('X-CSRF-Token', auth2.csrf);
+    expect(res.status).toBe(404);
+  });
+});
+
+// Slice 40 — programmatic proration + refunds over its own fresh org so provider state is controlled.
+// The harness runs the mock arm under SystemClock, so amounts aren't pinnable to the cent — we assert
+// the SIGN (>0 upgrade / <0 downgrade / ==0 no provider sub); exact amounts are pinned in unit tests.
+describe('Proration + refunds API (slice 40)', () => {
+  let rAuth: Auth;
+  let rOrgId: string;
+
+  beforeAll(async () => {
+    const reg = await request(server())
+      .post('/auth/register')
+      .send({ firstName: 'R', lastName: 'P', email: 'prorate@uruk.io', password: 'C0rrect-Horse!' });
+    rAuth = authFrom(reg);
+    const proj = await request(server())
+      .post('/projects')
+      .set('Cookie', rAuth.cookie)
+      .set('X-CSRF-Token', rAuth.csrf)
+      .send({ projectName: 'ProrateCo', format: 'BDD' });
+    rOrgId = proj.body.orgId;
+  });
+
+  const rmutate = (req: request.Test) => req.set('Cookie', rAuth.cookie).set('X-CSRF-Token', rAuth.csrf);
+  const path = (suffix = '') => `/orgs/${rOrgId}/subscription${suffix}`;
+
+  it('previews and applies zero proration before any billing account exists (AC-PRORATE-03/04)', async () => {
+    const preview = await rmutate(request(server()).post(path('/preview'))).send({ plan: 'GROWTH' });
+    expect(preview.status).toBe(200);
+    expect(preview.body).toMatchObject({ plan: 'GROWTH', prorationCents: 0 });
+
+    const changed = await rmutate(request(server()).patch(path())).send({ plan: 'STARTER' });
+    expect(changed.status).toBe(200);
+    expect(changed.body.prorationCents).toBe(0);
+  });
+
+  it('previews a positive proration for an upgrade once a checkout established the subscription (AC-PRORATE-01)', async () => {
+    await rmutate(request(server()).post(path('/checkout'))).send();
+    const confirmed = await rmutate(request(server()).post(path('/checkout/confirm'))).send();
+    expect(confirmed.body.providerCustomerId).toMatch(/^cus_mock_/);
+
+    const preview = await rmutate(request(server()).post(path('/preview'))).send({ plan: 'SCALE' });
+    expect(preview.status).toBe(200);
+    expect(preview.body.prorationCents).toBeGreaterThan(0);
+
+    const upgraded = await rmutate(request(server()).patch(path())).send({ plan: 'SCALE' });
+    expect(upgraded.status).toBe(200);
+    expect(upgraded.body.plan).toBe('SCALE');
+    expect(upgraded.body.prorationCents).toBeGreaterThan(0);
+  });
+
+  it('applies a negative proration on a downgrade (AC-PRORATE-02)', async () => {
+    const downgraded = await rmutate(request(server()).patch(path())).send({ plan: 'STARTER' });
+    expect(downgraded.status).toBe(200);
+    expect(downgraded.body.plan).toBe('STARTER');
+    expect(downgraded.body.prorationCents).toBeLessThan(0);
+  });
+
+  it('cancels with an opt-in prorated refund (AC-PRORATE-05)', async () => {
+    const canceled = await rmutate(request(server()).post(path('/cancel'))).send({ refund: true });
+    expect(canceled.status).toBe(200);
+    expect(canceled.body.status).toBe('CANCELED');
+    expect(canceled.body.refundedCents).toBeGreaterThan(0);
+  });
+
+  it('rejects a preview from a non-admin (403) and a non-member (404)', async () => {
+    // A fresh org for a clean RBAC assertion.
+    const reg = await request(server())
+      .post('/auth/register')
+      .send({ firstName: 'A', lastName: 'B', email: 'prorate-rbac@uruk.io', password: 'C0rrect-Horse!' });
+    const owner = authFrom(reg);
+    const proj = await request(server())
+      .post('/projects')
+      .set('Cookie', owner.cookie)
+      .set('X-CSRF-Token', owner.csrf)
+      .send({ projectName: 'RbacCo', format: 'BDD' });
+    const oOrgId = proj.body.orgId as string;
+
+    const outsider = authFrom(
+      await request(server())
+        .post('/auth/register')
+        .send({ firstName: 'E', lastName: 'X', email: 'prorate-eve@uruk.io', password: 'C0rrect-Horse!' }),
+    );
+    const res = await request(server())
+      .post(`/orgs/${oOrgId}/subscription/preview`)
+      .set('Cookie', outsider.cookie)
+      .set('X-CSRF-Token', outsider.csrf)
+      .send({ plan: 'GROWTH' });
     expect(res.status).toBe(404);
   });
 });

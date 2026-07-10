@@ -51,7 +51,7 @@ function setup(opts: { webhookSecret?: string } = { webhookSecret: WEBHOOK_SECRE
       cancelUrl: 'https://app.local/billing?checkout=canceled',
       portalReturnUrl: 'https://app.local/billing?from=portal',
     },
-    { events, invoices: ctx.invoices, subscriptions: ctx.subscriptions },
+    { events, invoices: ctx.invoices, subscriptions: ctx.subscriptions, clock: ctx.clock },
     stripe,
   );
   return { ctx, provider };
@@ -84,6 +84,7 @@ describe('provider selection (AC-PAY-07)', () => {
       events: new ApplyPaymentEvent({ uow: ctx.uow, ids: ctx.ids, clock: ctx.clock }),
       invoices: ctx.invoices,
       subscriptions: ctx.subscriptions,
+      clock: ctx.clock,
     };
     expect(paymentsFromEnv(env(), deps)).toBeInstanceOf(MockPaymentProvider);
     expect(paymentsFromEnv(env({ PAYMENTS_MODE: 'offline', STRIPE_SECRET_KEY: SECRET_KEY }), deps)).toBeInstanceOf(
@@ -305,7 +306,7 @@ describe('StripePaymentProvider.createPortalSession (AC-PORTAL-01/04/08)', () =>
         cancelUrl: 'https://app.local/billing?checkout=canceled',
         portalReturnUrl: 'https://app.local/billing?from=portal',
       },
-      { events, invoices: ctx.invoices, subscriptions: ctx.subscriptions },
+      { events, invoices: ctx.invoices, subscriptions: ctx.subscriptions, clock: ctx.clock },
       stripe,
     );
     return { ctx, provider };
@@ -343,5 +344,156 @@ describe('StripePaymentProvider.createPortalSession (AC-PORTAL-01/04/08)', () =>
     expect(failure).toMatchObject({ code: 'VALIDATION' });
     expect(failure?.message).not.toContain(SECRET_KEY);
     expect(failure?.message).not.toContain(WEBHOOK_SECRET);
+  });
+});
+
+describe('StripePaymentProvider proration + refunds (slice 40, AC-PRORATE-01/02/04/05/07)', () => {
+  // A fake Stripe whose subscription has one item (si_1) on product prod_1, and whose upcoming-invoice
+  // preview carries exactly one proration line of 4000 (a second non-proration line is ignored).
+  function fakeProrationStripe() {
+    const retrieveSub = vi.fn(async (_id: string) => ({ items: { data: [{ id: 'si_1', price: { product: 'prod_1' } }] } }));
+    const update = vi.fn(async (_id: string, _params: Record<string, unknown>) => ({ id: 'sub_1' }));
+    const createPreview = vi.fn(async (_params: Record<string, unknown>) => ({
+      lines: {
+        data: [
+          { amount: 4000, parent: { subscription_item_details: { proration: true } } },
+          { amount: 12000, parent: { subscription_item_details: { proration: false } } },
+        ],
+      },
+    }));
+    const stripe = {
+      subscriptions: { retrieve: retrieveSub, update },
+      invoices: { createPreview },
+    } as unknown as Stripe;
+    return { stripe, retrieveSub, update, createPreview };
+  }
+
+  function fakeRefundStripe(paymentIntent: string | null = 'pi_1') {
+    const retrieveInvoice = vi.fn(async (_id: string) => ({ payment_intent: paymentIntent }));
+    const refundCreate = vi.fn(async (params: { amount?: number }) => ({ id: 're_1', amount: params.amount }));
+    const stripe = {
+      invoices: { retrieve: retrieveInvoice },
+      refunds: { create: refundCreate },
+    } as unknown as Stripe;
+    return { stripe, retrieveInvoice, refundCreate };
+  }
+
+  const provisioned = (overrides: Partial<SubscriptionRecord> = {}) =>
+    subscription({
+      plan: 'GROWTH',
+      billingCycle: 'MONTHLY',
+      seats: 1,
+      providerCustomerId: 'cus_1',
+      providerSubscriptionId: 'sub_1',
+      ...overrides,
+    });
+
+  it('previews the summed proration lines via createPreview with the target price_data', async () => {
+    const { stripe, createPreview } = fakeProrationStripe();
+    const { ctx, provider } = setup({ webhookSecret: WEBHOOK_SECRET }, stripe);
+    await ctx.subscriptions.create(provisioned());
+
+    const res = await provider.previewProration({ orgId: 'org-1', plan: 'SCALE', cycle: 'MONTHLY', seats: 1 });
+    expect(res).toEqual({ prorationCents: 4000 });
+    expect(createPreview).toHaveBeenCalledWith({
+      subscription: 'sub_1',
+      subscription_details: {
+        items: [
+          {
+            id: 'si_1',
+            price_data: {
+              currency: 'usd',
+              unit_amount: 49900, // SCALE monthly
+              recurring: { interval: 'month' },
+              product: 'prod_1',
+            },
+          },
+        ],
+        proration_behavior: 'create_prorations',
+      },
+    });
+  });
+
+  it('applies the change via subscriptions.update with create_prorations, returning the previewed amount', async () => {
+    const { stripe, update } = fakeProrationStripe();
+    const { ctx, provider } = setup({ webhookSecret: WEBHOOK_SECRET }, stripe);
+    await ctx.subscriptions.create(provisioned());
+
+    const res = await provider.changePlan({ orgId: 'org-1', plan: 'SCALE', cycle: 'MONTHLY', seats: 1 });
+    expect(res).toEqual({ prorationCents: 4000 });
+    expect(update).toHaveBeenCalledWith('sub_1', {
+      items: [
+        {
+          id: 'si_1',
+          price_data: { currency: 'usd', unit_amount: 49900, recurring: { interval: 'month' }, product: 'prod_1' },
+        },
+      ],
+      proration_behavior: 'create_prorations',
+    });
+  });
+
+  it('prices an annual change at 10 charged months (keystone §9)', async () => {
+    const { stripe, update } = fakeProrationStripe();
+    const { ctx, provider } = setup({ webhookSecret: WEBHOOK_SECRET }, stripe);
+    await ctx.subscriptions.create(provisioned());
+    await provider.changePlan({ orgId: 'org-1', plan: 'GROWTH', cycle: 'ANNUAL', seats: 1 });
+    const params = update.mock.calls[0]?.[1] as unknown as { items: { price_data: { unit_amount: number; recurring: { interval: string } } }[] };
+    expect(params.items[0]?.price_data.unit_amount).toBe(9900 * 10); // GROWTH × 10 charged months
+    expect(params.items[0]?.price_data.recurring.interval).toBe('year');
+  });
+
+  it('rejects a proration on an org with no provider subscription (VALIDATION, never leaks a secret)', async () => {
+    const { stripe } = fakeProrationStripe();
+    const { ctx, provider } = setup({ webhookSecret: WEBHOOK_SECRET }, stripe);
+    await ctx.subscriptions.create(subscription({ providerSubscriptionId: null }));
+    let failure: Error | null = null;
+    try {
+      await provider.previewProration({ orgId: 'org-1', plan: 'SCALE', cycle: 'MONTHLY', seats: 1 });
+    } catch (e) {
+      failure = e as Error;
+    }
+    expect(failure).toMatchObject({ code: 'VALIDATION' });
+    expect(failure?.message).not.toContain(SECRET_KEY);
+    expect(failure?.message).not.toContain(WEBHOOK_SECRET);
+  });
+
+  it('refunds the prorated unused portion against the latest paid invoice payment intent (AC-PRORATE-05)', async () => {
+    const { stripe, retrieveInvoice, refundCreate } = fakeRefundStripe();
+    const { ctx, provider } = setup({ webhookSecret: WEBHOOK_SECRET }, stripe);
+    // Half of the 30-day period remaining from the FakeClock's now → fraction 0.5, GROWTH 9900 → 4950.
+    const currentPeriodEnd = new Date(ctx.clock.now().getTime() + 15 * 24 * 60 * 60 * 1000);
+    await ctx.subscriptions.create(provisioned({ currentPeriodEnd }));
+    await ctx.invoices.upsertByProviderInvoiceId({
+      id: 'inv-paid-1',
+      orgId: 'org-1',
+      providerInvoiceId: 'in_paid_1',
+      status: 'PAID',
+      amountCents: 9900,
+      currency: 'usd',
+      periodStart: null,
+      periodEnd: null,
+      hostedInvoiceUrl: null,
+      pdfUrl: null,
+      createdAt: ctx.clock.now(),
+      updatedAt: ctx.clock.now(),
+    });
+
+    const res = await provider.refund({ orgId: 'org-1', reason: 'cancellation' });
+    expect(res).toEqual({ refundedCents: 4950 });
+    expect(retrieveInvoice).toHaveBeenCalledWith('in_paid_1');
+    expect(refundCreate).toHaveBeenCalledWith({ payment_intent: 'pi_1', amount: 4950 });
+    // No-leak: neither the result nor the recorded rows carry the secret (AC-PRORATE-07).
+    expect(JSON.stringify(res)).not.toContain(SECRET_KEY);
+    expect(JSON.stringify(await ctx.invoices.listForOrg('org-1'))).not.toContain(SECRET_KEY);
+  });
+
+  it('refunds 0 without calling Stripe when there is no paid invoice', async () => {
+    const { stripe, refundCreate } = fakeRefundStripe();
+    const { ctx, provider } = setup({ webhookSecret: WEBHOOK_SECRET }, stripe);
+    const currentPeriodEnd = new Date(ctx.clock.now().getTime() + 15 * 24 * 60 * 60 * 1000);
+    await ctx.subscriptions.create(provisioned({ currentPeriodEnd }));
+    const res = await provider.refund({ orgId: 'org-1', reason: 'cancellation' });
+    expect(res).toEqual({ refundedCents: 0 });
+    expect(refundCreate).not.toHaveBeenCalled();
   });
 });

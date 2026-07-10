@@ -73,6 +73,7 @@ function makeClients(): Clients {
       return {
         getSubscription: vi.fn(async () => sub),
         changePlan: vi.fn(async () => sub),
+        previewProration: vi.fn(async () => ({ plan: sub.plan, billingCycle: sub.billingCycle, prorationCents: 0 })),
         updateSeats: vi.fn(async () => sub),
         checkout: vi.fn(async () => ({ checkoutUrl: 'https://mock.pay/checkout/o' })),
         confirmCheckout: vi.fn(async () => ({ ...sub, status: 'ACTIVE' })),
