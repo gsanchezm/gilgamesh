@@ -755,3 +755,20 @@ FF secuenciales con gate integrado final:
   de un slice pasen ≠ que su e2e pase; un cambio de copy de EmptyState (sin punto) pasó el regex unitario
   sin punto pero rompió el e2e de string exacto — correr el gate Playwright antes de declarar hecho un
   slice de UI. Los 3 sobrevivientes de review se cierran con tests que muerden su mutación (no vacuos).
+
+## 2026-07-12 — Tuning de lockout v8 + redeploy staging (owner `/goal`)
+
+- **Decisión T1 (techo A1 por-IP):** ante las 2 opciones que recomendé en v8 ("subir el default O acotar el
+  techo a register/forgot/reset"), el owner eligió *"vamos por tu recomendación"* → **acotar**: `/auth/login`
+  sale del techo de peticiones A1 (`AbusePath.ceiling:false`). Razón: contar logins exitosos es hostil a NAT
+  corporativo; el lockout A2 por fallos (keyed por IP → NAT-safe) + el RateLimitGuard por-cuenta ya cubren el
+  abuso de login. El default (30/min) se mantiene; sigue env-config (`AUTH_IP_RATE_LIMIT`).
+- **Decisión T2 (reset cuenta contraseña débil como fallo):** el owner pidió arreglarlo. Fix = código de error
+  dedicado `RESET_TOKEN_INVALID` (→422, mismo status que VALIDATION) que solo lanza `ResetPassword` para token
+  malo/expirado/usado; el interceptor cuenta ESE, no `VALIDATION` (que es lo que el `validation.pipe.ts` custom
+  emite para toda falla de DTO, incl. contraseña débil). Elegí **código > mensaje** (más robusto; la
+  interacción pipe→interceptor solo se caza en e2e, no en unit). AC-IPLOCK-07 preservado; invariante sin-oráculo
+  intacto.
+- **Decisión deploy:** el owner eligió (AskUserQuestion) **push `f6ebf78` + deploy `f6ebf78`** → staging
+  redesplegado a `:f6ebf78` (rev `app--0000004`), tuning confirmado en vivo (token basura → `RESET_TOKEN_INVALID`).
+- Ambas cierran las 2 notas de tuning de v8 y completan Bloque-3 #4. Detalle: CLAUDE.md "Programa v8 tuning + staging redeploy".
