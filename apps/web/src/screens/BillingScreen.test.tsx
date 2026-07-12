@@ -88,6 +88,8 @@ function fakeClient(overrides?: Partial<BillingClient>): BillingClient {
     checkout: vi.fn(async () => ({ checkoutUrl: 'https://mock.pay/checkout/o' })),
     confirmCheckout: vi.fn(async () => ({ ...sub, status: 'ACTIVE' })),
     cancel: vi.fn(async () => ({ ...sub, status: 'CANCELED' })),
+    previewRefund: vi.fn(async (_o, input) => ({ refundableCents: 9900, amountCents: input.amountCents ?? 9900 })),
+    refund: vi.fn(async (_o, input) => ({ refundedCents: input.amountCents })),
     openPortal: vi.fn(async () => ({ portalUrl: 'https://mock.pay/portal/o1' })),
     ...overrides,
   };
@@ -349,6 +351,47 @@ describe('BillingScreen', () => {
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: 'Cancel subscription' }));
     await waitFor(() => expect(client.cancel).toHaveBeenCalledWith('o1', { refund: true }));
+  });
+
+  // ---- Slice 41: partial refund control (amount → preview → confirm) ----
+
+  it('does not render the refund control without a billing account', async () => {
+    render(<BillingScreen client={fakeClient()} orgId="o1" />);
+    await screen.findByText(/Free · TRIALING/);
+    expect(screen.queryByLabelText('Refund')).toBeNull();
+  });
+
+  it('previews a partial refund for the typed amount and refunds it on confirm (AC-REFUND-01/02)', async () => {
+    const previewRefund = vi.fn(async (_o: string, input: { amountCents?: number }) => ({
+      refundableCents: 9900,
+      amountCents: input.amountCents ?? 9900,
+    }));
+    const refund = vi.fn(async (_o: string, input: { amountCents: number }) => ({ refundedCents: input.amountCents }));
+    const client = fakeClient({ getSubscription: vi.fn(async () => activeSub), previewRefund, refund });
+    render(<BillingScreen client={client} orgId="o1" />);
+    await screen.findByText(/Starter · TRIALING/);
+
+    fireEvent.change(screen.getByLabelText('Refund amount'), { target: { value: '42' } });
+    await waitFor(() => expect(previewRefund).toHaveBeenCalledWith('o1', { amountCents: 4200 }));
+    expect(await screen.findByText('$42 will be refunded (of $99 refundable)')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refund' }));
+    await waitFor(() => expect(refund).toHaveBeenCalledWith('o1', { amountCents: 4200 }));
+    expect(await screen.findByText('Refunded $42')).toBeTruthy();
+  });
+
+  it('surfaces an over-ceiling refund error without crashing (AC-REFUND-03)', async () => {
+    const refund = vi.fn(async () => {
+      throw new Error('The refund exceeds the invoice refundable amount.');
+    });
+    const client = fakeClient({ getSubscription: vi.fn(async () => activeSub), refund });
+    render(<BillingScreen client={client} orgId="o1" />);
+    await screen.findByText(/Starter · TRIALING/);
+
+    fireEvent.change(screen.getByLabelText('Refund amount'), { target: { value: '200' } });
+    await screen.findByTestId('refund-preview');
+    fireEvent.click(screen.getByRole('button', { name: 'Refund' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('exceeds the invoice refundable amount');
   });
 
   it('surfaces a plan-change error without crashing', async () => {

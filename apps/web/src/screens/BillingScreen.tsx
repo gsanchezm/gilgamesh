@@ -8,6 +8,7 @@ import type {
   InvoiceView,
   Plan,
   PlanChangePreview,
+  RefundPreview,
   SubscriptionView,
 } from '../lib/billing-client';
 
@@ -78,6 +79,10 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
   // S40: the live proration preview for the selected plan/cycle, and the opt-in refund on cancel.
   const [preview, setPreview] = useState<PlanChangePreview | null>(null);
   const [refundOnCancel, setRefundOnCancel] = useState(false);
+  // S41: a partial (amount-level) refund — a USD amount, its live preview, and a post-refund notice.
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundPreview, setRefundPreview] = useState<RefundPreview | null>(null);
+  const [refundNotice, setRefundNotice] = useState<string | null>(null);
 
   // The invoices card degrades independently, like AI usage — and refreshes after a checkout.
   const loadInvoices = useCallback(async () => {
@@ -137,6 +142,34 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
     };
   }, [client, orgId, plan, cycle, sub]);
 
+  // S41: parse the typed USD amount into whole cents (blank / non-numeric → null).
+  const refundCents = useMemo(() => {
+    const dollars = Number(refundAmount);
+    if (!refundAmount.trim() || !Number.isFinite(dollars) || dollars <= 0) return null;
+    return Math.round(dollars * 100);
+  }, [refundAmount]);
+
+  // S41: preview the refund whenever the typed amount is a positive number AND a billing account
+  // exists. Read-only; a failed estimate simply hides the line (it never blocks the screen).
+  useEffect(() => {
+    if (!sub?.providerCustomerId || refundCents === null) {
+      setRefundPreview(null);
+      return;
+    }
+    let active = true;
+    client
+      .previewRefund(orgId, { amountCents: refundCents })
+      .then((p) => {
+        if (active) setRefundPreview(p);
+      })
+      .catch(() => {
+        if (active) setRefundPreview(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [client, orgId, refundCents, sub]);
+
   async function action(fn: () => Promise<SubscriptionView>) {
     setError(null);
     setBusy(true);
@@ -174,6 +207,26 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
       window.location.href = portalUrl;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not open the billing portal.');
+      setBusy(false);
+    }
+  };
+
+  // S41: execute the partial refund. Not routed through `action` (returns a RefundResult, not a
+  // SubscriptionView). On success it refreshes the invoices so the credit row shows immediately.
+  const doRefund = async () => {
+    if (refundCents === null) return;
+    setError(null);
+    setRefundNotice(null);
+    setBusy(true);
+    try {
+      const { refundedCents } = await client.refund(orgId, { amountCents: refundCents });
+      setRefundNotice(`Refunded ${money(refundedCents)}`);
+      setRefundAmount('');
+      setRefundPreview(null);
+      await loadInvoices();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not process the refund.');
+    } finally {
       setBusy(false);
     }
   };
@@ -347,6 +400,48 @@ export function BillingScreen({ client, orgId }: BillingScreenProps) {
           </ul>
         )}
       </section>
+
+      {/* S41: a partial (amount-level) refund of the latest paid invoice — amount → preview → confirm.
+          Only offered once a billing account exists (there is nothing to refund otherwise). */}
+      {sub.providerCustomerId && (
+        <section className="gx-billing__panel" aria-label="Refund">
+          <div className="gx-billing__panelhead">
+            <div>
+              <h2>Refund</h2>
+              <p>Refund an amount from the latest paid invoice.</p>
+            </div>
+          </div>
+          <label className="gx-billing__field">
+            <span>Refund amount (USD)</span>
+            <input
+              aria-label="Refund amount"
+              inputMode="numeric"
+              value={refundAmount}
+              onChange={(e) => setRefundAmount(e.target.value)}
+            />
+          </label>
+          {refundPreview && (
+            <p className="gx-billing__note" role="status" data-testid="refund-preview">
+              {money(refundPreview.amountCents)} will be refunded (of {money(refundPreview.refundableCents)} refundable)
+            </p>
+          )}
+          {refundNotice && (
+            <p className="gx-billing__note" role="status" data-testid="refund-notice">
+              {refundNotice}
+            </p>
+          )}
+          <div className="gx-billing__actions">
+            <button
+              type="button"
+              className="gx-btn gx-btn--secondary"
+              onClick={doRefund}
+              disabled={busy || refundCents === null}
+            >
+              Refund
+            </button>
+          </div>
+        </section>
+      )}
 
       <section className="gx-billing__plans" aria-label="Plan options">
         {PLANS.map((p) => (

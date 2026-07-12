@@ -78,6 +78,8 @@ function makeClients(): Clients {
         checkout: vi.fn(async () => ({ checkoutUrl: 'https://mock.pay/checkout/o' })),
         confirmCheckout: vi.fn(async () => ({ ...sub, status: 'ACTIVE' })),
         cancel: vi.fn(async () => ({ ...sub, status: 'CANCELED' })),
+        previewRefund: vi.fn(async () => ({ refundableCents: 0, amountCents: 0 })),
+        refund: vi.fn(async () => ({ refundedCents: 0 })),
         openPortal: vi.fn(async () => ({ portalUrl: 'https://mock.pay/portal/o' })),
         getBrainUsage: vi.fn(async () => ({
           totals: { calls: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreateTokens: 0 },
