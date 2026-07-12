@@ -161,7 +161,7 @@ describe('ResetPassword (AC-AUTH-11 / AC-AUTH-12 / AC-REC-02 / AC-REC-04)', () =
   it('rejects a consumed token on reuse (single-use) and keeps the reset password', async () => {
     await reset.execute({ token: rawToken, newPassword: 'N3w-Passphrase!!' });
     await expect(reset.execute({ token: rawToken, newPassword: '0ther-Passphrase!' })).rejects.toMatchObject({
-      code: 'VALIDATION',
+      code: 'RESET_TOKEN_INVALID',
     });
     const user = await ctx.users.findById(userId);
     expect(user?.passwordHash).toBe('hashed:N3w-Passphrase!!');
@@ -170,7 +170,7 @@ describe('ResetPassword (AC-AUTH-11 / AC-AUTH-12 / AC-REC-02 / AC-REC-04)', () =
   it('rejects an expired token (past the 30-minute TTL) and leaves the password unchanged', async () => {
     ctx.clock.advance(RESET_TOKEN_TTL_MS + 1);
     await expect(reset.execute({ token: rawToken, newPassword: 'N3w-Passphrase!!' })).rejects.toMatchObject({
-      code: 'VALIDATION',
+      code: 'RESET_TOKEN_INVALID',
     });
     const user = await ctx.users.findById(userId);
     expect(user?.passwordHash).toBe(`hashed:${creds.password}`);
@@ -178,7 +178,7 @@ describe('ResetPassword (AC-AUTH-11 / AC-AUTH-12 / AC-REC-02 / AC-REC-04)', () =
 
   it('rejects an unrecognized token', async () => {
     await expect(reset.execute({ token: 'garbage-token', newPassword: 'N3w-Passphrase!!' })).rejects.toMatchObject(
-      { code: 'VALIDATION' },
+      { code: 'RESET_TOKEN_INVALID' },
     );
     const user = await ctx.users.findById(userId);
     expect(user?.passwordHash).toBe(`hashed:${creds.password}`);
@@ -212,7 +212,7 @@ describe('ResetPassword (AC-AUTH-11 / AC-AUTH-12 / AC-REC-02 / AC-REC-04)', () =
     expect(fulfilled).toHaveLength(1);
     expect(rejected).toHaveLength(1);
     // The loser gets the SAME generic error as any invalid token — no oracle for the race.
-    expect(rejected[0]!.reason).toMatchObject({ code: 'VALIDATION' });
+    expect(rejected[0]!.reason).toMatchObject({ code: 'RESET_TOKEN_INVALID' });
 
     // Exactly one of the two candidate passwords landed, and completion was audited once.
     const user = await ctx.users.findById(userId);

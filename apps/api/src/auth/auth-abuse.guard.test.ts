@@ -75,6 +75,26 @@ describe('AuthAbuseGuard', () => {
     expect(res.setHeader).toHaveBeenCalledWith('Retry-After', '30');
   });
 
+  it('excludes login from the per-IP ceiling (A1) but still checks the lockout (A2)', async () => {
+    // Login opts out of the request ceiling (NAT-hostile on successful logins); it must never call
+    // store.hit, yet must still consult the failure lockout via getState.
+    const hit = vi.fn(async () => okHit);
+    const getState = vi.fn(async () => notLocked);
+    const g = guard({ getState }, { hit });
+    expect(await g.canActivate(ctx('/auth/login').context)).toBe(true);
+    expect(hit).not.toHaveBeenCalled(); // A1 ceiling skipped for login
+    expect(getState).toHaveBeenCalledOnce(); // A2 lockout still enforced
+  });
+
+  it('still applies the per-IP ceiling to register/forgot/reset', async () => {
+    const hit = vi.fn(async () => okHit);
+    const g = guard({}, { hit });
+    await g.canActivate(ctx('/auth/register').context);
+    await g.canActivate(ctx('/auth/forgot-password').context);
+    await g.canActivate(ctx('/auth/reset-password').context);
+    expect(hit).toHaveBeenCalledTimes(3);
+  });
+
   it('does not run the lockout pre-check on non-credential routes (register)', async () => {
     const getState = vi.fn(async () => notLocked);
     const g = guard({ getState }, {});

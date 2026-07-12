@@ -113,7 +113,7 @@ describe('Auth recovery (public routes, no session required)', () => {
     expect((await reset(token, 'N3w-Passphrase!!')).status).toBe(204);
     const replay = await reset(token, '0ther-Passphrase!');
     expect(replay.status).toBe(422);
-    expect(replay.body.title).toBe('VALIDATION');
+    expect(replay.body.title).toBe('RESET_TOKEN_INVALID');
     expect((await login(email, 'N3w-Passphrase!!')).status).toBe(200);
   });
 
@@ -141,7 +141,7 @@ describe('Auth recovery (public routes, no session required)', () => {
   it('an unrecognized token is rejected (422)', async () => {
     const res = await reset('garbage-token', 'N3w-Passphrase!!');
     expect(res.status).toBe(422);
-    expect(res.body.title).toBe('VALIDATION');
+    expect(res.body.title).toBe('RESET_TOKEN_INVALID');
   });
 
   it('a weak newPassword is rejected (422) without consuming the token', async () => {
@@ -150,7 +150,11 @@ describe('Auth recovery (public routes, no session required)', () => {
     await forgot(email);
     const token = tokenFrom(lastMailTo(email).text);
 
-    expect((await reset(token, 'short')).status).toBe(422);
+    const weak = await reset(token, 'short');
+    expect(weak.status).toBe(422);
+    // A weak password is a DTO rejection (VALIDATION) — DISTINCT from a bad token
+    // (RESET_TOKEN_INVALID) so the per-IP lockout can tell a fumble from an attack (slice 39 tuning).
+    expect(weak.body.title).toBe('VALIDATION');
     // The token survived the rejected attempt and still works.
     expect((await reset(token, 'N3w-Passphrase!!')).status).toBe(204);
   });

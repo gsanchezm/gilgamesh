@@ -56,14 +56,27 @@ describe('LoginOutcomeInterceptor', () => {
     expect(store.recordFailure).not.toHaveBeenCalled();
   });
 
-  it('records an invalid reset token (VALIDATION) on the reset-password route', async () => {
+  it('records a bad reset token (RESET_TOKEN_INVALID) on the reset-password route', async () => {
     const store = makeStore();
     const interceptor = new LoginOutcomeInterceptor(store, clock);
-    const err = new ApplicationError('VALIDATION', 'invalid token');
+    const err = new ApplicationError('RESET_TOKEN_INVALID', 'invalid token');
     await expect(
       lastValueFrom(interceptor.intercept(ctx('/auth/reset-password'), errHandler(err))),
     ).rejects.toBe(err);
     expect(store.recordFailure).toHaveBeenCalledOnce();
+  });
+
+  it('does NOT record a weak-password DTO rejection (VALIDATION) on the reset-password route', async () => {
+    // The global ValidationPipe maps a too-short new password to ApplicationError('VALIDATION').
+    // That is a legit user fumble, not a credential-guessing attempt, so it must not feed the
+    // lockout — only the dedicated RESET_TOKEN_INVALID (a real bad token) counts.
+    const store = makeStore();
+    const interceptor = new LoginOutcomeInterceptor(store, clock);
+    const err = new ApplicationError('VALIDATION', 'newPassword too short');
+    await expect(
+      lastValueFrom(interceptor.intercept(ctx('/auth/reset-password'), errHandler(err))),
+    ).rejects.toBe(err);
+    expect(store.recordFailure).not.toHaveBeenCalled();
   });
 
   it('is a no-op for non-credential routes', async () => {

@@ -15,17 +15,19 @@ import { TOKENS } from '../persistence/tokens';
 interface OutcomeRoute {
   suffix: string;
   method: string;
-  /** Domain error codes on this route that count as a brute-force failure (fed to the lockout). A
-   *  Nest DTO/validation error is NOT an ApplicationError, so it is never miscounted. */
+  /** Domain error codes on this route that count as a brute-force failure (fed to the lockout). */
   failureCodes: string[];
 }
 
 // Only the two credential surfaces feed the per-IP lockout: a wrong password (INVALID_CREDENTIALS)
-// and an invalid/expired reset token (VALIDATION). USER_DISABLED and DTO errors are deliberately
-// excluded — they are not credential-guessing signals.
+// and a well-formed-but-invalid/expired reset TOKEN (RESET_TOKEN_INVALID). We deliberately do NOT
+// count plain VALIDATION on reset-password: the global ValidationPipe maps every DTO failure —
+// including a legit user's too-short new password — to ApplicationError('VALIDATION'), which is not
+// a credential-guessing signal. The dedicated RESET_TOKEN_INVALID code (thrown only by the
+// ResetPassword use case for a bad token) is what isolates the real attack from the fumble.
 const OUTCOME_ROUTES: OutcomeRoute[] = [
   { suffix: '/auth/login', method: 'POST', failureCodes: ['INVALID_CREDENTIALS'] },
-  { suffix: '/auth/reset-password', method: 'POST', failureCodes: ['VALIDATION'] },
+  { suffix: '/auth/reset-password', method: 'POST', failureCodes: ['RESET_TOKEN_INVALID'] },
 ];
 
 /**

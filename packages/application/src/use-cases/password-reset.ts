@@ -106,8 +106,10 @@ export interface ResetPasswordDeps {
  * Completes a password reset (keystone §6 POST /auth/reset-password; AC-AUTH-11/12, AC-REC-02/04).
  * Valid + unexpired + unconsumed token: claim it (usedAt — single-use, BEFORE the rewrite so a
  * double-submit can't double-apply), set the new Argon2id hash, revoke ALL the user's sessions,
- * audit auth.reset.completed. Anything else -> VALIDATION (422), password untouched. The policy
- * check runs first so a weak password never consumes the token. The whole flow is one UnitOfWork
+ * audit auth.reset.completed. A bad/expired/consumed token -> RESET_TOKEN_INVALID (422); a weak
+ * password -> WEAK_PASSWORD (422). Both leave the password untouched. The distinct token code lets
+ * the per-IP lockout (slice 39) count a real bad-token attempt without counting a weak-password
+ * fumble. The policy check runs first so a weak password never consumes the token. The whole flow is one UnitOfWork
  * transaction with a CONDITIONAL claim as the single-use gate: a concurrent double-submit lets
  * exactly one caller through, and a mid-flight failure rolls the claim back (audit #6).
  */
@@ -127,7 +129,7 @@ export class ResetPassword {
     await this.deps.uow.transaction(async ({ passwordResets, users, sessions, audit }) => {
       const rec = await passwordResets.findByTokenHash(tokenHash);
       if (!rec || rec.usedAt !== null || rec.expiresAt.getTime() <= now.getTime()) {
-        throw new ApplicationError('VALIDATION', INVALID_TOKEN_MESSAGE);
+        throw new ApplicationError('RESET_TOKEN_INVALID', INVALID_TOKEN_MESSAGE);
       }
       const user = await users.findById(rec.userId);
       if (!user) throw new ApplicationError('VALIDATION', INVALID_TOKEN_MESSAGE);
@@ -135,7 +137,7 @@ export class ResetPassword {
       // The atomic single-use gate: the loser of a double-submit sees false here and gets the
       // same generic error as any invalid token.
       if (!(await passwordResets.claimUnused(rec.id, now))) {
-        throw new ApplicationError('VALIDATION', INVALID_TOKEN_MESSAGE);
+        throw new ApplicationError('RESET_TOKEN_INVALID', INVALID_TOKEN_MESSAGE);
       }
       const passwordHash = await this.deps.hasher.hash(input.newPassword);
       await users.updatePassword(user.id, passwordHash, now);

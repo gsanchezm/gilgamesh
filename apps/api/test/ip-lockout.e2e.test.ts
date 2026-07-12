@@ -119,12 +119,42 @@ describe('Per-IP lockout + ceiling (slice 39)', () => {
   it('AC-07: reset-password failures feed the same per-IP lockout', async () => {
     const ip = '203.0.113.30';
     for (let i = 0; i < THRESHOLD; i++) {
-      const res = await resetFrom(ip, 'invalid-token-xyz'); // invalid token -> VALIDATION (422)
+      const res = await resetFrom(ip, 'invalid-token-xyz'); // invalid token -> RESET_TOKEN_INVALID (422)
       expect(res.status).not.toBe(429);
     }
     // The IP is now locked; a subsequent login from it is rejected (shared lockout bucket).
     const blocked = await loginFrom(ip, 'whoever@example.com', 'wrong-Password1');
     expect(blocked.status).toBe(429);
     expect(String(blocked.body.detail)).toContain('failed attempts');
+  });
+
+  it('AC-08 (tuning): a weak new password on reset does NOT feed the lockout', async () => {
+    // A legit user fumbling a too-short new password is a DTO VALIDATION error, not a
+    // credential-guessing signal. Only a well-formed-but-wrong/expired TOKEN (RESET_TOKEN_INVALID)
+    // may count. THRESHOLD (3) < IP_LIMIT (20) and reset is still ceiling'd, so 3 attempts isolate A2.
+    const ip = '203.0.113.40';
+    for (let i = 0; i < THRESHOLD; i++) {
+      const res = await request(app.getHttpServer())
+        .post('/auth/reset-password')
+        .set('X-Forwarded-For', ip)
+        .send({ token: 'some-nonempty-token', newPassword: 'short' }); // weak -> DTO VALIDATION (422)
+      expect(res.status).toBe(422);
+    }
+    // The IP must NOT be locked: a login from it is not throttled by any lockout.
+    const after = await loginFrom(ip, 'whoever@example.com', 'wrong-Password1');
+    expect(after.status).not.toBe(429);
+  });
+
+  it('AC-09 (tuning): the per-IP ceiling excludes login (covered by A2 + per-account guard)', async () => {
+    // Login is deliberately outside the A1 request ceiling: counting successful logins would be
+    // NAT-hostile (a shared corporate egress IP with a login surge would 429 legit users). Failed
+    // logins are still bounded by the A2 exponential lockout. Here we exceed IP_LIMIT with logins
+    // that never fail the lockout (a valid account, correct password) and expect NO 429.
+    const ip = '203.0.113.50';
+    await registerFrom(ip, 'ceil-login@example.com').expect(201);
+    for (let i = 0; i < IP_LIMIT + 2; i++) {
+      const res = await loginFrom(ip, 'ceil-login@example.com', 'C0rrect-Horse!');
+      expect(res.status).not.toBe(429); // never ceiling'd on login
+    }
   });
 });

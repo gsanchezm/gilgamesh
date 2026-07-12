@@ -7,6 +7,10 @@ export type AppErrorCode =
   | 'FORBIDDEN'
   | 'INVALID_TOOL'
   | 'VALIDATION'
+  // A well-formed but invalid/expired/consumed password-reset token. Distinct from VALIDATION so the
+  // per-IP lockout (slice 39) can count a real bad-token attempt WITHOUT counting a legit user's
+  // weak-new-password DTO rejection (which stays VALIDATION). Maps to 422, same as VALIDATION.
+  | 'RESET_TOKEN_INVALID'
   | 'CSRF_FAILED'
   | 'RATE_LIMITED'
   | 'CONFLICT'

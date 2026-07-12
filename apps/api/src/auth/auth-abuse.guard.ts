@@ -13,14 +13,20 @@ interface AbusePath {
   method: string;
   /** Feed + pre-check the failure lockout (A2) for this route (credential surfaces only). */
   lockout?: boolean;
+  /** Count this route toward the per-IP request ceiling (A1). Defaults to true; login opts OUT. */
+  ceiling?: boolean;
 }
 
-// Auth mutation routes that share the per-IP request ceiling (A1). login + reset-password ALSO
-// carry the failure lockout (A2). forgot-password is enumeration-safe (never "fails") but still
-// counts toward the ceiling; register counts too (org-farming). SSO GETs already bucket per-IP in
-// RateLimitGuard, and the authenticated /messages + /test-cases/generate are out of scope here.
+// Auth mutation routes covered by the guard. The per-IP request ceiling (A1) applies to
+// register/forgot/reset (org-farming / spray). LOGIN is deliberately EXCLUDED from A1 (ceiling:
+// false): a shared per-IP request ceiling that counts *successful* logins is NAT-hostile — a
+// corporate egress IP with a login surge would 429 legitimate users. Login abuse is instead bounded
+// by the A2 failure lockout (NAT-safe: it counts only failed attempts and clears on success) plus
+// the per-account RateLimitGuard. login + reset-password carry the A2 lockout. forgot-password is
+// enumeration-safe (never "fails") but still counts toward the ceiling; register counts too. SSO
+// GETs already bucket per-IP in RateLimitGuard; the authenticated surfaces are out of scope here.
 const ABUSE_PATHS: AbusePath[] = [
-  { suffix: '/auth/login', method: 'POST', lockout: true },
+  { suffix: '/auth/login', method: 'POST', lockout: true, ceiling: false },
   { suffix: '/auth/register', method: 'POST' },
   { suffix: '/auth/forgot-password', method: 'POST' },
   { suffix: '/auth/reset-password', method: 'POST', lockout: true },
@@ -73,7 +79,9 @@ export class AuthAbuseGuard implements CanActivate {
       }
     }
 
-    // A1 — per-IP ceiling across the auth mutation routes (one shared budget per IP).
+    // A1 — per-IP ceiling across the auth mutation routes (one shared budget per IP). Skipped for
+    // routes that opt out (login), so a NAT'd login surge is never ceiling'd (it relies on A2).
+    if (matched.ceiling === false) return true;
     try {
       const hit = await this.store.hit(ceilingKeyForIp(ip), this.cfg.ipWindowMs);
       if (hit.count > this.cfg.ipLimit) {
