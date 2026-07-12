@@ -72,6 +72,15 @@ describe('Test Execution API', () => {
     const got = await read(request(server()).get(`/runs/${run.body.id}`));
     expect(got.status).toBe(200);
     expect(got.body.results).toHaveLength(3);
+    // Slice 43: the per-result view carries the keystone-v0.7 tool/discipline over the wire (the
+    // Reports "Tools" card reads them). The stub kernel tags this feature's scenarios playwright/e2e.
+    expect(
+      got.body.results.map((r: { tool: string; discipline: string }) => ({ tool: r.tool, discipline: r.discipline })),
+    ).toEqual([
+      { tool: 'playwright', discipline: 'e2e' },
+      { tool: 'playwright', discipline: 'e2e' },
+      { tool: 'playwright', discipline: 'e2e' },
+    ]);
 
     // A second run must sort ahead of the first (newest-first, deterministic tiebreaker).
     const run2 = await mutate(request(server()).post(`/projects/${projectId}/runs`)).send({

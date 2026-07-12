@@ -48,8 +48,10 @@ test('Reports: after a run, the project report aggregates its results', async ({
   await page.goto(`/projects/${projectId}/reports`);
   await expect(page.getByRole('heading', { name: 'Reports' })).toBeVisible();
 
-  // Overall run health aggregated across the single run (1 pass / 1 fail / 1 skip).
-  await expect(page.getByText('33.3%')).toBeVisible();
+  // Overall run health aggregated across the single run (1 pass / 1 fail / 1 skip). Scoped to the
+  // health-rate element: the slice-43 "Tools" card also renders "33.3%" (the playwright row), so the
+  // bare getByText would hit two elements under Playwright strict mode.
+  await expect(page.locator('.gx-report__healthRate')).toHaveText('33.3%');
   await expect(page.getByText('1 of 3 tests passed')).toBeVisible();
   await expect(page.getByText(/Across 1 runs — 1 failures need triage, 1 skipped/)).toBeVisible();
 
@@ -58,6 +60,14 @@ test('Reports: after a run, the project report aggregates its results', async ({
   await expect(page.getByTestId('stat-passed')).toContainText('1');
   await expect(page.getByTestId('stat-failed')).toContainText('1');
   await expect(page.getByTestId('stat-skipped')).toContainText('1');
+
+  // Slice 43 — the per-tool "Tools" card. The deterministic kernel tags all three scenarios
+  // "playwright" (stub-emitted tool/discipline), so one row shows 1 passed / 1 failed / 1 skipped.
+  const tool = page.getByTestId('tool-playwright');
+  await expect(tool).toContainText('33.3%');
+  await expect(tool).toContainText('1 passed');
+  await expect(tool).toContainText('1 failed');
+  await expect(tool).toContainText('1 skipped');
 
   // The run itself appears in the recent-runs list.
   await expect(page.getByText('FAILED', { exact: true })).toBeVisible();
