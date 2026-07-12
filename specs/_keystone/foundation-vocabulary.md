@@ -4,7 +4,7 @@
 > signatures, and the OpenAPI/schema skeleton. Every foundation artifact MUST adhere to it
 > **verbatim** — same entity names, field names, enum values, IDs, and port signatures.
 > If an artifact needs a name not defined here, it adds it here first (don't invent locally).
-> Authored centrally (full design context). Expansions fan out from this. v0.6 — 2026-07-06.
+> Authored centrally (full design context). Expansions fan out from this. v0.7 — 2026-07-12.
 
 ## 0. Conventions
 - TypeScript everywhere. Package names `@gilgamesh/<name>`.
@@ -57,7 +57,7 @@ KnowledgeScope (key) = <AgentSlot key> | shared   # lowercase keys; nullable on 
 - **Agent** — id, orgId, slot:AgentSlot, deityName, role(label), family:AgentFamily, glyph, culture, defaultTool, createdAt. Per-Org catalog (the 11). Unique(orgId,slot). Seeded from roster (§3).
 - **ToolBinding** — id, orgId, projectId, agentId, tool(string ∈ per-role options), enabled(bool=awake), updatedAt. Unique(projectId,agentId). Per-Project agent state + tool selection (Strategy).
 - **Run** — id, orgId, projectId, status:RunStatus, mode:RunMode, trigger:RunTrigger, selectedStages(string[]), progress(int 0..100), runLabel, commitSha?, passed?, failed?, skipped?, total?, ratePct?, durationMs?, createdById, startedAt?, finishedAt?, createdAt.
-- **RunNode** — id, orgId, runId, key, kind:RunNodeKind, agentId?, tool?, feature?, sliceId?, level(int), deps(string[]), state:RunNodeState, passed?, failed?, skipped?, durationMs?, startedAt?, finishedAt?. DAG node.
+- **RunNode** — id, orgId, runId, key, kind:RunNodeKind, agentId?, tool?, discipline?, feature?, sliceId?, level(int), deps(string[]), state:RunNodeState, passed?, failed?, skipped?, durationMs?, startedAt?, finishedAt?. DAG node. (`discipline?` added v0.7; the persisted `RunResult`-lite exposes `tool`+`discipline` for the Reports per-tool breakdown.)
 - **Artifact** — id, orgId, runId, runNodeId?, type:ArtifactType, storageKey, contentType, sizeBytes, capturedAt, meta(json). Blob via signed expiring URL (never public).
 - **Integration** — id, orgId, key(stable, §8), group:IntegrationGroup, connected(bool), secretRef?(Key Vault ref — NEVER raw token), config(json non-secret), connectedById?, connectedAt?. Unique(orgId,key).
 - **Subscription** — id, orgId(unique), plan:Plan, billingCycle:BillingCycle, seats(int), status:SubscriptionStatus, runMinutesQuota(int), runMinutesUsed(int), brainTokensQuota(int), brainTokensUsed(int), providerCustomerId?, providerSubscriptionId?, currentPeriodEnd?. Stripe or deterministic mock (PAYMENTS_MODE).
@@ -214,6 +214,11 @@ STARTER 2M/mo · GROWTH 10M/mo · SCALE unlimited. Resets each billing period (s
 executions).
 
 ## 10. Changelog
+- **v0.7 — 2026-07-12** — Reports per-tool amendment (owner decision, 2026-07-12): `RunNode` +`discipline?`
+  (§2); the persisted `RunResult`-lite now carries both `tool` (already on `RunNode`) and `discipline`
+  (both nullable strings). Populated deterministically by the `DeterministicKernel` stub today (the real
+  TOM kernel emits genuine values later); enables the capture-08 per-tool "Tools" breakdown (slice 43).
+  Nothing frozen was renamed, removed, or restructured.
 - **v0.6 — 2026-07-06** — Token-billing + Voyage BYOK amendment (owner decisions, 2026-07-06):
   +`voyage` key (§8, AI_PROVIDERS) · `Subscription` +`brainTokensQuota(int)` +`brainTokensUsed(int)`
   (§2) · §9 AI Brain token allowances per tier (FREE 100k · STARTER 2M · GROWTH 10M · SCALE
