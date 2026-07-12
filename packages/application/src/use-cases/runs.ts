@@ -35,6 +35,10 @@ export interface RunResultView {
   refId: string;
   name: string;
   status: ResultStatus;
+  /** Executing tool (keystone v0.7): playwright | vitest | k6 | zap. Nullable — real-kernel/legacy rows may omit. */
+  tool?: string | null;
+  /** Test discipline (keystone v0.7): e2e | unit | perf | security. Nullable. */
+  discipline?: string | null;
   log: string[];
 }
 
@@ -79,7 +83,14 @@ function runSummary(run: RunRecord): RunSummaryView {
 function runView(run: RunRecord, results: RunResultRecord[]): RunView {
   return {
     ...runSummary(run),
-    results: results.map((r) => ({ refId: r.refId, name: r.name, status: r.status, log: r.log })),
+    results: results.map((r) => ({
+      refId: r.refId,
+      name: r.name,
+      status: r.status,
+      tool: r.tool ?? null,
+      discipline: r.discipline ?? null,
+      log: r.log,
+    })),
   };
 }
 

@@ -45,6 +45,31 @@ describe('Test Execution — runs', () => {
     expect(got.status).toBe('FAILED');
   });
 
+  it('carries the keystone-v0.7 tool/discipline through TriggerRun and GetRun (slice 43)', async () => {
+    // Distinct scenario names drive the DeterministicKernel's tool/discipline attribution so the
+    // per-result view is proven to no longer strip the fields (the Reports "Tools" breakdown reads them).
+    const f = await new CreateFeature(ctx).execute({
+      userId,
+      projectId,
+      path: 'multi-tool.feature',
+      content:
+        'Feature: Multi\n' +
+        '  Scenario: user logs in\n    When go\n' + // -> playwright / e2e
+        '  Scenario: perf load spike\n    When go\n' + // -> k6 / perf
+        '  Scenario: security xss probe\n    When go\n', // -> zap / security
+    });
+    const run = await new TriggerRun(ctx).execute({ userId, projectId, targetKind: 'FEATURE', targetId: f.id });
+    expect(run.results.map((r) => r.tool)).toEqual(['playwright', 'k6', 'zap']);
+    expect(run.results.map((r) => r.discipline)).toEqual(['e2e', 'perf', 'security']);
+
+    const got = await new GetRun(ctx).execute({ userId, runId: run.id });
+    expect(got.results.map((r) => ({ tool: r.tool, discipline: r.discipline }))).toEqual([
+      { tool: 'playwright', discipline: 'e2e' },
+      { tool: 'k6', discipline: 'perf' },
+      { tool: 'zap', discipline: 'security' },
+    ]);
+  });
+
   it('runs a single test case (AC-RUN-02)', async () => {
     const tc = await new CreateTestCase(ctx).execute({ userId, projectId, title: 'Login works', priority: 'HIGH' });
     const run = await new TriggerRun(ctx).execute({ userId, projectId, targetKind: 'TESTCASE', targetId: tc.id });
