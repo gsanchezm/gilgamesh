@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { RunSummaryView, RunsClient } from '../lib/runs-client';
+import type { ResultStatus, RunResultView, RunSummaryView, RunView, RunsClient } from '../lib/runs-client';
 import { ReportsScreen } from './ReportsScreen';
 
 const summary = (over: Partial<RunSummaryView>): RunSummaryView => ({
@@ -20,14 +20,35 @@ const summary = (over: Partial<RunSummaryView>): RunSummaryView => ({
   ...over,
 });
 
+const result = (tool: string | null, status: ResultStatus, refId = `${tool}-${status}`): RunResultView => ({
+  refId,
+  name: refId,
+  status,
+  tool,
+  discipline: null,
+  log: [],
+});
+
+// A getRun that resolves each run to a RunView carrying per-result tools (the keystone-v0.7 dimension
+// the Reports "Tools" card reads). The default fakeClient wires this so the tools card renders.
+const runViewOf = (over: Partial<RunView>): RunView => ({ ...summary({}), results: [], ...over });
+
 function fakeClient(overrides?: Partial<RunsClient>): RunsClient {
+  // Flattened across both runs: playwright 2P/1F (66.7%), k6 1P/1S (50%), zap 1F (0%).
+  const detail: Record<string, RunView> = {
+    ra: runViewOf({
+      id: 'ra',
+      results: [result('playwright', 'PASS', 'pw-1'), result('playwright', 'PASS', 'pw-2'), result('playwright', 'FAIL', 'pw-3')],
+    }),
+    rb: runViewOf({ id: 'rb', results: [result('k6', 'PASS'), result('k6', 'SKIP'), result('zap', 'FAIL')] }),
+  };
   return {
     triggerRun: vi.fn(),
     listRuns: vi.fn(async () => [
       summary({ id: 'ra', runLabel: 'nightly', passed: 100, failed: 20, total: 120, durationMs: 1000, createdAt: '2026-05-24T10:00:00.000Z' }),
       summary({ id: 'rb', runLabel: 'local', passed: 25, failed: 7, total: 32, durationMs: 500, createdAt: '2026-05-25T19:00:00.000Z' }),
     ]),
-    getRun: vi.fn(),
+    getRun: vi.fn(async (id: string) => detail[id] ?? runViewOf({ id })),
     ...overrides,
   };
 }
@@ -74,6 +95,42 @@ describe('ReportsScreen', () => {
     renderScreen(fakeClient());
     expect(await screen.findByText('nightly')).toBeTruthy();
     expect(screen.getByText('local')).toBeTruthy();
+  });
+
+  it('renders the per-tool "Tools" card grouping every run\'s results by executing tool (AC-REPORT-TOOL-01/02)', async () => {
+    renderScreen(fakeClient());
+    // The tools card only appears once the per-run details (getRun) resolve carrying tools.
+    const card = await screen.findByTestId('tools-card');
+
+    // playwright: 2 passed / 1 failed of 3 total -> a 1-DECIMAL rate (66.7), the crux the aggregate proof needs.
+    const pw = within(screen.getByTestId('tool-playwright'));
+    expect(pw.getByText('66.7%')).toBeTruthy();
+    expect(pw.getByText('2 passed')).toBeTruthy();
+    expect(pw.getByText('1 failed')).toBeTruthy();
+    expect(pw.getByText('0 skipped')).toBeTruthy();
+    expect(pw.getByText('3 total')).toBeTruthy();
+
+    // k6: 1 passed / 1 skipped across the two runs (skip counts in the denominator) -> 50%.
+    const k6 = within(screen.getByTestId('tool-k6'));
+    expect(k6.getByText('50%')).toBeTruthy();
+    expect(k6.getByText('1 passed')).toBeTruthy();
+    expect(k6.getByText('1 skipped')).toBeTruthy();
+
+    // zap: a single failure -> 0%.
+    expect(within(screen.getByTestId('tool-zap')).getByText('0%')).toBeTruthy();
+
+    // Deterministic order: most-executed first (playwright 3), then k6 (2), then zap (1).
+    const rows = within(card).getAllByTestId(/^tool-/);
+    expect(rows.map((el) => el.getAttribute('data-testid'))).toEqual(['tool-playwright', 'tool-k6', 'tool-zap']);
+  });
+
+  it('degrades gracefully — a failed per-run detail fetch omits the Tools card but keeps the health card', async () => {
+    // If getRun rejects for every run, the tools breakdown has no data; the primary report still renders.
+    const client = fakeClient({ getRun: vi.fn(async () => { throw new Error('boom'); }) });
+    renderScreen(client);
+    expect(await screen.findByText('82.2%')).toBeTruthy(); // health card unaffected
+    expect(screen.queryByTestId('tools-card')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull(); // a detail failure is not a screen error
   });
 
   it('shows the EmptyState when the project has no runs', async () => {

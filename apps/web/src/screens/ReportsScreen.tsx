@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { summarizeAcrossRuns, type RunAggregateInput } from '@gilgamesh/domain';
+import { summarizeAcrossRuns, summarizeByTool, type RunAggregateInput } from '@gilgamesh/domain';
 import { EmptyState, ErrorState, Spinner } from '@gilgamesh/ui';
-import type { RunSummaryView, RunsClient } from '../lib/runs-client';
+import type { RunResultView, RunSummaryView, RunsClient } from '../lib/runs-client';
 
 export interface ReportsScreenProps {
   runsClient: RunsClient;
@@ -30,21 +30,38 @@ function formatDuration(ms: number): string {
 
 export function ReportsScreen({ runsClient, projectId }: ReportsScreenProps) {
   const [runs, setRuns] = useState<RunSummaryView[]>([]);
+  const [results, setResults] = useState<RunResultView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // A `useCallback` load (mirroring BillingScreen) so the error state can retry it. Same data path
-  // as before — `runsClient.listRuns` — under the same loading/error gates. `isActive` restores the
-  // pre-refactor safety guard: the mount effect passes `() => active` so a response arriving after
-  // unmount / a mid-flight projectId change never sets state on a dead screen (review #1); retry
-  // calls it with no arg (always active).
+  // A `useCallback` load (mirroring BillingScreen) so the error state can retry it. `isActive` restores
+  // the pre-refactor safety guard: the mount effect passes `() => active` so a response arriving after
+  // unmount / a mid-flight projectId change never sets state on a dead screen (review #1); retry calls
+  // it with no arg (always active).
+  //
+  // ONE load window: `listRuns` (the run-health summaries, unchanged) then per-run `getRun` details for
+  // the per-tool "Tools" breakdown — the only surface carrying the keystone-v0.7 per-result `tool` (the
+  // list read is deliberately NOT widened). The detail fetch degrades gracefully: a failed run yields no
+  // tool rows, never blanking the health card. Setting runs + results + loading together (not in a
+  // trailing phase) keeps the getRun promises inside the guarded window (no state-after-unmount).
   const load = useCallback(
     async (isActive: () => boolean = () => true) => {
       setError(null);
       setLoading(true);
       try {
         const data = await runsClient.listRuns(projectId);
-        if (isActive()) setRuns(data);
+        const details = await Promise.all(
+          data.map((run) =>
+            Promise.resolve()
+              .then(() => runsClient.getRun(run.id))
+              .then((rv) => rv.results)
+              .catch(() => [] as RunResultView[]),
+          ),
+        );
+        if (isActive()) {
+          setRuns(data);
+          setResults(details.flat());
+        }
       } catch (err) {
         if (isActive()) setError(err instanceof Error ? err.message : 'Could not load runs.');
       } finally {
@@ -65,6 +82,10 @@ export function ReportsScreen({ runsClient, projectId }: ReportsScreenProps) {
 
   const summary = useMemo(() => summarizeAcrossRuns(runs.map(toAggregate)), [runs]);
   const barTotal = Math.max(summary.testsExecuted, 1);
+  // Per-tool "Tools" breakdown (capture 08). The single source is the pure `summarizeByTool` fold —
+  // the UI duplicates none of the arithmetic. Honesty: `tool` is emitted by the DeterministicKernel
+  // stub until the real TOM kernel lands (same posture as every other kernel-backed number here).
+  const byTool = useMemo(() => summarizeByTool(results), [results]);
 
   return (
     <section className="gx-report">
@@ -117,6 +138,24 @@ export function ReportsScreen({ runsClient, projectId }: ReportsScreenProps) {
               <p className="gx-report__statValue gx-report__statValue--skip">{summary.skipped}</p>
             </article>
           </div>
+
+          {byTool.length > 0 && (
+            <>
+              <h2 className="gx-report__section">Tools</h2>
+              <ul className="gx-report__tools" data-testid="tools-card">
+                {byTool.map((t) => (
+                  <li key={t.tool} className="gx-report__tool" data-testid={`tool-${t.tool}`}>
+                    <span className="gx-report__toolName">{t.tool}</span>
+                    <span className="gx-report__toolRate">{t.ratePct}%</span>
+                    <span className="gx-report__toolCount gx-report__toolCount--pass">{t.passed} passed</span>
+                    <span className="gx-report__toolCount gx-report__toolCount--fail">{t.failed} failed</span>
+                    <span className="gx-report__toolCount gx-report__toolCount--skip">{t.skipped} skipped</span>
+                    <span className="gx-report__toolTotal">{t.total} total</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
 
           <h2 className="gx-report__section">Recent runs</h2>
           <ul className="gx-report__runs">

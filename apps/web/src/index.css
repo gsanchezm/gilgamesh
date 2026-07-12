@@ -1846,6 +1846,58 @@ body {
   justify-self: end;
 }
 
+/* Per-tool "Tools" breakdown (capture 08) — mirrors the recent-runs row language. */
+.gx-report__tools {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gx-report__tool {
+  display: grid;
+  grid-template-columns: 1.4fr auto auto auto auto auto;
+  align-items: center;
+  gap: 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 13px 16px;
+}
+.gx-report__toolName {
+  font-weight: 600;
+  color: var(--text);
+  font-family: var(--font-mono);
+  text-transform: lowercase;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gx-report__toolRate {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text);
+  justify-self: start;
+}
+.gx-report__toolCount,
+.gx-report__toolTotal {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  justify-self: end;
+}
+.gx-report__toolCount--pass {
+  color: var(--green);
+}
+.gx-report__toolCount--fail {
+  color: var(--danger);
+}
+.gx-report__toolCount--skip {
+  color: var(--amber);
+}
+
 @media (max-width: 920px) {
   .gx-report__stats {
     grid-template-columns: 1fr 1fr;
@@ -1865,6 +1917,14 @@ body {
   .gx-report__runCounts,
   .gx-report__runDuration,
   .gx-report__runDate {
+    justify-self: start;
+  }
+  .gx-report__tool {
+    grid-template-columns: 1fr auto;
+    row-gap: 6px;
+  }
+  .gx-report__toolCount,
+  .gx-report__toolTotal {
     justify-self: start;
   }
 }
