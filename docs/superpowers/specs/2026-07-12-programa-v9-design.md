@@ -134,7 +134,8 @@ export interface VoicePort {
   `VOICE_MODE=offline` or a missing provider key. **All four harnesses pin `VOICE_MODE=offline`** (the
   `BRAIN/SSO/EMAIL/PAYMENTS/VAULT_MODE` idiom → now `+VOICE_MODE`).
 - **Real adapter** — behind the port, chosen by env. **Open decision (§Open decisions):** recommend
-  **Azure Speech** (infra coherence with ACA/Key Vault); the port makes it swappable, CI never calls it.
+  **Azure Speech** (infra coherence with ACA/Key Vault) — **CONFIRMED by owner (2026-07-12)**; the port
+  makes it swappable, CI never calls it.
 - **DI wiring** — bind `VOICE` in both persistence wirings (`persistence.module.ts` + `tokens.ts`), the one
   self-contained shared-file touch this batch; register a small `VoiceModule` (voice controller).
 - **API** — `POST /chat/:sessionId/transcribe` (audio → text; rate-limited like the other chat mutations) and
@@ -223,12 +224,13 @@ the mobile program is brainstormed and its Phase-1 spec clears its own review ga
 
 ---
 
-## Open decisions (surface at the spec review gate)
+## Resolved decisions (were open at the review gate)
 
-- **Voice cloud provider (Slice 42).** Recommend **Azure Speech** (coherent with the existing Azure infra:
-  ACA, Key Vault, Managed Identity; STT + TTS in one SDK). Alternatives: OpenAI (Whisper + TTS), Deepgram,
-  ElevenLabs. The `VoicePort` keeps it swappable and CI always runs the stub, so this choice carries only
-  cost/privacy/BYOK weight — not architectural risk. **Owner to confirm at review.**
+- **Voice cloud provider (Slice 42) → Azure Speech. CONFIRMED by owner (2026-07-12).** Coherent with the
+  existing Azure infra (ACA, Key Vault, Managed Identity; STT + TTS in one SDK). The `VoicePort` keeps it
+  swappable and CI always runs the stub, so the choice carries only cost/privacy/BYOK weight — not
+  architectural risk. Considered alternatives: OpenAI (Whisper + TTS), Deepgram, ElevenLabs.
+- **Spec + tanda shape → APPROVED by owner (2026-07-12, "adelante en todo").**
 
 ## Deferred (named, not built this program)
 
