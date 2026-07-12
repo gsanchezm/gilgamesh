@@ -6,6 +6,7 @@ export * from './agents/runtime-status';
 export * from './testlab/parse-gherkin';
 export * from './execution/summarize-run';
 export * from './execution/summarize-across-runs';
+export * from './execution/summarize-by-tool';
 export * from './billing/plans';
 export * from './billing/proration';
 export * from './pricing/plan-catalog';
