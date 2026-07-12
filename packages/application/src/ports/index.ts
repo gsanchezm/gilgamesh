@@ -5,6 +5,7 @@ export * from './security';
 export * from './clock';
 export * from './id';
 export * from './brain';
+export * from './voice';
 export * from './email';
 export * from './identity';
 export * from './events';
