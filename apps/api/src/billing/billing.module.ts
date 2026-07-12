@@ -10,6 +10,8 @@ import {
   type MembershipRepository,
   type PaymentProvider,
   PreviewPlanChange,
+  PreviewRefund,
+  RefundPayment,
   StartBillingPortal,
   StartCheckout,
   type SubscriptionRepository,
@@ -62,6 +64,8 @@ function subProvider<U>(UseCase: Ctor<U>): Provider {
     subProvider(StartBillingPortal),
     subProvider(ConfirmCheckout),
     subProvider(CancelSubscription),
+    subProvider(RefundPayment),
+    subProvider(PreviewRefund),
     {
       provide: ListInvoices,
       useFactory: (invoices: InvoiceRepository, memberships: MembershipRepository) =>

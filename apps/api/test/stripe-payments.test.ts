@@ -497,3 +497,107 @@ describe('StripePaymentProvider proration + refunds (slice 40, AC-PRORATE-01/02/
     expect(refundCreate).not.toHaveBeenCalled();
   });
 });
+
+describe('StripePaymentProvider partial refunds + always_invoice (slice 41, AC-REFUND-01/02/03/04/06)', () => {
+  function fakeRefundStripe(paymentIntent: string | null = 'pi_1') {
+    const retrieveInvoice = vi.fn(async (_id: string) => ({ payment_intent: paymentIntent }));
+    const refundCreate = vi.fn(async (params: { amount?: number }) => ({ id: 're_1', amount: params.amount }));
+    const stripe = {
+      invoices: { retrieve: retrieveInvoice },
+      refunds: { create: refundCreate },
+    } as unknown as Stripe;
+    return { stripe, retrieveInvoice, refundCreate };
+  }
+
+  function fakeProrationStripe() {
+    const retrieveSub = vi.fn(async (_id: string) => ({ items: { data: [{ id: 'si_1', price: { product: 'prod_1' } }] } }));
+    const update = vi.fn(async (_id: string, _params: Record<string, unknown>) => ({ id: 'sub_1' }));
+    const createPreview = vi.fn(async (_params: Record<string, unknown>) => ({
+      lines: { data: [{ amount: 4000, parent: { subscription_item_details: { proration: true } } }] },
+    }));
+    const stripe = { subscriptions: { retrieve: retrieveSub, update }, invoices: { createPreview } } as unknown as Stripe;
+    return { stripe, update };
+  }
+
+  const provisioned = (overrides: Partial<SubscriptionRecord> = {}) =>
+    subscription({ plan: 'GROWTH', providerCustomerId: 'cus_1', providerSubscriptionId: 'sub_1', ...overrides });
+
+  /** Seed a PAID invoice at 9900 → the partial-refund ceiling. */
+  async function seedPaid(ctx: ReturnType<typeof createInMemoryContext>) {
+    await ctx.subscriptions.create(provisioned());
+    await ctx.invoices.upsertByProviderInvoiceId({
+      id: 'inv-paid-1',
+      orgId: 'org-1',
+      providerInvoiceId: 'in_paid_1',
+      status: 'PAID',
+      amountCents: 9900,
+      currency: 'usd',
+      periodStart: null,
+      periodEnd: null,
+      hostedInvoiceUrl: null,
+      pdfUrl: null,
+      createdAt: ctx.clock.now(),
+      updatedAt: ctx.clock.now(),
+    });
+  }
+
+  it('refunds exactly the requested amount against the paid invoice payment intent (AC-REFUND-01)', async () => {
+    const { stripe, retrieveInvoice, refundCreate } = fakeRefundStripe();
+    const { ctx, provider } = setup({ webhookSecret: WEBHOOK_SECRET }, stripe);
+    await seedPaid(ctx);
+
+    const res = await provider.refund({ orgId: 'org-1', amountCents: 5000, reason: 'manual' });
+    expect(res).toEqual({ refundedCents: 5000 });
+    expect(retrieveInvoice).toHaveBeenCalledWith('in_paid_1');
+    expect(refundCreate).toHaveBeenCalledWith({ payment_intent: 'pi_1', amount: 5000 });
+    // No-leak (AC-REFUND-06): the result never carries the secret.
+    expect(JSON.stringify(res)).not.toContain(SECRET_KEY);
+    expect(JSON.stringify(await ctx.invoices.listForOrg('org-1'))).not.toContain(SECRET_KEY);
+  });
+
+  it('previewRefund reports the ceiling + clamped amount without any Stripe write (AC-REFUND-02)', async () => {
+    const { stripe, retrieveInvoice, refundCreate } = fakeRefundStripe();
+    const { ctx, provider } = setup({ webhookSecret: WEBHOOK_SECRET }, stripe);
+    await seedPaid(ctx);
+
+    expect(await provider.previewRefund({ orgId: 'org-1', amountCents: 4200 })).toEqual({
+      refundableCents: 9900,
+      amountCents: 4200,
+    });
+    expect(retrieveInvoice).not.toHaveBeenCalled();
+    expect(refundCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects an over-ceiling refund with VALIDATION, never calls refunds.create, never leaks (AC-REFUND-03/06)', async () => {
+    const { stripe, refundCreate } = fakeRefundStripe();
+    const { ctx, provider } = setup({ webhookSecret: WEBHOOK_SECRET }, stripe);
+    await seedPaid(ctx);
+
+    let failure: Error | null = null;
+    try {
+      await provider.refund({ orgId: 'org-1', amountCents: 20000 });
+    } catch (e) {
+      failure = e as Error;
+    }
+    expect(failure).toMatchObject({ code: 'VALIDATION' });
+    expect(failure?.message).not.toContain(SECRET_KEY);
+    expect(failure?.message).not.toContain(WEBHOOK_SECRET);
+    expect(refundCreate).not.toHaveBeenCalled();
+  });
+
+  it('applies always_invoice on a plan change (AC-REFUND-04)', async () => {
+    const { stripe, update } = fakeProrationStripe();
+    const { ctx, provider } = setup({ webhookSecret: WEBHOOK_SECRET }, stripe);
+    await ctx.subscriptions.create(provisioned());
+    await provider.changePlan({ orgId: 'org-1', plan: 'SCALE', cycle: 'MONTHLY', seats: 1, prorationBehavior: 'always_invoice' });
+    expect(update).toHaveBeenCalledWith('sub_1', expect.objectContaining({ proration_behavior: 'always_invoice' }));
+  });
+
+  it('defaults to create_prorations when no behavior is given (regression-safe)', async () => {
+    const { stripe, update } = fakeProrationStripe();
+    const { ctx, provider } = setup({ webhookSecret: WEBHOOK_SECRET }, stripe);
+    await ctx.subscriptions.create(provisioned());
+    await provider.changePlan({ orgId: 'org-1', plan: 'SCALE', cycle: 'MONTHLY', seats: 1 });
+    expect(update).toHaveBeenCalledWith('sub_1', expect.objectContaining({ proration_behavior: 'create_prorations' }));
+  });
+});

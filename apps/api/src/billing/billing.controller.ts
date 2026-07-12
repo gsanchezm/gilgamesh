@@ -4,6 +4,10 @@ import {
   ConfirmCheckout,
   type PlanChangePreview,
   PreviewPlanChange,
+  PreviewRefund,
+  type RefundEstimate,
+  type RefundOutcome,
+  RefundPayment,
   StartCheckout,
   type SubscriptionView,
   UpdateSeats,
@@ -11,7 +15,14 @@ import {
 import { Body, Controller, HttpCode, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
-import { CancelSubscriptionDto, ChangePlanDto, PreviewPlanChangeDto, UpdateSeatsDto } from './dto';
+import {
+  CancelSubscriptionDto,
+  ChangePlanDto,
+  PreviewPlanChangeDto,
+  PreviewRefundDto,
+  RefundDto,
+  UpdateSeatsDto,
+} from './dto';
 
 @Controller('orgs/:orgId/subscription')
 @UseGuards(SessionAuthGuard)
@@ -23,6 +34,8 @@ export class BillingController {
     private readonly startCheckout: StartCheckout,
     private readonly confirmCheckout: ConfirmCheckout,
     private readonly cancelSubscription: CancelSubscription,
+    private readonly refundPayment: RefundPayment,
+    private readonly previewRefund: PreviewRefund,
   ) {}
 
   @Patch()
@@ -31,7 +44,13 @@ export class BillingController {
     @Param('orgId') orgId: string,
     @Body() dto: ChangePlanDto,
   ): Promise<SubscriptionView> {
-    return this.changeSubscription.execute({ userId, orgId, plan: dto.plan, billingCycle: dto.billingCycle });
+    return this.changeSubscription.execute({
+      userId,
+      orgId,
+      plan: dto.plan,
+      billingCycle: dto.billingCycle,
+      prorationBehavior: dto.prorationBehavior,
+    });
   }
 
   // Slice 40: a read-only proration estimate before the user confirms a plan change. POST (not GET)
@@ -76,5 +95,27 @@ export class BillingController {
     @Body() dto: CancelSubscriptionDto,
   ): Promise<SubscriptionView> {
     return this.cancelSubscription.execute({ userId, orgId, refund: dto.refund });
+  }
+
+  // Slice 41: a partial (amount-level) refund of a paid invoice. POST (CSRF double-submit) + 200.
+  @Post('refund')
+  @HttpCode(200)
+  refund(
+    @CurrentUser() userId: string,
+    @Param('orgId') orgId: string,
+    @Body() dto: RefundDto,
+  ): Promise<RefundOutcome> {
+    return this.refundPayment.execute({ userId, orgId, amountCents: dto.amountCents, invoiceId: dto.invoiceId });
+  }
+
+  // Slice 41: the read-only "$Z will be refunded" estimate before confirming a partial refund.
+  @Post('refund/preview')
+  @HttpCode(200)
+  refundPreview(
+    @CurrentUser() userId: string,
+    @Param('orgId') orgId: string,
+    @Body() dto: PreviewRefundDto,
+  ): Promise<RefundEstimate> {
+    return this.previewRefund.execute({ userId, orgId, amountCents: dto.amountCents, invoiceId: dto.invoiceId });
   }
 }

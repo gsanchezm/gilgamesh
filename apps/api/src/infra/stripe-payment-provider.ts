@@ -9,9 +9,18 @@ import {
   type InvoiceRepository,
   MockPaymentProvider,
   type PaymentProvider,
+  type PreviewRefundRequest,
+  type RefundPreview,
+  type RefundRequest,
   type SubscriptionRepository,
 } from '@gilgamesh/application';
-import { ANNUAL_MONTHS_CHARGED, priceCents, prorationAmountCents, remainingPeriodFraction } from '@gilgamesh/domain';
+import {
+  ANNUAL_MONTHS_CHARGED,
+  priceCents,
+  prorationAmountCents,
+  quoteRefund,
+  remainingPeriodFraction,
+} from '@gilgamesh/domain';
 import Stripe from 'stripe';
 
 /**
@@ -196,34 +205,67 @@ export class StripePaymentProvider implements PaymentProvider {
 
   async changePlan(req: ChangePlanRequest): Promise<{ prorationCents: number }> {
     const item = await this.resolveSubscriptionItem(req.orgId);
-    // Compute the amount from a preview (no side-effect), THEN apply the change so the delta rides to
-    // the next invoice (owner decision B-1: `create_prorations`). Same price_data on both calls.
+    // Compute the amount from a preview (no side-effect), THEN apply the change. S40 default `create_
+    // prorations` rides the delta to the next invoice; S41 `always_invoice` issues it immediately.
+    // Absent behavior → create_prorations (regression-safe). Same price_data on both calls.
     const prorationCents = await this.previewProrationAmount(item, req);
     await this.stripe.subscriptions.update(item.subscriptionId, {
       items: [{ id: item.itemId, price_data: this.subscriptionPriceData(req, item.productId) }],
-      proration_behavior: 'create_prorations',
+      proration_behavior: req.prorationBehavior ?? 'create_prorations',
     });
     return { prorationCents };
   }
 
-  async refund(req: { orgId: string; reason: 'cancellation' }): Promise<{ refundedCents: number }> {
-    // B-2: refund the prorated UNUSED portion of the current period against the latest paid invoice's
-    // payment intent. No paid invoice / no time remaining → 0 (nothing to refund).
-    const sub = await this.deps.subscriptions.findByOrg(req.orgId);
-    const invoices = await this.deps.invoices.listForOrg(req.orgId); // newest-first (S13-C read model)
-    const latestPaid = invoices.find((i) => i.status === 'PAID' && i.providerInvoiceId);
-    if (!sub || !latestPaid?.providerInvoiceId) return { refundedCents: 0 };
+  async refund(req: RefundRequest): Promise<{ refundedCents: number }> {
+    // S40 cancellation path (no explicit amount): the prorated UNUSED portion. UNCHANGED.
+    if (req.amountCents === undefined) return this.refundCancellation(req.orgId);
+    // S41 partial (amount-level) refund: cap at the target paid invoice's amount; reject an over-
+    // ceiling request with VALIDATION (never a silent clamp / 500). Refund exactly the quoted amount.
+    const target = await this.refundableInvoice(req.orgId, req.invoiceId);
+    const { amountCents, exceedsCeiling } = quoteRefund(req.amountCents, target?.amountCents ?? 0);
+    if (exceedsCeiling) {
+      throw new ApplicationError('VALIDATION', 'The refund exceeds the invoice refundable amount.');
+    }
+    if (amountCents <= 0 || !target?.providerInvoiceId) return { refundedCents: 0 };
+    const paymentIntent = await this.paymentIntentFor(target.providerInvoiceId);
+    if (!paymentIntent) return { refundedCents: 0 };
+    const refund = await this.stripe.refunds.create({ payment_intent: paymentIntent, amount: amountCents });
+    return { refundedCents: refund.amount ?? amountCents };
+  }
+
+  async previewRefund(req: PreviewRefundRequest): Promise<RefundPreview> {
+    // S41: read-only — quote against the (target) paid invoice ceiling; no Stripe write.
+    const target = await this.refundableInvoice(req.orgId, req.invoiceId);
+    const { refundableCents, amountCents } = quoteRefund(req.amountCents, target?.amountCents ?? 0);
+    return { refundableCents, amountCents };
+  }
+
+  /** B-2: the prorated UNUSED-portion refund on cancellation. Refactored verbatim from pre-slice-41. */
+  private async refundCancellation(orgId: string): Promise<{ refundedCents: number }> {
+    const sub = await this.deps.subscriptions.findByOrg(orgId);
+    const target = await this.refundableInvoice(orgId);
+    if (!sub || !target?.providerInvoiceId) return { refundedCents: 0 };
     const fraction = remainingPeriodFraction(sub.currentPeriodEnd, sub.billingCycle, this.deps.clock.now());
     const refundedCents = prorationAmountCents(0, priceCents(sub.plan, sub.billingCycle, sub.seats), fraction);
     if (refundedCents <= 0) return { refundedCents: 0 };
-    const invoice = await this.stripe.invoices.retrieve(latestPaid.providerInvoiceId);
-    // Basil moved `payment_intent` off the base Invoice type — read it via a local shape (the
-    // `InvoiceSubscriptionMetadata` precedent). No paymentIntent resolvable → nothing to refund.
-    const pi = (invoice as unknown as { payment_intent?: string | { id?: string } | null }).payment_intent;
-    const paymentIntent = typeof pi === 'string' ? pi : pi?.id;
+    const paymentIntent = await this.paymentIntentFor(target.providerInvoiceId);
     if (!paymentIntent) return { refundedCents: 0 };
     const refund = await this.stripe.refunds.create({ payment_intent: paymentIntent, amount: refundedCents });
     return { refundedCents: refund.amount ?? refundedCents };
+  }
+
+  /** The (targeted, else latest) PAID invoice from the local read model — the refundable-amount source. */
+  private async refundableInvoice(orgId: string, invoiceId?: string): Promise<InvoiceRecord | undefined> {
+    const paid = (await this.deps.invoices.listForOrg(orgId)).filter((i) => i.status === 'PAID' && i.providerInvoiceId);
+    return invoiceId ? paid.find((i) => i.id === invoiceId || i.providerInvoiceId === invoiceId) : paid[0];
+  }
+
+  /** Resolve an invoice's payment intent id. Basil moved `payment_intent` off the base Invoice type —
+   *  read it via a local shape (the `InvoiceSubscriptionMetadata` precedent). */
+  private async paymentIntentFor(providerInvoiceId: string): Promise<string | undefined> {
+    const invoice = await this.stripe.invoices.retrieve(providerInvoiceId);
+    const pi = (invoice as unknown as { payment_intent?: string | { id?: string } | null }).payment_intent;
+    return typeof pi === 'string' ? pi : pi?.id;
   }
 
   /** Resolve the org's Stripe subscription + its single line item id and product id. */

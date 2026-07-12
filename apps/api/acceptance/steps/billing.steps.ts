@@ -58,6 +58,39 @@ When('I cancel the subscription with a refund', async function (this: GilgameshW
   this.response = await this.applyAuth(server(this).post(this.url('/orgs/{orgId}/subscription/cancel'))).send({ refund: true });
 });
 
+// Slice 41 — partial refunds + always_invoice + refund preview.
+When(
+  'I change the plan to {string} invoicing the proration immediately',
+  async function (this: GilgameshWorld, plan: string) {
+    this.response = await this.applyAuth(server(this).patch(this.url('/orgs/{orgId}/subscription'))).send({
+      plan,
+      prorationBehavior: 'always_invoice',
+    });
+  },
+);
+
+When('I refund {int} cents of the subscription', async function (this: GilgameshWorld, amountCents: number) {
+  this.response = await this.applyAuth(server(this).post(this.url('/orgs/{orgId}/subscription/refund'))).send({ amountCents });
+});
+
+When('I preview a refund of {int} cents', async function (this: GilgameshWorld, amountCents: number) {
+  this.response = await this.applyAuth(
+    server(this).post(this.url('/orgs/{orgId}/subscription/refund/preview')),
+  ).send({ amountCents });
+});
+
+Then('the refund amount is {int} cents', function (this: GilgameshWorld, cents: number) {
+  assert.equal(body(this).refundedCents, cents);
+});
+
+Then('the preview refundable amount is {int} cents', function (this: GilgameshWorld, cents: number) {
+  assert.equal(body(this).refundableCents, cents);
+});
+
+Then('the preview refund amount is {int} cents', function (this: GilgameshWorld, cents: number) {
+  assert.equal(body(this).amountCents, cents);
+});
+
 Then('the subscription plan is {string}', function (this: GilgameshWorld, plan: string) {
   assert.equal(body(this).plan, plan);
 });

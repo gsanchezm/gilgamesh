@@ -249,3 +249,85 @@ describe('Proration + refunds API (slice 40)', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// Slice 41 — partial refunds + always_invoice over a fresh org so provider state is controlled.
+// The mock arm records a deterministic PAID invoice at the GROWTH price (9900) on confirm, so a
+// partial refund's amount is exact (executed == requested — no clock dependency).
+describe('Partial refunds + always_invoice API (slice 41)', () => {
+  let fAuth: Auth;
+  let fOrgId: string;
+
+  beforeAll(async () => {
+    const reg = await request(server())
+      .post('/auth/register')
+      .send({ firstName: 'F', lastName: 'R', email: 'refund@uruk.io', password: 'C0rrect-Horse!' });
+    fAuth = authFrom(reg);
+    const proj = await request(server())
+      .post('/projects')
+      .set('Cookie', fAuth.cookie)
+      .set('X-CSRF-Token', fAuth.csrf)
+      .send({ projectName: 'RefundCo', format: 'BDD' });
+    fOrgId = proj.body.orgId;
+  });
+
+  const fmutate = (req: request.Test) => req.set('Cookie', fAuth.cookie).set('X-CSRF-Token', fAuth.csrf);
+  const fread = (req: request.Test) => req.set('Cookie', fAuth.cookie);
+  const fpath = (suffix = '') => `/orgs/${fOrgId}/subscription${suffix}`;
+
+  it('rejects a refund with no billing account (AC-REFUND-05, 422)', async () => {
+    const res = await fmutate(request(server()).post(fpath('/refund'))).send({ amountCents: 5000 });
+    expect(res.status).toBe(422);
+  });
+
+  it('previews and executes an exact partial refund of a paid invoice (AC-REFUND-01/02)', async () => {
+    await fmutate(request(server()).patch(fpath())).send({ plan: 'GROWTH' });
+    await fmutate(request(server()).post(fpath('/checkout'))).send();
+    const confirmed = await fmutate(request(server()).post(fpath('/checkout/confirm'))).send();
+    expect(confirmed.body.providerCustomerId).toMatch(/^cus_mock_/);
+
+    const preview = await fmutate(request(server()).post(fpath('/refund/preview'))).send({ amountCents: 4200 });
+    expect(preview.status).toBe(200);
+    expect(preview.body).toMatchObject({ refundableCents: 9900, amountCents: 4200 });
+
+    const refund = await fmutate(request(server()).post(fpath('/refund'))).send({ amountCents: 4200 });
+    expect(refund.status).toBe(200);
+    expect(refund.body.refundedCents).toBe(4200);
+  });
+
+  it('rejects an over-ceiling refund (AC-REFUND-03, 422)', async () => {
+    const res = await fmutate(request(server()).post(fpath('/refund'))).send({ amountCents: 20000 });
+    expect(res.status).toBe(422);
+  });
+
+  it('accepts a plan change invoicing the proration immediately (always_invoice, AC-REFUND-04)', async () => {
+    const res = await fmutate(request(server()).patch(fpath())).send({ plan: 'SCALE', prorationBehavior: 'always_invoice' });
+    expect(res.status).toBe(200);
+    expect(res.body.plan).toBe('SCALE');
+  });
+
+  it('validates the refund body — a positive integer amount is required', async () => {
+    expect((await fmutate(request(server()).post(fpath('/refund'))).send({})).status).toBe(422);
+    expect((await fmutate(request(server()).post(fpath('/refund'))).send({ amountCents: 0 })).status).toBe(422);
+    expect((await fmutate(request(server()).post(fpath('/refund'))).send({ amountCents: -5 })).status).toBe(422);
+    expect((await fmutate(request(server()).patch(fpath())).send({ plan: 'GROWTH', prorationBehavior: 'nope' })).status).toBe(422);
+  });
+
+  it('rejects a refund without the CSRF token (403)', async () => {
+    const res = await fread(request(server()).post(fpath('/refund'))).send({ amountCents: 100 });
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects a non-member refund with 404 (tenant isolation, AC-REFUND-05)', async () => {
+    const outsider = authFrom(
+      await request(server())
+        .post('/auth/register')
+        .send({ firstName: 'E', lastName: 'X', email: 'refund-eve@uruk.io', password: 'C0rrect-Horse!' }),
+    );
+    const res = await request(server())
+      .post(fpath('/refund'))
+      .set('Cookie', outsider.cookie)
+      .set('X-CSRF-Token', outsider.csrf)
+      .send({ amountCents: 100 });
+    expect(res.status).toBe(404);
+  });
+});
