@@ -37,6 +37,10 @@ export const INPUT_LIMITS = {
 
   /** Agent Chat (slice 8) — must match the application layer's MAX_MESSAGE_CHARS. */
   chatMessageMax: 4_000,
+
+  /** Voice (slice 42) — base64 audio for STT. Kept ≤ featureContentMax so the largest single field a
+   *  request can carry is unchanged and {@link JSON_BODY_LIMIT} stays provably larger (no migration). */
+  voiceAudioMax: 262_144,
 } as const;
 
 /**

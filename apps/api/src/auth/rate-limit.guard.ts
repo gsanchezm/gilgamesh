@@ -30,6 +30,10 @@ const LIMITED_PATHS: LimitedPath[] = [
   // POST-only so a future GET message-list is not throttled, and bucketed by SUFFIX so minting
   // fresh sessions cannot mint fresh buckets — the brain-cost limit binds per IP (review S8).
   { suffix: '/messages', method: 'POST', bucket: 'suffix' },
+  // Slice 42: the voice STT/TTS routes carry the same per-IP provider-cost limit as chat send,
+  // bucketed by suffix so a fresh sessionId can't mint a fresh bucket.
+  { suffix: '/transcribe', method: 'POST', bucket: 'suffix' },
+  { suffix: '/speak', method: 'POST', bucket: 'suffix' },
 ];
 
 /**

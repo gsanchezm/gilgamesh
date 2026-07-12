@@ -3,6 +3,7 @@ export * from './uuid-id';
 export * from './crypto-token';
 export * from './system-clock';
 export * from './claude-brain';
+export * from './azure-voice';
 export * from './voyage-embedder';
 export * from './voyage-key-verifier';
 export * from './selecting-brain';

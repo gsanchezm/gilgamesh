@@ -32,6 +32,8 @@ export default defineConfig({
       // S20: the in-memory secret-vault stub — an EXPLICIT opt-in (the selector refuses to
       // boot unconfigured); never Azure, even when the machine env carries AZURE_KEY_VAULT_URL.
       VAULT_MODE: 'offline',
+      // S42: the DeterministicVoice stub — the int suite never reaches Azure Speech.
+      VOICE_MODE: 'offline',
     },
   },
 });

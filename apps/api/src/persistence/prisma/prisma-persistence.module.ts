@@ -27,6 +27,7 @@ import {
   SystemClock,
   Uuid7IdGenerator,
   vaultFromEnv,
+  voiceFromEnv,
 } from '../../infra';
 import { TOKENS } from '../tokens';
 import { PrismaService } from './prisma.service';
@@ -100,6 +101,9 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
       inject: [TOKENS.Integrations, TOKENS.SecretVault],
     },
     { provide: TOKENS.BrainKeys, useFactory: () => brainKeyVerifierFromEnv() },
+    // Provider selection (S42, the S9-1 pattern): DeterministicVoice unless VOICE_MODE/AZURE_SPEECH_*
+    // select the real Azure Speech adapter. Every harness pins VOICE_MODE=offline (no network in CI).
+    { provide: TOKENS.Voice, useFactory: () => voiceFromEnv(process.env) },
     { provide: TOKENS.Events, useValue: new InMemoryEventBus() },
     {
       provide: TOKENS.BrainUsage,
@@ -209,6 +213,7 @@ import { PrismaUnitOfWork } from './prisma-unit-of-work';
     TOKENS.Clock,
     TOKENS.Brain,
     TOKENS.BrainKeys,
+    TOKENS.Voice,
     TOKENS.BrainUsage,
     TOKENS.BrainBilling,
     TOKENS.Events,

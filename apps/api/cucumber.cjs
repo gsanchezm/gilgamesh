@@ -34,6 +34,9 @@ process.env.EMAIL_MODE = process.env.EMAIL_MODE || 'offline';
 // selector refuses to boot unconfigured, never a silent stub). The sweep must never reach
 // Azure, even when the developer machine has AZURE_KEY_VAULT_URL set.
 process.env.VAULT_MODE = process.env.VAULT_MODE || 'offline';
+// Slice 42: force the DeterministicVoice stub — the sweep never reaches Azure Speech, even when
+// the developer machine has AZURE_SPEECH_KEY set (the S9-1 BRAIN_MODE idiom).
+process.env.VOICE_MODE = process.env.VOICE_MODE || 'offline';
 
 module.exports = {
   default: {

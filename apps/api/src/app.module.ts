@@ -27,6 +27,7 @@ import { TOKENS } from './persistence/tokens';
 import { BillingModule } from './billing/billing.module';
 import { BrainModule } from './brain/brain.module';
 import { ChatModule } from './chat/chat.module';
+import { VoiceModule } from './voice/voice.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
 import { ProjectsModule } from './projects/projects.module';
@@ -47,6 +48,7 @@ const FEATURE_MODULES = [
   KnowledgeModule,
   IntegrationsModule,
   ChatModule,
+  VoiceModule,
   BrainModule,
 ];
 

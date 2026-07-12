@@ -35,6 +35,9 @@ export default defineConfig({
       EMAIL_MODE: 'offline',
       PAYMENTS_MODE: 'offline',
       VAULT_MODE: 'offline',
+      // Slice 42: force the DeterministicVoice stub — the suite never reaches Azure Speech even
+      // when the machine env carries AZURE_SPEECH_KEY (the S9-1 BRAIN_MODE idiom).
+      VOICE_MODE: 'offline',
     },
   },
 });

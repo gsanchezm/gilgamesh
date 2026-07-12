@@ -55,6 +55,8 @@ export default defineConfig({
         // S20: the in-memory secret-vault stub — an EXPLICIT opt-in (the selector refuses to
         // boot unconfigured, never a silent stub); the e2e stack never reaches Azure.
         VAULT_MODE: 'offline',
+        // S42: the DeterministicVoice stub — the browser e2e never reaches Azure Speech.
+        VOICE_MODE: 'offline',
       },
     },
     {

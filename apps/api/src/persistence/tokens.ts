@@ -24,6 +24,8 @@ export const TOKENS = {
   Tokens: 'TokenGenerator',
   Clock: 'Clock',
   Brain: 'AgentBrainPort',
+  // Slice 42: STT/TTS behind the VoicePort — DeterministicVoice offline, Azure Speech when configured.
+  Voice: 'VOICE',
   Kernel: 'TestKernel',
   Payment: 'PaymentProvider',
   Knowledge: 'KnowledgeChunkRepository',

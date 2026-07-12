@@ -14,3 +14,6 @@ process.env.EMAIL_MODE = process.env.EMAIL_MODE || 'offline';
 // unconfigured, never a silent stub); never Azure, even when the machine env carries
 // AZURE_KEY_VAULT_URL.
 process.env.VAULT_MODE = process.env.VAULT_MODE || 'offline';
+// Slice 42: the DeterministicVoice stub — never Azure Speech, even when the machine env carries
+// AZURE_SPEECH_KEY. Defense in depth alongside the vitest.config env pin.
+process.env.VOICE_MODE = process.env.VOICE_MODE || 'offline';

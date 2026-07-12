@@ -68,6 +68,7 @@ import {
   SystemClock,
   Uuid7IdGenerator,
   vaultFromEnv,
+  voiceFromEnv,
 } from '../infra';
 import { AlwaysReadyProbe } from '../health/always-ready.probe';
 import { TOKENS } from './tokens';
@@ -194,6 +195,9 @@ import { TOKENS } from './tokens';
       inject: [TOKENS.Integrations, TOKENS.SecretVault],
     },
     { provide: TOKENS.BrainKeys, useFactory: () => brainKeyVerifierFromEnv() },
+    // Provider selection (S42, the S9-1 pattern): DeterministicVoice unless VOICE_MODE/AZURE_SPEECH_*
+    // select the real Azure Speech adapter. Every harness pins VOICE_MODE=offline (no network in CI).
+    { provide: TOKENS.Voice, useFactory: () => voiceFromEnv(process.env) },
     { provide: TOKENS.BrainUsage, useValue: new InMemoryBrainUsageRepository() },
     { provide: TOKENS.Events, useValue: new InMemoryEventBus() },
     { provide: TOKENS.Kernel, useValue: new DeterministicKernel() },
@@ -266,6 +270,7 @@ import { TOKENS } from './tokens';
     TOKENS.Clock,
     TOKENS.Brain,
     TOKENS.BrainKeys,
+    TOKENS.Voice,
     TOKENS.BrainUsage,
     TOKENS.BrainBilling,
     TOKENS.Events,
