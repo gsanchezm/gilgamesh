@@ -45,4 +45,25 @@ describe('DeterministicKernel', () => {
     expect(a).toEqual(b);
     expect(a.find((e) => e.type === 'RESULT')).toMatchObject({ refId: 't1', status: 'PASS' });
   });
+
+  it('emits a deterministic tool + discipline on each RESULT (keystone v0.7)', async () => {
+    const { events } = new DeterministicKernel().run({
+      runId: 'r2',
+      target: {
+        kind: 'FEATURE',
+        featureId: 'f2',
+        name: 'Login',
+        scenarios: [
+          { id: 's1', name: 'user logs in' }, // default -> playwright / e2e
+          { id: 's2', name: 'perf: load spike' }, // -> k6 / perf
+          { id: 's3', name: 'security: xss probe' }, // -> zap / security
+        ],
+      },
+    });
+    const results = (await collect(events)).filter(
+      (e) => e.type === 'RESULT',
+    ) as Extract<RunEvent, { type: 'RESULT' }>[];
+    expect(results.map((r) => r.tool)).toEqual(['playwright', 'k6', 'zap']);
+    expect(results.map((r) => r.discipline)).toEqual(['e2e', 'perf', 'security']);
+  });
 });

@@ -24,7 +24,7 @@ export interface RunPlan {
 
 export type RunEvent =
   | { type: 'LOG'; level: 'sys' | 'run' | 'pass' | 'fail' | 'log'; text: string; at: string }
-  | { type: 'RESULT'; refId: string; name: string; status: ResultStatus }
+  | { type: 'RESULT'; refId: string; name: string; status: ResultStatus; tool?: string; discipline?: string }
   | { type: 'DONE'; passed: number; failed: number; skipped: number; total: number; durationMs: number };
 
 export interface TestKernel {

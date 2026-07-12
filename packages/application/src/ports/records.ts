@@ -188,6 +188,10 @@ export interface RunResultRecord {
   refId: string;
   name: string;
   status: ResultStatus;
+  /** Executing tool (keystone v0.7): e.g. playwright | vitest | k6 | zap. Nullable — historical/real-kernel rows may omit. */
+  tool?: string | null;
+  /** Test discipline (keystone v0.7): e.g. e2e | unit | perf | security. Nullable. */
+  discipline?: string | null;
   log: string[];
   order: number;
 }

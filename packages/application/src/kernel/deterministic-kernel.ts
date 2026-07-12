@@ -16,6 +16,27 @@ function outcome(name: string): ResultStatus {
   return 'PASS';
 }
 
+/**
+ * Deterministic tool/discipline attribution (keystone v0.7) — derived from the unit name so identical
+ * plans yield identical values. Powers the Reports per-tool breakdown offline; the real TOM kernel emits
+ * genuine values later.
+ */
+function toolFor(name: string): string {
+  const n = name.toLowerCase();
+  if (n.includes('perf') || n.includes('load')) return 'k6';
+  if (n.includes('security') || n.includes('xss') || n.includes('zap')) return 'zap';
+  if (n.includes('unit')) return 'vitest';
+  return 'playwright';
+}
+
+function disciplineFor(name: string): string {
+  const n = name.toLowerCase();
+  if (n.includes('perf') || n.includes('load')) return 'perf';
+  if (n.includes('security') || n.includes('xss') || n.includes('zap')) return 'security';
+  if (n.includes('unit')) return 'unit';
+  return 'e2e';
+}
+
 export class DeterministicKernel implements TestKernel {
   run(plan: RunPlan): { runId: string; events: AsyncIterable<RunEvent> } {
     return { runId: plan.runId, events: this.stream(plan) };
@@ -37,7 +58,14 @@ export class DeterministicKernel implements TestKernel {
       if (status === 'PASS') passed += 1;
       else if (status === 'FAIL') failed += 1;
       else skipped += 1;
-      yield { type: 'RESULT', refId: unit.id, name: unit.name, status };
+      yield {
+        type: 'RESULT',
+        refId: unit.id,
+        name: unit.name,
+        status,
+        tool: toolFor(unit.name),
+        discipline: disciplineFor(unit.name),
+      };
       const level = status === 'PASS' ? 'pass' : status === 'FAIL' ? 'fail' : 'log';
       yield { type: 'LOG', level, text: `${unit.name}: ${status}`, at: FIXED_AT };
     }

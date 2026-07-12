@@ -87,6 +87,8 @@ interface CollectedResult {
   refId: string;
   name: string;
   status: ResultStatus;
+  tool?: string;
+  discipline?: string;
   log: string[];
 }
 
@@ -96,7 +98,14 @@ async function collect(events: AsyncIterable<RunEvent>): Promise<{ results: Coll
   let durationMs = 0;
   for await (const ev of events) {
     if (ev.type === 'RESULT') {
-      results.push({ refId: ev.refId, name: ev.name, status: ev.status, log: [] });
+      results.push({
+        refId: ev.refId,
+        name: ev.name,
+        status: ev.status,
+        tool: ev.tool,
+        discipline: ev.discipline,
+        log: [],
+      });
     } else if (ev.type === 'LOG') {
       // Trailing log lines belong to the unit just reported (the initial 'sys' line precedes any result).
       if (results.length > 0) results[results.length - 1]!.log.push(ev.text);
@@ -202,6 +211,8 @@ export class TriggerRun {
       refId: r.refId,
       name: r.name,
       status: r.status,
+      tool: r.tool ?? null,
+      discipline: r.discipline ?? null,
       log: r.log,
       order: i,
     }));
