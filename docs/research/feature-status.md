@@ -12,7 +12,7 @@ authoritative detail rather than repeating it, so it can't drift:
 **Legend:** ✅ done (backend + UI faithful to the capture) · 🟡 functional but UI not re-skinned to the
 capture / partial · 🔵 stub behind a port (runs offline; real engine pending) · 🔴 not built / blocked.
 
-_As of 2026-07-12 (keystone v0.6). Everything below is merged on `main`: slices 1–33 + programa
+_As of 2026-07-12 (keystone v0.7). Everything below is merged on `main`: slices 1–33 + programa
 v2 (Stripe 13 · SSO 15 · Voyage embeddings 16 · SMTP 17 · logout 18) + programa v3 (token billing 14 ·
 Voyage BYOK 19 · Key Vault 20 · Redis SSO state · Vitest 3) + programa v4 (billing rollover 21 · voyage
 hint 22 · error boundary 23) + v5 (request-id 24 · http resilience 25 · bundle gate 26 · readiness 27 ·
@@ -24,8 +24,12 @@ desktop unchanged) + **admin console** (platform + workspace roles, 14 views fro
 i18n es/en, mock behind a service, workspace never sees costs), plus Reports, onboarding wizard, per-org RAG
 grounding, CI hardening, plus a **pre-auth responsive** pass (Login/Register/Forgot/Reset on mobile), an
 **admin access gate** (the mock admin console is now behind real auth + org checks + a platform flag, no nav
-entry, "Demo data" badge), and an **image-asset slim** (~3.95 MB off the build). Gates: 1272 Docker-free ·
-int 43 · BDD 217/1857 · Playwright 20 · pnpm audit 0._
+entry, "Demo data" badge), and an **image-asset slim** (~3.95 MB off the build), plus **programa v9**
+(keystone v0.7 in series first, then 3 parallel slices: **Stripe partial-refunds 41 · voice STT/TTS 42 ·
+Reports per-tool 43**). Gates: **1354 Docker-free** · int 43 · Playwright 20 · pnpm audit 0. **BDD full-sweep =
+quiet-machine follow-up** (the local env kills cucumber mid-run; the slices are covered by Docker-free
+`billing.e2e`/`voice.e2e`/`runs.e2e` + Playwright + `test:int`; last completed sweep was 215/217, the 2
+failures being onboarding-401 flakes under CPU starvation, orthogonal to v9)._
 
 > **🚀 STAGING LIVE + REDEPLOYED (2026-07-12):** the whole app runs LIVE on **Azure Container Apps** —
 > `https://app.ashygrass-47d0b048.eastus2.azurecontainerapps.io` (app+ACR+KV in eastus2, Postgres in
@@ -33,8 +37,10 @@ int 43 · BDD 217/1857 · Playwright 20 · pnpm audit 0._
 > (everything on `main` through programa v8 + the lockout tuning now live; revision `app--0000004`
 > Healthy/RunningAtMaxScale/100%; liveness+readiness 200; §7 staging smoke 2/2 green). Brain runs the
 > deterministic stub until `ANTHROPIC_API_KEY` is set. Runbook + subscription-restriction workarounds:
-> [`../../specs/infra/staging-deploy.md`](../../specs/infra/staging-deploy.md) §8. **`main` and staging are
-> in sync** (no undeployed follow-ups). Code-only rollout recipe: `docker build --provenance=false
+> [`../../specs/infra/staging-deploy.md`](../../specs/infra/staging-deploy.md) §8. **`main` is now AHEAD of
+> staging** — programa v9 (slices 41/42/43 + keystone v0.7 migration) is merged locally but **NOT yet
+> deployed** (staging still runs `:f6ebf78`). A redeploy applies the `run_result_tool_discipline` migration
+> (`migrate deploy` runs on boot). Code-only rollout recipe: `docker build --provenance=false
 > --sbom=false` → push to ACR → `az containerapp update -n app --image …`.
 
 ---
@@ -52,8 +58,8 @@ Backend = does the data/logic exist · UI = re-skinned to the `capturas/NN` targ
 | 04 | Dashboard (Agent room) | ✅ | ✅ | |
 | 05 | Dashboard — light theme | ✅ | ✅ | |
 | 06 | Orchestration (DAG) | 🔴 | 🔴 | blocked on TOM kernel |
-| 07 | Chat / voice | ✅ | ✅ | **slices 8+9+11 on `main`**: real Claude brain (BYOK per org, metering, tool registry) + capture-07 re-skin (session rail, pinned deity header, live EventSource streaming). Owner-approved screenshot. **Voice** 🔴 pending (STT/TTS) |
-| 08 | Reports | ✅ | ✅ | `ReportsScreen` + `summarizeAcrossRuns`; route wired at `/projects/:id/reports` (+ Playwright e2e); per-tool "Tools" breakdown deferred |
+| 07 | Chat / voice | ✅ | ✅ | **slices 8+9+11 on `main`**: real Claude brain (BYOK per org, metering, tool registry) + capture-07 re-skin (session rail, pinned deity header, live EventSource streaming). Owner-approved screenshot. **Voice ✅ slice 42 (programa v9)**: STT dictate + TTS read-aloud behind a `VoicePort` (deterministic offline stub + Azure Speech real adapter; `VOICE_MODE=offline` in CI); SSE path untouched. Composer UX screenshot check pending owner |
+| 08 | Reports | ✅ | ✅ | `ReportsScreen` + `summarizeAcrossRuns`; route wired at `/projects/:id/reports` (+ Playwright e2e). **Per-tool "Tools" breakdown ✅ slice 43 (programa v9)** via keystone v0.7 `RunResult.tool`/`discipline` (stub-emitted until the real TOM kernel); capture-08 fidelity screenshot check pending owner |
 | 09 | Knowledge base | ✅ | ✅ | + per-org upload + `.pdf`/`.docx` ingest |
 | 10 | Test Lab | ✅ | ✅ | Integrated TestLabSummaryStats & refactored layout |
 | 11 | Integrations | ✅ | ✅ | re-skinned to capture 11 (`08e78f9`) |
@@ -77,7 +83,7 @@ Real vs. stub-behind-a-port. Swapping a stub for the real adapter is a future sl
 - [x] AI brain (chat · routing · draft generation) — ✅ **real `ClaudeBrain` adapter on `main` (slice 9)** behind `SelectingBrain`: real answers with `ANTHROPIC_API_KEY` (or org BYOK — call-time resolution pending `SecretVault.get()`), deterministic stub offline/CI; per-org `BrainUsage` metering + usage view + tool registry + live C3 SSE (`?live=1`)
 - [x] RAG embeddings — ✅ **real Voyage `voyage-4` semantic embeddings (slice 16)** behind the frozen `AgentBrainPort.embed` + the `embedAs(texts, kind)` extension: 1024-dim `vector(1024)` column (keystone v0.5 BREAKING; destructive migration + re-ingest), real with `VOYAGE_API_KEY`, deterministic lexical FNV-1a 1024-dim offline/CI; EMBED `BrainUsage` metering. **+ Voyage BYOK (slice 19)**: per-org voyage key via the S6 flow behind the **S19-6 coherence gate** (org key embeds only inside the platform voyage space — platform-keyless stays lexical, retrieval can never silently degrade); per-chunk provenance + re-embed on connect = future slice
 - [x] Brain token billing (slice 14) — ✅ real: per-plan AI-token allowances derived from `PLAN_CATALOG` (FREE 100k · STARTER 2M · GROWTH 10M · SCALE unlimited; billable = input+output, cache excluded), pre-check + atomic UoW charge with each `BrainUsage` row on every org-attributed surface, blocked chat NARRATES (never 402/500) / 402 elsewhere, quota meter on the Billing AI-usage card; rollover job (resets both counters) pending
-- [x] Payments / checkout — ✅ **real Stripe (slice 13)** behind the extended `PaymentProvider` port: Checkout Sessions priced from `PLAN_CATALOG`, signature-verified webhooks over raw bytes → `Invoice` rows + subscription status (`ApplyPaymentEvent`, UoW-atomic), Invoices panel in Billing; `PAYMENTS_MODE=offline`/no `STRIPE_SECRET_KEY` → deterministic mock (CI offline). **Customer Portal (slice 34)** — self-service plan/proration/payment-method/cancel via Stripe's hosted UI (`createPortalSession` + "Manage billing" button; mock offline URL). **Programmatic proration + refunds (slice 40, programa v8)** — `PaymentProvider.{previewProration,changePlan,refund}` over the stored `providerSubscriptionId`: plan change prorates (`create_prorations`, preview endpoint), cancel takes an opt-in prorated refund of the unused period (credit invoice); `always_invoice` / partial refunds still deferred
+- [x] Payments / checkout — ✅ **real Stripe (slice 13)** behind the extended `PaymentProvider` port: Checkout Sessions priced from `PLAN_CATALOG`, signature-verified webhooks over raw bytes → `Invoice` rows + subscription status (`ApplyPaymentEvent`, UoW-atomic), Invoices panel in Billing; `PAYMENTS_MODE=offline`/no `STRIPE_SECRET_KEY` → deterministic mock (CI offline). **Customer Portal (slice 34)** — self-service plan/proration/payment-method/cancel via Stripe's hosted UI (`createPortalSession` + "Manage billing" button; mock offline URL). **Programmatic proration + refunds (slice 40, programa v8)** — `PaymentProvider.{previewProration,changePlan,refund}` over the stored `providerSubscriptionId`: plan change prorates (`create_prorations`, preview endpoint), cancel takes an opt-in prorated refund of the unused period (credit invoice). **Partial (amount-level) refunds + `always_invoice` + refund preview ✅ slice 41 (programa v9)**: `refund({amountCents})` clamped to the invoice ceiling → credit invoice; `previewRefund` (preview == executed); `changePlan({prorationBehavior})` (default `create_prorations`). Deferred: netting vs prior partial refunds, line-item-level refunds
 
 ## 3) Missing / deferred (with the blocker)
 

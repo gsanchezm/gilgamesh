@@ -928,3 +928,53 @@ stalled there twice), then **redeployed staging** to the resulting SHA. No keyst
   levers stay env-configurable (`AUTH_IP_RATE_LIMIT`, `AUTH_LOCKOUT_*`).
 - **Deferred (unchanged):** Bloque-3 fail-open/pagination/RAG posture (owner decision) · billing scheduler ·
   provenance/re-embed · Stripe always_invoice/partial-refunds · voice.
+
+## Programa paralelo v9 — keystone v0.7 + refunds (41) + voice (42) + reports per-tool (43) — DoD COMPLETE (2026-07-12, on `main`)
+
+Owner `/goal` continuation. Brainstormed (advisor-scoped) a 3-slice tanda + a **mobile-app charter** (a separate
+phased program, NOT built this round). Design: `docs/superpowers/specs/2026-07-12-programa-v9-design.md`; plan:
+`docs/superpowers/plans/2026-07-12-programa-v9.md`. Structure: **keystone v0.7 in series first** → 3 parallel
+`pnpm wt` worktree subagents (SDD→BDD→TDD, Docker-free-only) → orchestrator serialized integration.
+- **Keystone v0.7 (in series on `main` first, `911f281`)** — `RunNode +discipline?` (§2); the persisted
+  `RunResult`-lite now carries both `tool` (already on `RunNode`) and `discipline` (both nullable). The
+  `DeterministicKernel` emits them deterministically from the unit name (playwright/vitest/k6/zap ·
+  e2e/unit/perf/security); `run_results` migration adds the two nullable columns. **Migration gotcha:** `migrate
+  dev` auto-added a spurious `DROP INDEX knowledge_chunks_embedding_hnsw_idx` (false drift — the HNSW index is
+  raw-SQL Prisma doesn't model); removed by hand so the migration can't destroy the pgvector RAG index.
+- **Slice 41 — Stripe refunds** (`specs/slices/41-stripe-refunds/`, AC-REFUND-01..06) — additive to
+  `PaymentProvider` (NO keystone, NO migration — reuses `Invoice`): partial **amount-level** `refund({amountCents})`
+  clamped to the paid-invoice ceiling → negative-`amountCents` VOID credit row; `previewRefund` sharing ONE pure
+  `quoteRefund` source (preview == executed); `changePlan({prorationBehavior: 'create_prorations'|'always_invoice'})`
+  (default preserved, spy-verified). `POST /orgs/:orgId/subscription/refund[/preview]`; over-ceiling → 422; secret
+  no-leak. Deferred: netting vs prior partial refunds, line-item refunds.
+- **Slice 42 — Voice in chat** (`specs/slices/42-voice/`, AC-VOICE-01..05) — a new `VoicePort` (Brain-stub
+  pattern): `DeterministicVoice` offline + `AzureVoice` real adapter (injected transport, key credential-scrubbed,
+  no `cause`), `voiceFromEnv` selector, `VOICE_MODE=offline` pinned in ALL FOUR harnesses. `POST
+  /chat/:sessionId/{transcribe,speak}` (chat RBAC + rate-limit; non-member 404). Web: composer mic (MediaRecorder,
+  **batch** record→transcribe→drop-in-composer, no auto-send) + per-message "read aloud" (TTS). **SSE path
+  byte-for-byte unchanged** (diff-verified). NO migration/metering (schema-free — VoiceUsage metering deferred).
+  Provider = Azure Speech (owner-confirmed; the port keeps it swappable).
+- **Slice 43 — Reports per-tool** (`specs/slices/43-reports-per-tool/`, AC-REPORT-TOOL-01..04) — builds against
+  frozen v0.7: pure `summarizeByTool` fold (group by tool, 1-decimal `ratePct`, null→`unknown` bucket, deterministic
+  order); `RunResultView`/`runView` widened with `tool`/`discipline` (no read-DTO strips them; no schema work);
+  ReportsScreen capture-08 "Tools" card (period-less EmptyState). Honesty: renders stub-emitted data until the real
+  TOM kernel. Deferred: N+1 `getRun`-per-run (batch runs-with-results endpoint = follow-up).
+- **Integration (orchestrator, serialized):** merge **42 first** (largest blast radius → clean FF), then rebased
+  41 + 43 onto it (auto-merged the `AppRoutes.test.tsx` [41↔42] + `index.css` [42↔43] collisions, no conflicts).
+  Fixed **one real integration bug** the Docker-free subagents couldn't catch (they don't run Playwright): slice-42's
+  mic `aria-label="Record voice message"` collided with the chat composer under Playwright's substring
+  `getByLabel('Message')` → made the chat-spec locator `{exact:true}`.
+- **Verified (post-merge on `main`):** typecheck (5 pkgs) · lint 0 · **1354 Docker-free** (domain 133 · ui 43 ·
+  application 404 · web 316 · api 458) · **`test:int` 43** (validates the prod Prisma VOICE binding + the v0.7
+  migration under real Postgres) · **Playwright 20/20**. **BDD full-sweep = quiet-machine follow-up:** the local
+  env kills cucumber mid-run (Node buffers its output → harness backgrounds it → env kills long background tasks;
+  ~1 in 5 attempts completes). The last completed sweep was **215/217**, the 2 failures onboarding-401 flakes under
+  CPU starvation (orthogonal — `run_results` can't reach auth; the same path is green in `auth.e2e` +
+  `onboarding-rollback` on the migrated Postgres). The 3 slices are covered Docker-free by
+  `billing.e2e`/`voice.e2e`/`runs.e2e` + Playwright + int. NOT pushed to `origin` / NOT deployed (pending owner).
+- **Mobile app = CHARTERED, not built** (design doc §Mobile charter): Expo native, phased (Phase 1 = auth +
+  dashboard), **"mirror" = feature/navigation parity NOT code reuse** (`@gilgamesh/domain` shared, `@gilgamesh/ui`
+  React-DOM is not → new RN design-system), **Bearer-token auth** (`__Host-` cookies don't work native → kept OUT
+  of this batch to preserve stream disjointness). Its own brainstorming → spec → plan cycle next.
+- **Deferred:** BDD full-sweep 217/217 + capture-08/voice-composer screenshot checks (owner) on a quiet machine ·
+  VoiceUsage metering · Reports N+1 batch endpoint · refund netting/line-item · everything prior unchanged.
