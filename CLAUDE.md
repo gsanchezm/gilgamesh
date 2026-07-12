@@ -889,8 +889,42 @@ is the reliable fallback when a background agent won't converge; incremental com
   successful logins) is **NAT-hostile** — a corporate egress IP with a login surge could 429 legit users; raise
   the default or scope the ceiling to register/forgot/reset (the A2 failure-lockout already covers login
   stuffing and is NAT-safe). (2) reset-password lockout counts a weak-new-password fumble as a failure, not just
-  a bad token (minor, self-resolving). Both await an owner tuning decision.
+  a bad token (minor, self-resolving). **Both CLOSED 2026-07-12 — see "Programa v8 tuning + staging redeploy".**
 - **Deferred:** lockout Retry-After exact math + exponential growth are unit/store-proven (real-time e2e can't wait
   minutes) · Stripe `always_invoice` mode · partial/line-level refunds · a refund-preview endpoint (to show the
   exact "$Z" pre-cancel) · everything prior unchanged (Bloque-3 fail-open/pagination/RAG posture · billing
   scheduler · provenance/re-embed · voice).
+
+## Programa v8 tuning + staging redeploy (2026-07-12) — DoD COMPLETE, DEPLOYED, on `main`+origin
+
+Owner `/goal` continuation. Closed the **two v8 lockout tuning notes** (advisor-caught in v8, left as owner
+decisions) inline (SDD→TDD; the slice-39 auth module is the documented-reliable inline path — the v8 subagent
+stalled there twice), then **redeployed staging** to the resulting SHA. No keystone, no migration.
+- **Tuning 1 — A1 per-IP ceiling scoped off login** (`auth-abuse.guard.ts`): the per-IP request ceiling now
+  covers register/forgot/reset only (`AbusePath.ceiling:false` on `/auth/login`). A shared per-IP ceiling that
+  counts *successful* logins is NAT-hostile (a corporate egress IP with a login surge → 429 for legit users).
+  Login abuse stays bounded by the A2 exponential failure lockout (NAT-safe: failures only, clears on success)
+  + the per-account `RateLimitGuard`.
+- **Tuning 2 — weak-password reset no longer feeds the lockout** (new `RESET_TOKEN_INVALID` app error code):
+  the global `ValidationPipe` maps every DTO failure — incl. a too-short new password — to
+  `ApplicationError('VALIDATION')`, which the `LoginOutcomeInterceptor` counted on reset-password. A dedicated
+  `RESET_TOKEN_INVALID` (→422, same status; thrown only by `ResetPassword` for a bad/expired/consumed token) is
+  now the sole reset failure the lockout counts; a legit weak-password fumble stays `VALIDATION` and no longer
+  penalizes the IP. Bad-token attempts still count (AC-IPLOCK-07 preserved). The no-oracle invariant holds (all
+  bad-token branches + the double-submit loser share the one code + generic message + 422; BDD asserts status,
+  not code, so AC-AUTH-12/AC-REC-02 stay green).
+- Proven red→green in `apps/api/test/ip-lockout.e2e.test.ts` (AC-08 weak-reset no-lock, AC-09 login-not-
+  ceiling'd) — the pipe→interceptor interaction unit tests can't reach — plus guard/interceptor units + the
+  reset-recovery e2e title distinction. Single commit `f6ebf78`.
+- **Verified:** typecheck (5 pkgs) · **1272 Docker-free** (domain 117 · application 375 · ui 43 · api 432 ·
+  web 305; +5) · `test:int` **43** · **BDD 217 scenarios / 1857 steps** · lint 0.
+- **Staging REDEPLOYED → image `:f6ebf78`** (was `:bbc09a1`): code-only rollout (0 migrations), local
+  `docker build --provenance=false --sbom=false` → push to ACR (`gilgameshstagingacrlcnkcd`) → `az containerapp
+  update`. Revision **`app--0000004`** Healthy · RunningAtMaxScale · 100% traffic. Verified on the real origin:
+  `/api/v1/health` 200 · `/api/v1/health/ready` 200 (DB reachable) · **§7 staging smoke 2/2** (SPA+API+same-
+  origin session · lab→chat-SSE→run-narrated). Owner already had a valid `az login` (SD-4). PUSHED to
+  `origin/main` (`3cda596..f6ebf78`).
+- **Closes:** the two v8 lockout tuning notes (Bloque-3 #4 fully closed — refinements included). Both tuning
+  levers stay env-configurable (`AUTH_IP_RATE_LIMIT`, `AUTH_LOCKOUT_*`).
+- **Deferred (unchanged):** Bloque-3 fail-open/pagination/RAG posture (owner decision) · billing scheduler ·
+  provenance/re-embed · Stripe always_invoice/partial-refunds · voice.

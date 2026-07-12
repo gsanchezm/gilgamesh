@@ -12,29 +12,30 @@ authoritative detail rather than repeating it, so it can't drift:
 **Legend:** ✅ done (backend + UI faithful to the capture) · 🟡 functional but UI not re-skinned to the
 capture / partial · 🔵 stub behind a port (runs offline; real engine pending) · 🔴 not built / blocked.
 
-_As of 2026-07-09 (keystone v0.6). Everything below is merged on `main`: slices 1–33 + programa
+_As of 2026-07-12 (keystone v0.6). Everything below is merged on `main`: slices 1–33 + programa
 v2 (Stripe 13 · SSO 15 · Voyage embeddings 16 · SMTP 17 · logout 18) + programa v3 (token billing 14 ·
 Voyage BYOK 19 · Key Vault 20 · Redis SSO state · Vitest 3) + programa v4 (billing rollover 21 · voyage
 hint 22 · error boundary 23) + v5 (request-id 24 · http resilience 25 · bundle gate 26 · readiness 27 ·
 async-states 28) + v6 (graceful shutdown 29 · structured logging 30 · db pool 31 · connection banner 32 ·
 adopt async-states 33) + v7 (stripe portal 34 · logging+CORS 35 · db-pool proof 36 · web async-states 37 ·
-CI sha-comments 38) + **responsive pass** (mobile drawer shell + per-screen reflow, all 7 authed screens,
+CI sha-comments 38) + programa v8 (per-IP lockout 39 · Stripe proration/refunds 40) + **v8 lockout tuning**
+(A1 ceiling excludes login · `RESET_TOKEN_INVALID` so weak-password fumbles don't feed the lockout) + **responsive pass** (mobile drawer shell + per-screen reflow, all 7 authed screens,
 desktop unchanged) + **admin console** (platform + workspace roles, 14 views from captures 15–22, lazy chunk,
 i18n es/en, mock behind a service, workspace never sees costs), plus Reports, onboarding wizard, per-org RAG
 grounding, CI hardening, plus a **pre-auth responsive** pass (Login/Register/Forgot/Reset on mobile), an
 **admin access gate** (the mock admin console is now behind real auth + org checks + a platform flag, no nav
-entry, "Demo data" badge), and an **image-asset slim** (~3.95 MB off the build). Gates: 1200 Docker-free ·
-int 40 · BDD 209/1779 · Playwright 20 · pnpm audit 0._
+entry, "Demo data" badge), and an **image-asset slim** (~3.95 MB off the build). Gates: 1272 Docker-free ·
+int 43 · BDD 217/1857 · Playwright 20 · pnpm audit 0._
 
-> **🚀 STAGING LIVE + REDEPLOYED (2026-07-09):** the whole app runs LIVE on **Azure Container Apps** —
+> **🚀 STAGING LIVE + REDEPLOYED (2026-07-12):** the whole app runs LIVE on **Azure Container Apps** —
 > `https://app.ashygrass-47d0b048.eastus2.azurecontainerapps.io` (app+ACR+KV in eastus2, Postgres in
-> centralus due to an offer restriction, full RAG corpus = 2655 chunks). **Redeployed to image `:3dcd73f`**
-> (responsive pass + test-lab polish + admin console all live; revision `app--0000002` Healthy/100%; §7
-> smoke 2/2 green warm + `/admin` renders confirmed). Brain runs the deterministic stub until
-> `ANTHROPIC_API_KEY` is set. Runbook + subscription-restriction workarounds:
-> [`../../specs/infra/staging-deploy.md`](../../specs/infra/staging-deploy.md) §8. The 3 latest follow-ups
-> (pre-auth responsive · admin access gate · asset slim) are on `main` but **not yet deployed** (a code-only
-> rollout: `docker build`+push + `az containerapp update`).
+> centralus due to an offer restriction, full RAG corpus = 2655 chunks). **Redeployed to image `:f6ebf78`**
+> (everything on `main` through programa v8 + the lockout tuning now live; revision `app--0000004`
+> Healthy/RunningAtMaxScale/100%; liveness+readiness 200; §7 staging smoke 2/2 green). Brain runs the
+> deterministic stub until `ANTHROPIC_API_KEY` is set. Runbook + subscription-restriction workarounds:
+> [`../../specs/infra/staging-deploy.md`](../../specs/infra/staging-deploy.md) §8. **`main` and staging are
+> in sync** (no undeployed follow-ups). Code-only rollout recipe: `docker build --provenance=false
+> --sbom=false` → push to ACR → `az containerapp update -n app --image …`.
 
 ---
 

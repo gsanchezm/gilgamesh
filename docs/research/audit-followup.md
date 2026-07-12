@@ -58,11 +58,14 @@ all green Docker-free: `typecheck · lint · pnpm -r test` (the orchestrator run
    in-memory bucket for the blip (availability *and* a floor of protection) rather than silently
    unthrottled. Needs a yes/no.
 
-4. ~~**Per-IP global bound + backoff/lockout**~~ — ✅ **DONE (slice 39, programa v8, 2026-07-10, on `main`)**.
-   New `AuthAbuseGuard` (sibling of `RateLimitGuard`): a per-IP request ceiling (org-farming) + an
-   exponential-backoff lockout after N failed credential attempts (stuffing), both keyed on client IP
-   (never per-account → no victim DoS), fail-open, fed by a global `LoginOutcomeInterceptor` + a Redis/in-mem
-   `LoginAttemptStore`. See CLAUDE.md "Programa paralelo v8".
+4. ~~**Per-IP global bound + backoff/lockout**~~ — ✅ **DONE (slice 39, programa v8, 2026-07-10, on `main`)**
+   + **tuned 2026-07-12**. New `AuthAbuseGuard` (sibling of `RateLimitGuard`): a per-IP request ceiling
+   (org-farming) + an exponential-backoff lockout after N failed credential attempts (stuffing), both keyed on
+   client IP (never per-account → no victim DoS), fail-open, fed by a global `LoginOutcomeInterceptor` + a
+   Redis/in-mem `LoginAttemptStore`. **Tuning (2026-07-12, `f6ebf78`):** the A1 ceiling now excludes `/auth/login`
+   (NAT-hostile on successful logins; login stays covered by the A2 failure lockout) and a weak-new-password DTO
+   rejection on reset-password no longer feeds the lockout (dedicated `RESET_TOKEN_INVALID` code isolates a real
+   bad token from a fumble). See CLAUDE.md "Programa paralelo v8" + "Programa v8 tuning + staging redeploy".
 
 5. **Pagination** (`prisma-repositories.ts` list methods). Keyset pagination on
    features/testCases/runs changes the **list response shape** → ripples to the web client + BDD +
