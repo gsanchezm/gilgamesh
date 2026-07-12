@@ -41,12 +41,12 @@ test('Agent chat: talk to the pantheon and watch a chat-triggered run narrate ba
   // A routed question reaches the perf specialist (Thor) — the router picks the slot, not the user.
   await page.goto(`/projects/${projectId}/chat`);
   await expect(page.getByRole('heading', { name: 'Agent chat' })).toBeVisible();
-  await page.getByLabel('Message').fill('our checkout p95 latency explodes under load');
+  await page.getByLabel('Message', { exact: true }).fill('our checkout p95 latency explodes under load');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText(/Thor here/)).toBeVisible();
 
   // A chat-triggered run rides the standard run path and narrates back into the conversation.
-  await page.getByLabel('Message').fill('run the Checkout feature');
+  await page.getByLabel('Message', { exact: true }).fill('run the Checkout feature');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText(/Enqueued a run of "Checkout"/)).toBeVisible();
   await expect(page.getByText(/PASS — Checkout case 1/)).toBeVisible();
