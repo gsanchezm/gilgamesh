@@ -33,3 +33,28 @@ export function remainingPeriodFraction(
 export function prorationAmountCents(fromCents: number, toCents: number, fraction: number): number {
   return Math.round((toCents - fromCents) * fraction);
 }
+
+/** Slice 41: the quote a partial (amount-level) refund resolves to against an invoice's ceiling. */
+export interface RefundQuote {
+  /** The invoice's refundable ceiling in whole cents (rounded, never negative). */
+  refundableCents: number;
+  /** The amount that would be refunded: the request clamped to [0, ceiling] (whole cents). */
+  amountCents: number;
+  /** True when the requested amount exceeds the ceiling — the executed refund rejects it. */
+  exceedsCeiling: boolean;
+}
+
+/**
+ * Slice 41: quote a partial refund against an invoice's refundable ceiling. The SINGLE pure source
+ * both `previewRefund` (informational — reports the clamped amount) and `refund` (rejects an
+ * over-ceiling request via `exceedsCeiling`) consume, so a previewed amount always equals the charged
+ * amount for a **valid** request. An absent request quotes a full refund of the ceiling; a
+ * non-positive request quotes zero; amounts round to whole cents and never go negative.
+ */
+export function quoteRefund(requestedCents: number | undefined, refundableCents: number): RefundQuote {
+  const ceiling = Math.max(0, Math.round(refundableCents));
+  const requested = requestedCents === undefined ? ceiling : Math.round(requestedCents);
+  const exceedsCeiling = requested > ceiling;
+  const amountCents = Math.max(0, Math.min(requested, ceiling));
+  return { refundableCents: ceiling, amountCents, exceedsCeiling };
+}

@@ -320,3 +320,80 @@ describe('MockPaymentProvider proration + refunds (slice 40)', () => {
     expect(await ctx.invoices.listForOrg('org-1')).toEqual([]);
   });
 });
+
+describe('MockPaymentProvider partial refunds (slice 41)', () => {
+  /** A GROWTH sub with a PAID checkout invoice at 9900 → a refundable ceiling of 9900. */
+  async function paidGrowth() {
+    const { ctx, provider } = setup();
+    await ctx.subscriptions.create(
+      subscription({ plan: 'GROWTH', providerCustomerId: 'cus_mock_org-1', providerSubscriptionId: 'sub_mock_org-1' }),
+    );
+    await provider.confirmCheckout('org-1'); // records the PAID invoice at 9900
+    return { ctx, provider };
+  }
+
+  it('refunds exactly the requested amount and records a credit VOID invoice (AC-REFUND-01)', async () => {
+    const { ctx, provider } = await paidGrowth();
+    const res = await provider.refund({ orgId: 'org-1', amountCents: 5000, reason: 'manual' });
+    expect(res).toEqual({ refundedCents: 5000 });
+
+    const credit = (await ctx.invoices.listForOrg('org-1')).find((i) =>
+      String(i.providerInvoiceId).startsWith('in_mock_refund_partial_org-1'),
+    );
+    expect(credit).toMatchObject({ status: 'VOID', amountCents: -5000, providerInvoiceId: 'in_mock_refund_partial_org-1_0' });
+  });
+
+  it('previewRefund reports the ceiling + the (same) amount refund then charges, mutating nothing (AC-REFUND-02)', async () => {
+    const { ctx, provider } = await paidGrowth();
+    const before = JSON.stringify(await ctx.invoices.listForOrg('org-1'));
+
+    const preview = await provider.previewRefund({ orgId: 'org-1', amountCents: 4200 });
+    expect(preview).toEqual({ refundableCents: 9900, amountCents: 4200 });
+    // Read-only: no new row.
+    expect(JSON.stringify(await ctx.invoices.listForOrg('org-1'))).toBe(before);
+
+    const executed = await provider.refund({ orgId: 'org-1', amountCents: 4200 });
+    expect(executed.refundedCents).toBe(preview.amountCents);
+  });
+
+  it('previewRefund with no amount quotes a full refund of the ceiling', async () => {
+    const { provider } = await paidGrowth();
+    expect(await provider.previewRefund({ orgId: 'org-1' })).toEqual({ refundableCents: 9900, amountCents: 9900 });
+  });
+
+  it('rejects an over-ceiling refund with VALIDATION and records nothing (AC-REFUND-03)', async () => {
+    const { ctx, provider } = await paidGrowth();
+    await expect(provider.refund({ orgId: 'org-1', amountCents: 20000 })).rejects.toMatchObject({ code: 'VALIDATION' });
+    // No credit row was written.
+    expect((await ctx.invoices.listForOrg('org-1')).some((i) => String(i.providerInvoiceId).includes('refund'))).toBe(false);
+  });
+
+  it('rejects a partial refund with VALIDATION when there is no paid invoice (ceiling 0)', async () => {
+    const { ctx, provider } = setup();
+    await ctx.subscriptions.create(subscription({ providerCustomerId: 'cus_mock_org-1' })); // no PAID invoice
+    await expect(provider.refund({ orgId: 'org-1', amountCents: 100 })).rejects.toMatchObject({ code: 'VALIDATION' });
+  });
+
+  it('records successive partial refunds under distinct keys (no collision)', async () => {
+    const { ctx, provider } = await paidGrowth();
+    await provider.refund({ orgId: 'org-1', amountCents: 3000 });
+    await provider.refund({ orgId: 'org-1', amountCents: 2000 });
+    const keys = (await ctx.invoices.listForOrg('org-1'))
+      .map((i) => String(i.providerInvoiceId))
+      .filter((k) => k.startsWith('in_mock_refund_partial_org-1'))
+      .sort();
+    expect(keys).toEqual(['in_mock_refund_partial_org-1_0', 'in_mock_refund_partial_org-1_1']);
+  });
+
+  it('leaves the slice-40 cancellation path (no amount) byte-for-byte and on its own key', async () => {
+    const { ctx, provider } = await paidGrowth();
+    // Half the 30-day period remaining → fraction 0.5, GROWTH 9900 → 4950 unused-portion credit.
+    const sub = (await ctx.subscriptions.findByOrg('org-1'))!;
+    await ctx.subscriptions.save({ ...sub, currentPeriodEnd: new Date(ctx.clock.now().getTime() + 15 * 24 * 60 * 60 * 1000) });
+
+    const res = await provider.refund({ orgId: 'org-1', reason: 'cancellation' });
+    expect(res.refundedCents).toBe(4950);
+    const credit = (await ctx.invoices.listForOrg('org-1')).find((i) => i.providerInvoiceId === 'in_mock_refund_org-1');
+    expect(credit).toMatchObject({ status: 'VOID', amountCents: -4950 });
+  });
+});

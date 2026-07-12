@@ -1,7 +1,14 @@
-import { priceCents, prorationAmountCents, remainingPeriodFraction } from '@gilgamesh/domain';
+import { priceCents, prorationAmountCents, quoteRefund, remainingPeriodFraction } from '@gilgamesh/domain';
 import { ApplicationError } from '../errors';
 import type { Clock } from '../ports/clock';
-import type { ChangePlanRequest, CheckoutRequest, PaymentProvider } from '../ports/payment';
+import type {
+  ChangePlanRequest,
+  CheckoutRequest,
+  PaymentProvider,
+  PreviewRefundRequest,
+  RefundPreview,
+  RefundRequest,
+} from '../ports/payment';
 import type { InvoiceRecord, SubscriptionRecord } from '../ports/records';
 import type { InvoiceRepository, SubscriptionRepository } from '../ports/repositories';
 import { type ApplyPaymentEvent, INVOICE_WEBHOOK_EFFECTS } from './apply-payment-event';
@@ -96,18 +103,57 @@ export class MockPaymentProvider implements PaymentProvider {
     return { prorationCents };
   }
 
-  async refund(req: { orgId: string; reason: 'cancellation' }): Promise<{ refundedCents: number }> {
-    // B-2: a prorated refund of the UNUSED portion of the current period — but only when there is a
-    // paid invoice to refund. Recorded as a credit invoice (negative amount, VOID). Deterministic.
-    const sub = await this.deps.subscriptions?.findByOrg(req.orgId);
-    const invoices = (await this.deps.invoices?.listForOrg(req.orgId)) ?? [];
+  async refund(req: RefundRequest): Promise<{ refundedCents: number }> {
+    // S40 cancellation path (no explicit amount): a prorated refund of the UNUSED portion. UNCHANGED.
+    if (req.amountCents === undefined) return this.refundCancellation(req.orgId);
+    // S41 partial (amount-level) refund: ceiling = the target paid invoice's amount; refund exactly
+    // the requested amount (an over-ceiling request is rejected). Recorded as a credit VOID invoice.
+    const { amountCents, exceedsCeiling } = quoteRefund(req.amountCents, await this.refundableCeiling(req.orgId, req.invoiceId));
+    if (exceedsCeiling) {
+      throw new ApplicationError('VALIDATION', 'The refund exceeds the invoice refundable amount.');
+    }
+    if (amountCents <= 0 || !this.deps.events || !this.deps.invoices) return { refundedCents: amountCents };
+    // A distinct upsert key per partial refund (count of existing partial-refund rows) so successive
+    // partial refunds do not overwrite one another.
+    const existing = (await this.deps.invoices.listForOrg(req.orgId)).filter((i) =>
+      i.providerInvoiceId?.startsWith(`in_mock_refund_partial_${req.orgId}`),
+    ).length;
+    const providerInvoiceId = `in_mock_refund_partial_${req.orgId}_${existing}`;
+    await this.deps.events.invoiceEvent({
+      orgId: req.orgId,
+      providerInvoiceId,
+      status: 'VOID',
+      amountCents: -amountCents,
+      hostedInvoiceUrl: `https://mock.pay/invoice/${providerInvoiceId}`,
+    });
+    return { refundedCents: amountCents };
+  }
+
+  async previewRefund(req: PreviewRefundRequest): Promise<RefundPreview> {
+    // S41: read-only — the same quote refund() applies, mutating nothing.
+    const { refundableCents, amountCents } = quoteRefund(req.amountCents, await this.refundableCeiling(req.orgId, req.invoiceId));
+    return { refundableCents, amountCents };
+  }
+
+  /** S41: the partial-refund ceiling = the (targeted, else latest) PAID invoice's amount; 0 when none. */
+  private async refundableCeiling(orgId: string, invoiceId?: string): Promise<number> {
+    const paid = ((await this.deps.invoices?.listForOrg(orgId)) ?? []).filter((i) => i.status === 'PAID');
+    const target = invoiceId ? paid.find((i) => i.id === invoiceId || i.providerInvoiceId === invoiceId) : paid[0];
+    return target?.amountCents ?? 0;
+  }
+
+  /** S40 (owner decision B-2): the prorated unused-portion refund on cancellation — a paid-invoice-only,
+   *  deterministic credit VOID invoice. Refactored verbatim from the pre-slice-41 `refund`. */
+  private async refundCancellation(orgId: string): Promise<{ refundedCents: number }> {
+    const sub = await this.deps.subscriptions?.findByOrg(orgId);
+    const invoices = (await this.deps.invoices?.listForOrg(orgId)) ?? [];
     const hasPaidInvoice = invoices.some((i: InvoiceRecord) => i.status === 'PAID');
     if (!sub || !this.deps.clock || !hasPaidInvoice) return { refundedCents: 0 };
     const refundedCents = this.unusedCredit(sub);
     if (refundedCents > 0 && this.deps.events) {
-      const providerInvoiceId = `in_mock_refund_${req.orgId}`;
+      const providerInvoiceId = `in_mock_refund_${orgId}`;
       await this.deps.events.invoiceEvent({
-        orgId: req.orgId,
+        orgId,
         providerInvoiceId,
         status: 'VOID',
         amountCents: -refundedCents,

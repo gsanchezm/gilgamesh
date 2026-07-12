@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { prorationAmountCents, remainingPeriodFraction } from './proration';
+import { prorationAmountCents, quoteRefund, remainingPeriodFraction } from './proration';
 
 const at = (iso: string) => new Date(iso);
 
@@ -58,5 +58,40 @@ describe('prorationAmountCents', () => {
   it('yields a from=0 baseline (the unused-credit amount) as a plain rounded product', () => {
     // Refund of the unused portion of a 9900 price at fraction 0.5 → 4950.
     expect(prorationAmountCents(0, 9900, 0.5)).toBe(4950);
+  });
+});
+
+describe('quoteRefund (slice 41)', () => {
+  it('quotes a valid partial refund unchanged, within the ceiling', () => {
+    // A $50 refund against a $99 paid invoice.
+    expect(quoteRefund(5000, 9900)).toEqual({ refundableCents: 9900, amountCents: 5000, exceedsCeiling: false });
+  });
+
+  it('quotes a full refund of the ceiling when no amount is requested', () => {
+    expect(quoteRefund(undefined, 9900)).toEqual({ refundableCents: 9900, amountCents: 9900, exceedsCeiling: false });
+  });
+
+  it('flags a request beyond the ceiling and clamps the previewed amount down', () => {
+    // The previewed amount is clamped (informational); execute uses exceedsCeiling to reject.
+    expect(quoteRefund(20000, 9900)).toEqual({ refundableCents: 9900, amountCents: 9900, exceedsCeiling: true });
+  });
+
+  it('quotes exactly the ceiling as a valid (boundary) request', () => {
+    expect(quoteRefund(9900, 9900)).toEqual({ refundableCents: 9900, amountCents: 9900, exceedsCeiling: false });
+  });
+
+  it('quotes zero for a non-positive request (never a negative refund)', () => {
+    expect(quoteRefund(0, 9900)).toEqual({ refundableCents: 9900, amountCents: 0, exceedsCeiling: false });
+    expect(quoteRefund(-100, 9900)).toEqual({ refundableCents: 9900, amountCents: 0, exceedsCeiling: false });
+  });
+
+  it('rounds the ceiling and request to whole cents and never goes below zero', () => {
+    expect(quoteRefund(1200.6, 5000.4)).toEqual({ refundableCents: 5000, amountCents: 1201, exceedsCeiling: false });
+    // A negative ceiling (never expected) clamps to a zero ceiling; any request then exceeds it.
+    expect(quoteRefund(10, -5)).toEqual({ refundableCents: 0, amountCents: 0, exceedsCeiling: true });
+  });
+
+  it('quotes zero for a zero ceiling with no request (nothing refundable, not an over-refund)', () => {
+    expect(quoteRefund(undefined, 0)).toEqual({ refundableCents: 0, amountCents: 0, exceedsCeiling: false });
   });
 });

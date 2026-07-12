@@ -8,6 +8,8 @@ import {
   ChangeSubscription,
   ConfirmCheckout,
   PreviewPlanChange,
+  PreviewRefund,
+  RefundPayment,
   StartBillingPortal,
   StartCheckout,
   UpdateSeats,
@@ -198,6 +200,84 @@ describe('Subscription & Billing', () => {
     expect(ctx.audit.rows.some((r) => r.action === 'subscription.refunded')).toBe(false);
     // No credit invoice recorded.
     expect((await ctx.invoices.listForOrg(orgId)).length).toBe(invoicesBefore);
+  });
+
+  // ---- Slice 41: partial refunds + always_invoice + refund preview ----
+
+  it('threads always_invoice through to the provider changePlan (AC-REFUND-04)', async () => {
+    await provisionGrowth();
+    const spy = vi.spyOn(ctx.payment, 'changePlan');
+    await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'SCALE', prorationBehavior: 'always_invoice' });
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ plan: 'SCALE', prorationBehavior: 'always_invoice' }));
+  });
+
+  it('defaults to create_prorations — a plain plan change never sends always_invoice (regression-safe)', async () => {
+    await provisionGrowth();
+    const spy = vi.spyOn(ctx.payment, 'changePlan');
+    await new ChangeSubscription(ctx).execute({ userId, orgId, plan: 'SCALE' });
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ plan: 'SCALE', prorationBehavior: undefined }));
+  });
+
+  it('refunds a partial amount of a paid invoice and audits it (AC-REFUND-01)', async () => {
+    await provisionGrowth(); // GROWTH, checked out → a PAID invoice at 9900
+    const res = await new RefundPayment(ctx).execute({ userId, orgId, amountCents: 5000 });
+    expect(res).toEqual({ refundedCents: 5000 });
+    expect(ctx.audit.rows.some((r) => r.action === 'subscription.refunded' && r.metadata.refundedCents === 5000)).toBe(true);
+    const credit = (await ctx.invoices.listForOrg(orgId)).find((i) => String(i.providerInvoiceId).includes('refund_partial'));
+    expect(credit).toMatchObject({ status: 'VOID', amountCents: -5000 });
+  });
+
+  it('previewRefund returns the same amount refund then charges, without mutating (AC-REFUND-02)', async () => {
+    await provisionGrowth();
+    const before = JSON.stringify(await ctx.invoices.listForOrg(orgId));
+
+    const preview = await new PreviewRefund(ctx).execute({ userId, orgId, amountCents: 4200 });
+    expect(preview).toEqual({ refundableCents: 9900, amountCents: 4200 });
+    expect(JSON.stringify(await ctx.invoices.listForOrg(orgId))).toBe(before); // read-only
+
+    const executed = await new RefundPayment(ctx).execute({ userId, orgId, amountCents: 4200 });
+    expect(executed.refundedCents).toBe(preview.amountCents);
+  });
+
+  it('rejects an over-ceiling refund with VALIDATION and records nothing (AC-REFUND-03)', async () => {
+    await provisionGrowth();
+    await expect(new RefundPayment(ctx).execute({ userId, orgId, amountCents: 20000 })).rejects.toMatchObject({
+      code: 'VALIDATION',
+    });
+    expect(ctx.audit.rows.some((r) => r.action === 'subscription.refunded')).toBe(false);
+    expect((await ctx.invoices.listForOrg(orgId)).some((i) => String(i.providerInvoiceId).includes('refund'))).toBe(false);
+  });
+
+  it('rejects a refund on an org with no billing account (VALIDATION, provider untouched) (AC-REFUND-05)', async () => {
+    const spy = vi.spyOn(ctx.payment, 'refund');
+    await expect(new RefundPayment(ctx).execute({ userId, orgId, amountCents: 5000 })).rejects.toMatchObject({
+      code: 'VALIDATION',
+    });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('enforces RBAC + tenant isolation on refund + previewRefund (AC-REFUND-05)', async () => {
+    await provisionGrowth();
+    const member = (
+      await new RegisterUser(ctx).execute({ firstName: 'M', lastName: 'R', email: 'ref-m@uruk.io', password: 'C0rrect-Horse!' })
+    ).userId;
+    await ctx.memberships.create({ id: ctx.ids.next(), orgId, userId: member, role: 'MEMBER', createdAt: ctx.clock.now() });
+    await expect(new RefundPayment(ctx).execute({ userId: member, orgId, amountCents: 100 })).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+    await expect(new PreviewRefund(ctx).execute({ userId: member, orgId, amountCents: 100 })).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+
+    const outsider = (
+      await new RegisterUser(ctx).execute({ firstName: 'E', lastName: 'X', email: 'ref-eve@uruk.io', password: 'C0rrect-Horse!' })
+    ).userId;
+    await expect(new RefundPayment(ctx).execute({ userId: outsider, orgId, amountCents: 100 })).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+    await expect(new PreviewRefund(ctx).execute({ userId: outsider, orgId, amountCents: 100 })).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
   });
 
   // ---- Slice 34: Stripe billing portal (portal-only) ----

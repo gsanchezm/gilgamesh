@@ -2,7 +2,7 @@ import { planLimits, priceCents } from '@gilgamesh/domain';
 import { ApplicationError } from '../errors';
 import type { Clock } from '../ports/clock';
 import type { IdGenerator } from '../ports/id';
-import type { ChangePlanRequest, PaymentProvider } from '../ports/payment';
+import type { ChangePlanRequest, PaymentProvider, ProrationBehavior } from '../ports/payment';
 import type { BillingCycle, Plan, Role, SubscriptionRecord, SubscriptionStatus } from '../ports/records';
 import type { AuditLogRepository, MembershipRepository, SubscriptionRepository } from '../ports/repositories';
 
@@ -46,6 +46,19 @@ export interface PlanChangePreview {
   billingCycle: BillingCycle;
   /** Signed: positive = charged now, negative = credited. 0 when there is no provider subscription. */
   prorationCents: number;
+}
+
+/** Slice 41: the read-only refund estimate the UI shows before confirming a partial refund. */
+export interface RefundEstimate {
+  /** The invoice's refundable ceiling in cents (0 when nothing is refundable). */
+  refundableCents: number;
+  /** The amount that would be refunded — the request clamped to the ceiling (previewed == charged). */
+  amountCents: number;
+}
+
+/** Slice 41: the outcome of an executed partial refund. */
+export interface RefundOutcome {
+  refundedCents: number;
 }
 
 export function subscriptionView(sub: SubscriptionRecord): SubscriptionView {
@@ -114,6 +127,8 @@ export class ChangeSubscription {
     orgId: string;
     plan: Plan;
     billingCycle?: BillingCycle;
+    /** Slice 41: create_prorations (default) | always_invoice. Threaded to the provider on a provisioned sub. */
+    prorationBehavior?: ProrationBehavior;
   }): Promise<SubscriptionView> {
     await requireOrgAdmin(this.deps, input.userId, input.orgId);
     const sub = await requireSub(this.deps, input.orgId);
@@ -126,6 +141,8 @@ export class ChangeSubscription {
     // period. Call the provider BEFORE the local save so it observes the still-current row (the mock
     // derives the old price from it) and a provider failure leaves the local state untouched. No
     // provider subscription (still FREE / never checked out) → today's pure-row path, prorationCents 0.
+    // S41: `prorationBehavior` (absent → create_prorations) rides through so the caller can opt into
+    // always_invoice; omitting it is byte-for-byte the slice-40 call.
     let prorationCents = 0;
     if (sub.providerSubscriptionId) {
       ({ prorationCents } = await this.deps.payment.changePlan({
@@ -133,6 +150,7 @@ export class ChangeSubscription {
         plan: input.plan,
         cycle: billingCycle,
         seats: sub.seats,
+        prorationBehavior: input.prorationBehavior,
       }));
     }
     const updated: SubscriptionRecord = {
@@ -277,5 +295,61 @@ export class CancelSubscription {
     }
     const view = subscriptionView(updated);
     return refundedCents !== undefined ? { ...view, refundedCents } : view;
+  }
+}
+
+/**
+ * Slice 41: the read-only refund estimate — the invoice's refundable ceiling and the (clamped) amount
+ * a partial refund would credit. OWNER/ADMIN gate; non-member NOT_FOUND. Mutates nothing; delegates to
+ * the provider's `previewRefund` (0/0 when nothing is refundable — a lenient read, like PreviewPlanChange).
+ */
+export class PreviewRefund {
+  constructor(private readonly deps: SubDeps) {}
+  async execute(input: {
+    userId: string;
+    orgId: string;
+    amountCents?: number;
+    invoiceId?: string;
+  }): Promise<RefundEstimate> {
+    await requireOrgAdmin(this.deps, input.userId, input.orgId);
+    await requireSub(this.deps, input.orgId);
+    const { refundableCents, amountCents } = await this.deps.payment.previewRefund({
+      orgId: input.orgId,
+      amountCents: input.amountCents,
+      invoiceId: input.invoiceId,
+    });
+    return { refundableCents, amountCents };
+  }
+}
+
+/**
+ * Slice 41: a partial (amount-level) refund of a paid invoice (goodwill / dispute / partial credit).
+ * OWNER/ADMIN gate; non-member NOT_FOUND; an org with no billing account → VALIDATION (the
+ * StartBillingPortal precedent, never a 500). The provider caps the amount at the invoice ceiling and
+ * rejects an over-ceiling request with VALIDATION. Audits `subscription.refunded` when a refund lands.
+ */
+export class RefundPayment {
+  constructor(private readonly deps: SubDeps) {}
+  async execute(input: {
+    userId: string;
+    orgId: string;
+    amountCents: number;
+    invoiceId?: string;
+  }): Promise<RefundOutcome> {
+    await requireOrgAdmin(this.deps, input.userId, input.orgId);
+    const sub = await requireSub(this.deps, input.orgId);
+    if (!sub.providerCustomerId) {
+      throw new ApplicationError('VALIDATION', 'No billing account yet — complete a checkout first.');
+    }
+    const { refundedCents } = await this.deps.payment.refund({
+      orgId: input.orgId,
+      amountCents: input.amountCents,
+      reason: 'manual',
+      invoiceId: input.invoiceId,
+    });
+    if (refundedCents > 0) {
+      await audit(this.deps, input.orgId, input.userId, 'subscription.refunded', { refundedCents });
+    }
+    return { refundedCents };
   }
 }

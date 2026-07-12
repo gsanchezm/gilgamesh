@@ -19,6 +19,12 @@ export interface CheckoutRequest {
 }
 
 /**
+ * Slice 41: how a plan-change proration is invoiced. `create_prorations` (the slice-40 default) rides
+ * the delta to the next invoice; `always_invoice` issues the proration immediately, mid-cycle.
+ */
+export type ProrationBehavior = 'create_prorations' | 'always_invoice';
+
+/**
  * The target of a plan change (slice 40). Carries ONLY the desired plan/cycle/seats — the provider
  * resolves the org's current (pre-change) subscription itself to compute the signed proration.
  */
@@ -28,6 +34,42 @@ export interface ChangePlanRequest {
   cycle: BillingCycle;
   /** Active workspaces (same seam name as CheckoutRequest). */
   seats: number;
+  /**
+   * Slice 41 (additive): when to invoice the proration. Absent → `create_prorations` (the slice-40
+   * behavior; the provider applies its default). Callers that omit it are byte-for-byte unchanged.
+   */
+  prorationBehavior?: ProrationBehavior;
+}
+
+/**
+ * Slice 41: a refund request. TWO paths behind the one method (backward-compatible):
+ *  - **`amountCents` absent** → the slice-40 CANCELLATION refund (prorated unused portion). This is
+ *    what {@link PaymentProvider.refund} did before slice 41; `CancelSubscription` still calls it.
+ *  - **`amountCents` present** → a PARTIAL (amount-level) refund of exactly that amount, capped by the
+ *    target paid invoice's ceiling (an over-ceiling request throws VALIDATION).
+ */
+export interface RefundRequest {
+  orgId: string;
+  /** Absent → cancellation (prorated unused portion). Present → a partial refund of this many cents. */
+  amountCents?: number;
+  reason?: 'cancellation' | 'manual';
+  /** Slice 41: target a specific paid invoice; defaults to the latest paid invoice. */
+  invoiceId?: string;
+}
+
+/** Slice 41: the read-only refund estimate — the invoice ceiling + the (clamped) amount to refund. */
+export interface RefundPreview {
+  /** The (target) invoice's refundable ceiling in cents; 0 when nothing is refundable. */
+  refundableCents: number;
+  /** The amount that would be refunded — the request clamped to the ceiling (previewed == charged). */
+  amountCents: number;
+}
+
+/** Slice 41: the read-only refund preview request (a partial-refund amount, or absent for the max). */
+export interface PreviewRefundRequest {
+  orgId: string;
+  amountCents?: number;
+  invoiceId?: string;
 }
 
 export interface PaymentProvider {
@@ -65,10 +107,20 @@ export interface PaymentProvider {
    */
   previewProration(req: ChangePlanRequest): Promise<{ prorationCents: number }>;
   /**
-   * Slice 40 (owner decision B-2): refund the UNUSED portion of the current period on cancellation.
-   * Returns the positive refunded amount in cents (0 when there is nothing to refund — no paid
-   * invoice or no time remaining). The mock records a credit Invoice (negative `amountCents`, VOID);
-   * a real Stripe refund hits the latest paid invoice's payment intent.
+   * Refund against the org's latest (or a targeted) paid invoice. Returns the positive refunded amount
+   * in cents (0 when there is nothing to refund).
+   *  - Slice 40 (owner decision B-2), `amountCents` absent → the prorated UNUSED portion of the current
+   *    period (cancellation). The mock records a credit Invoice (negative `amountCents`, VOID); a real
+   *    Stripe refund hits the latest paid invoice's payment intent.
+   *  - Slice 41, `amountCents` present → a PARTIAL refund of exactly that amount, capped by the invoice
+   *    ceiling. A request beyond the ceiling throws `VALIDATION` (never a silent clamp / 500).
    */
-  refund(req: { orgId: string; reason: 'cancellation' }): Promise<{ refundedCents: number }>;
+  refund(req: RefundRequest): Promise<{ refundedCents: number }>;
+  /**
+   * Slice 41: the read-only estimate of a partial refund — the invoice's refundable ceiling and the
+   * (clamped) amount that would be refunded — with NO charge and NO invoice row. Shares the pure
+   * {@link quoteRefund} source with {@link refund}, so a previewed amount equals the charged amount for
+   * any valid (≤ ceiling) request.
+   */
+  previewRefund(req: PreviewRefundRequest): Promise<RefundPreview>;
 }
