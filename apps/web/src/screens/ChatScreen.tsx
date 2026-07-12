@@ -9,8 +9,13 @@ import {
   type ChatMessageView,
   type ChatSessionListItem,
 } from '../lib/chat-client';
+import type { VoiceAudio, VoiceClient } from '../lib/voice-client';
+import { createBrowserRecorder, playVoiceAudio, type CreateRecorder, type VoiceRecorder } from '../lib/voice-recorder';
 
 const STATUS_WORD: Record<AgentRuntimeStatus, string> = { ACTIVE: 'Active', BUSY: 'Busy', IDLE: 'Idle' };
+
+/** Browser mic capture (feature-detected once); `null` in jsdom/SSR/unsupported → the mic no-ops. */
+const BROWSER_RECORDER: CreateRecorder = createBrowserRecorder();
 
 /**
  * Agent Chat (slice 11 re-skin — capture 07): session rail (newest-first, derived titles, new
@@ -23,15 +28,23 @@ const STATUS_WORD: Record<AgentRuntimeStatus, string> = { ACTIVE: 'Active', BUSY
 export function ChatScreen({
   client,
   agentsClient,
+  voiceClient,
   projectId,
   pinnedAgentId,
   onBack,
+  createRecorder = BROWSER_RECORDER,
+  playAudio = playVoiceAudio,
 }: {
   client: ChatClient;
   agentsClient: AgentsClient;
+  voiceClient: VoiceClient;
   projectId: string;
   pinnedAgentId?: string | null;
   onBack?: () => void;
+  /** Mic-capture seam (slice 42) — default browser recorder, `null` when unsupported; tests inject a fake. */
+  createRecorder?: CreateRecorder;
+  /** Read-aloud playback seam (slice 42) — default browser `Audio`; tests inject a spy. */
+  playAudio?: (audio: VoiceAudio) => void;
 }) {
   const [sessions, setSessions] = useState<ChatSessionListItem[]>([]);
   // Session-rail load lifecycle — distinct from the conversation `error` (send/select). `sessionsLoaded`
@@ -49,6 +62,11 @@ export function ChatScreen({
   // Mobile-only: the session rail is an off-canvas drawer (≤767px). Pure layout state — it does not
   // touch the SSE/streaming path; the "Conversations" toggle + backdrop + tap-to-close set it.
   const [railOpen, setRailOpen] = useState(false);
+  // Voice (slice 42) — a SEPARATE channel from the SSE/streaming path: `recording` toggles the mic,
+  // `voiceBusy` covers the transcribe round-trip. None of this touches openLive/send/resync/DELTA.
+  const [recording, setRecording] = useState(false);
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const recorderRef = useRef<VoiceRecorder | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -90,6 +108,9 @@ export function ChatScreen({
 
   // Never leak a live stream past unmount.
   useEffect(() => () => closeLive(), [closeLive]);
+
+  // Never leave the mic open past unmount (voice — independent of the SSE stream).
+  useEffect(() => () => recorderRef.current?.cancel(), []);
 
   // Keep the newest message in view while streaming.
   useEffect(() => {
@@ -202,6 +223,69 @@ export function ChatScreen({
       setPending(null);
       setError(err instanceof Error ? err.message : 'Could not send the message.');
       setBusy(false);
+    }
+  }
+
+  /**
+   * Resolves the session id for a voice call, lazily creating one exactly like `send` does (a SEPARATE
+   * function — the SSE `send` path is untouched). Dictating into a fresh chat opens the session so the
+   * subsequent Send reuses it.
+   */
+  async function ensureVoiceSession(): Promise<string> {
+    if (activeId) return activeId;
+    const id = (await client.createSession(projectId, pinnedAgentId ?? null)).id;
+    setActiveId(id);
+    return id;
+  }
+
+  /**
+   * Voice dictation (slice 42, AC-VOICE-02) — BATCH, not streaming: first tap records, second tap
+   * stops → uploads → transcribes → drops the transcript into the composer `draft`. It NEVER sends;
+   * the member still presses Send. Feature-detected: with no recorder (jsdom/unsupported) it no-ops.
+   */
+  async function toggleMic() {
+    if (busy || voiceBusy) return;
+    if (recording) {
+      const rec = recorderRef.current;
+      recorderRef.current = null;
+      setRecording(false);
+      if (!rec) return;
+      setVoiceBusy(true);
+      setError(null);
+      try {
+        const audio = await rec.stop();
+        const sessionId = await ensureVoiceSession();
+        const { text } = await voiceClient.transcribe(sessionId, audio);
+        const t = text.trim();
+        // Append to whatever is already typed; the user reviews and presses Send (no auto-send).
+        if (t) setDraft((d) => (d.trim() ? `${d.trim()} ${t}` : t));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not transcribe the audio.');
+      } finally {
+        setVoiceBusy(false);
+      }
+      return;
+    }
+    if (!createRecorder) {
+      setError('Voice input is not available in this browser.');
+      return;
+    }
+    try {
+      recorderRef.current = await createRecorder();
+      setRecording(true);
+    } catch (err) {
+      recorderRef.current = null;
+      setError(err instanceof Error ? err.message : 'Could not access the microphone.');
+    }
+  }
+
+  /** Read-aloud (slice 42) — synthesize an agent message and play it; best-effort, never blocks chat. */
+  async function readAloud(sessionId: string, text: string) {
+    try {
+      const { audio } = await voiceClient.speak(sessionId, text);
+      playAudio(audio);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not read the message aloud.');
     }
   }
 
@@ -321,7 +405,12 @@ export function ChatScreen({
           ) : (
             <ul className="gx-chat__list">
               {messages.map((m) => (
-                <MessageRow key={m.id} message={m} agentsById={agentsById} />
+                <MessageRow
+                  key={m.id}
+                  message={m}
+                  agentsById={agentsById}
+                  onReadAloud={() => void readAloud(m.sessionId, m.content)}
+                />
               ))}
               {pending != null && (
                 <li className="gx-chat__row gx-chat__row--agent">
@@ -346,10 +435,12 @@ export function ChatScreen({
           />
           <button
             type="button"
-            className="gx-chat__mic"
-            aria-label="Voice (coming soon)"
-            title="Voice arrives with a later slice"
-            disabled
+            className={`gx-chat__mic${recording ? ' gx-chat__mic--recording' : ''}`}
+            aria-label={recording ? 'Stop recording' : 'Record voice message'}
+            aria-pressed={recording}
+            title={recording ? 'Stop and transcribe' : 'Record a voice message'}
+            onClick={() => void toggleMic()}
+            disabled={busy || voiceBusy}
           >
             <svg width="19" height="19" viewBox="0 0 18 18" fill="none" aria-hidden="true">
               <rect x="6.5" y="2" width="5" height="9" rx="2.5" stroke="#0E1B36" strokeWidth="1.8" />
@@ -386,9 +477,11 @@ export function ChatScreen({
 function MessageRow({
   message: m,
   agentsById,
+  onReadAloud,
 }: {
   message: ChatMessageView;
   agentsById: Map<string, AgentRoomAgent> | null;
+  onReadAloud?: () => void;
 }) {
   if (m.role === 'USER') {
     return (
@@ -423,6 +516,15 @@ function MessageRow({
       <div className="gx-chat__agentmsg">
         <span className="gx-chat__who">{agent?.deityName ?? 'Pantheon'}</span>
         <div className="gx-chat__bubble gx-chat__bubble--agent">{m.content}</div>
+        {onReadAloud && (
+          <button type="button" className="gx-chat__readaloud" aria-label="Read aloud" onClick={onReadAloud}>
+            <svg width="14" height="14" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+              <path d="M3 7 H6 L10 3 V15 L6 11 H3 Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+              <path d="M13 6 a4 4 0 0 1 0 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+            Read aloud
+          </button>
+        )}
       </div>
     </li>
   );

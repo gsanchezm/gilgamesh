@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentRoomData, AgentsClient } from '../lib/agents-client';
 import type { ChatClient, ChatMessageView, ChatSessionListItem } from '../lib/chat-client';
+import type { VoiceAudio, VoiceClient } from '../lib/voice-client';
+import type { CreateRecorder } from '../lib/voice-recorder';
 import { ChatScreen } from './ChatScreen';
 
 // ---- fixtures --------------------------------------------------------------------------
@@ -62,6 +64,19 @@ function fakeAgents(): AgentsClient {
   };
 }
 
+function fakeVoice(overrides?: Partial<VoiceClient>): VoiceClient {
+  return {
+    transcribe: vi.fn(async () => ({ text: 'run the checkout feature' })),
+    speak: vi.fn(async () => ({ audio: { data: 'AAAA', mimeType: 'audio/mpeg' } as VoiceAudio })),
+    ...overrides,
+  };
+}
+
+/** A fake mic recorder whose stop() yields a fixed clip — no browser MediaRecorder in jsdom. */
+function fakeRecorder(audio: VoiceAudio = { data: 'AUDIO', mimeType: 'audio/webm' }): CreateRecorder {
+  return async () => ({ stop: async () => audio, cancel: () => {} });
+}
+
 // ---- EventSource test double (jsdom has none) --------------------------------------------
 
 class FakeEventSource {
@@ -103,14 +118,26 @@ afterEach(() => {
   FakeEventSource.instances = [];
 });
 
-function renderChat(chat: ChatClient, opts?: { pinnedAgentId?: string; onBack?: () => void }) {
+function renderChat(
+  chat: ChatClient,
+  opts?: {
+    pinnedAgentId?: string;
+    onBack?: () => void;
+    voice?: VoiceClient;
+    createRecorder?: CreateRecorder;
+    playAudio?: (a: VoiceAudio) => void;
+  },
+) {
   return render(
     <ChatScreen
       client={chat}
       agentsClient={fakeAgents()}
+      voiceClient={opts?.voice ?? fakeVoice()}
       projectId="p1"
       pinnedAgentId={opts?.pinnedAgentId ?? null}
       onBack={opts?.onBack}
+      createRecorder={opts?.createRecorder ?? null}
+      playAudio={opts?.playAudio ?? (() => {})}
     />,
   );
 }
@@ -315,9 +342,56 @@ describe('ChatScreen (slice 11 re-skin)', () => {
     expect((screen.getByLabelText('Message') as HTMLInputElement).disabled).toBe(false);
   });
 
-  it('keeps the mic affordance visibly disabled (voice is a later slice)', async () => {
-    renderChat(fakeChat());
-    const mic = await screen.findByRole('button', { name: 'Voice (coming soon)' });
-    expect((mic as HTMLButtonElement).disabled).toBe(true);
+  // ---- slice 42: voice (STT dictate + TTS read-back) — the SSE path is untouched ----------
+  it('dictates: a transcript lands in the composer WITHOUT auto-sending (AC-VOICE-02)', async () => {
+    const chat = fakeChat();
+    const voice = fakeVoice({ transcribe: vi.fn(async () => ({ text: 'run the checkout feature' })) });
+    renderChat(chat, { voice, createRecorder: fakeRecorder() });
+
+    // First tap records; the label flips to "Stop recording".
+    fireEvent.click(await screen.findByRole('button', { name: 'Record voice message' }));
+    const stop = await screen.findByRole('button', { name: 'Stop recording' });
+    // Second tap stops → transcribes → drops the text into the composer.
+    fireEvent.click(stop);
+
+    await waitFor(() =>
+      expect((screen.getByLabelText('Message') as HTMLInputElement).value).toBe('run the checkout feature'),
+    );
+    expect(voice.transcribe).toHaveBeenCalledTimes(1);
+    // Batch, not auto-send: nothing was posted; the member still presses Send.
+    expect(chat.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('appends the transcript after existing typed text (no clobber)', async () => {
+    const voice = fakeVoice({ transcribe: vi.fn(async () => ({ text: 'and report status' })) });
+    renderChat(fakeChat(), { voice, createRecorder: fakeRecorder() });
+    fireEvent.change(await screen.findByLabelText('Message'), { target: { value: 'hello' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Record voice message' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop recording' }));
+    await waitFor(() =>
+      expect((screen.getByLabelText('Message') as HTMLInputElement).value).toBe('hello and report status'),
+    );
+  });
+
+  it('mic is a safe no-op when the browser cannot record (feature-detect)', async () => {
+    const voice = fakeVoice();
+    renderChat(fakeChat(), { voice, createRecorder: null });
+    fireEvent.click(await screen.findByRole('button', { name: 'Record voice message' }));
+    // No recorder → a gentle note, never a crash; nothing transcribed.
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(voice.transcribe).not.toHaveBeenCalled();
+  });
+
+  it('reads an agent message aloud: calls speak(sessionId, content) and plays it', async () => {
+    const chat = fakeChat({ getMessages: vi.fn(async () => [userMsg, agentMsg]) });
+    const voice = fakeVoice();
+    const playAudio = vi.fn();
+    renderChat(chat, { voice, playAudio });
+    fireEvent.click(await screen.findByText('hello pantheon')); // select session → renders messages
+    await screen.findByText('Zeus here — I coordinate the pantheon.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Read aloud' }));
+    await waitFor(() => expect(voice.speak).toHaveBeenCalledWith('s1', 'Zeus here — I coordinate the pantheon.'));
+    await waitFor(() => expect(playAudio).toHaveBeenCalledWith({ data: 'AAAA', mimeType: 'audio/mpeg' }));
   });
 });

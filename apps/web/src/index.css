@@ -2159,6 +2159,40 @@ body {
   opacity: 0.55;
   cursor: not-allowed;
 }
+/* Slice 42: recording state — a subtle pulse so it reads as live capture. */
+.gx-chat__mic--recording {
+  background: linear-gradient(160deg, #d9534f, #b23b37);
+  box-shadow: 0 0 0 3px rgba(217, 83, 79, 0.3);
+  animation: gxpulse 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gx-chat__mic--recording {
+    animation: none;
+  }
+}
+@keyframes gxpulse {
+  50% {
+    box-shadow: 0 0 0 6px rgba(217, 83, 79, 0.12);
+  }
+}
+/* Slice 42: read-aloud affordance under an agent bubble. */
+.gx-chat__readaloud {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--gx-border, rgba(255, 255, 255, 0.14));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--gx-text-dim, rgba(255, 255, 255, 0.62));
+  font-size: 12px;
+  cursor: pointer;
+}
+.gx-chat__readaloud:hover {
+  color: var(--gx-text, #e8ecf5);
+  border-color: rgba(201, 161, 78, 0.5);
+}
 .gx-chat__send {
   background: #16335c;
 }

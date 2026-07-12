@@ -106,6 +106,10 @@ function makeClients(): Clients {
       listSessions: vi.fn(async () => []),
       getMessages: vi.fn(async () => []),
     },
+    voice: {
+      transcribe: vi.fn(async () => ({ text: 'dictated text' })),
+      speak: vi.fn(async () => ({ audio: { data: 'AAAA', mimeType: 'audio/mpeg' } })),
+    },
   };
 }
 

@@ -153,7 +153,7 @@ function AgentRoomRoute() {
 }
 
 function ChatRoute() {
-  const { chat, agents } = useClients();
+  const { chat, agents, voice } = useClients();
   const { projectId } = useParams();
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -163,6 +163,7 @@ function ChatRoute() {
     <ChatScreen
       client={chat}
       agentsClient={agents}
+      voiceClient={voice}
       projectId={pid}
       pinnedAgentId={params.get('agent')}
       onBack={() => navigate(`/projects/${pid}/agents`)}

@@ -8,6 +8,7 @@ import { httpKnowledgeClient, type KnowledgeClient } from '../lib/knowledge-clie
 import { httpOnboardingClient, type OnboardingClient } from '../lib/onboarding-client';
 import { httpRunsClient, type RunsClient } from '../lib/runs-client';
 import { httpTestLabClient, type TestLabClient } from '../lib/testlab-client';
+import { httpVoiceClient, type VoiceClient } from '../lib/voice-client';
 
 export interface Clients {
   auth: AuthClient;
@@ -19,6 +20,7 @@ export interface Clients {
   knowledge: KnowledgeClient;
   integrations: IntegrationsClient;
   chat: ChatClient;
+  voice: VoiceClient;
 }
 
 const defaultClients: Clients = {
@@ -31,6 +33,7 @@ const defaultClients: Clients = {
   knowledge: httpKnowledgeClient,
   integrations: httpIntegrationsClient,
   chat: httpChatClient,
+  voice: httpVoiceClient,
 };
 
 const ClientsContext = createContext<Clients>(defaultClients);
