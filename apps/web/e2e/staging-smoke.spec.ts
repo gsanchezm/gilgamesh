@@ -111,12 +111,12 @@ test('staging container: lab → chat SSE stream → chat-triggered run narrates
   // The streamed router+chat response must arrive through the ACA ingress (Thor = perf slot).
   await page.goto(`/projects/${projectId}/chat`);
   await expect(page.getByRole('heading', { name: 'Agent chat' })).toBeVisible();
-  await page.getByLabel('Message').fill('our checkout p95 latency explodes under load');
+  await page.getByLabel('Message', { exact: true }).fill('our checkout p95 latency explodes under load');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText(/Thor here/)).toBeVisible();
 
   // A chat-triggered run rides the standard run path and narrates PASS back into the conversation.
-  await page.getByLabel('Message').fill('run the Checkout feature');
+  await page.getByLabel('Message', { exact: true }).fill('run the Checkout feature');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText(/Enqueued a run of "Checkout"/)).toBeVisible();
   await expect(page.getByText(/PASS — Checkout case 1/)).toBeVisible();
